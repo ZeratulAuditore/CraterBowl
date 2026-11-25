@@ -9,7 +9,7 @@ var api: SceneMultiplayer
 var peer: ENetMultiplayerPeer
 var _req := {}
 
-func queue_up(address: String, port: int, mode: String, size: int, rating: float) -> Error:
+func queue_up(address: String, port: int, mode: String, size: int, rating: float, name: String = "") -> Error:
 	api = SceneMultiplayer.new()
 	get_tree().set_multiplayer(api, get_path())
 	api.peer_packet.connect(_on_packet)
@@ -18,7 +18,7 @@ func queue_up(address: String, port: int, mode: String, size: int, rating: float
 	if err != OK:
 		return err
 	api.multiplayer_peer = peer
-	_req = {"k": "enq", "mode": mode, "size": size, "rating": rating}
+	_req = {"k": "enq", "mode": mode, "size": size, "rating": rating, "name": name}
 	api.connected_to_server.connect(func(): _send(_req))
 	return OK
 

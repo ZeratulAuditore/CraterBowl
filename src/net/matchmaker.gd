@@ -10,11 +10,11 @@ const MODES := ["casual", "competitive"]
 
 var queue: Array = []
 
-func enqueue(id: int, mode: String, size: int, rating: float, now: float) -> bool:
+func enqueue(id: int, mode: String, size: int, rating: float, now: float, name: String = "") -> bool:
 	if not MODES.has(mode) or not [3, 5, 7].has(size):
 		return false
 	dequeue(id)
-	queue.append({"id": id, "mode": mode, "size": size, "rating": rating, "since": now})
+	queue.append({"id": id, "mode": mode, "size": size, "rating": rating, "since": now, "name": name if name != "" else "P%d" % id})
 	return true
 
 func dequeue(id: int) -> void:
@@ -78,7 +78,11 @@ func _try_form(mode: String, size: int, now: float) -> Dictionary:
 	var ids := []
 	for e in picked:
 		ids.append(e["id"])
-	return {"mode": mode, "size": size, "players": ids, "host": oldest["id"], "teams": snake_teams(picked)}
+	var teams := snake_teams(picked)
+	var team_names := {}
+	for e in picked:
+		team_names[e["name"]] = teams[e["id"]]
+	return {"mode": mode, "size": size, "players": ids, "host": oldest["id"], "teams": teams, "team_names": team_names}
 
 ## Snake draft by rating (highest first): A B B A A B B A ...
 static func snake_teams(entries: Array) -> Dictionary:

@@ -161,3 +161,9 @@
 - Stats gains `blk` (block engagements) so linemen rank on something real.
 - Main: host/offline records the match at FINAL (not practice drills); final HUD "YOUR RANKS: QB #1, ..."; `-- --leaderboard[=POS] [--leaderboard-file=PATH]` prints the tables and exits.
 - Tests: 169 unit (+4); flow 78 checks (+2: file recorded with You|QB #1, HUD rank) using a temp leaderboard file (test runs never touch the real one — verified).
+
+## 024: A23 Ranked (2026-11-25)
+- `src/sim/ranked.gd`: team Elo (K 48 provisional for 10 games, then 32; ties 0.5), tiers Bronze→Silver→Gold→Platinum→Diamond→Legend, quarterly seasons (rollover: peak-tier reward `S<id>-<TIER>`, soft reset halfway to 1000), JSON store `user://ranked.json`.
+- Names: `-- --name=NAME` flows through the queue and the lobby (`name` lobby action); stats/leaderboards/ratings use them.
+- Competitive: matchmaker team split now keyed by name; host seats itself + lobby players on assigned teams (`Roster.auto_assign_team`, falls back if full); ranked flag from competitive queue or `--ranked`. At FINAL the host updates/saves ratings, broadcasts deltas; HUD "RATING 1024 Silver (1-0) (+24)". Queue sends your stored rating.
+- Tests: 176 unit (+7); flow 80 checks (+2: ranked final saves ratings + HUD delta, temp files only); `MODE=competitive mm_test.sh` verifies named players seated by snake draft (Ben 1050 → team 0, Ann 1000 → team 1) and ranked=true — both casual and competitive runs in smoke.sh.

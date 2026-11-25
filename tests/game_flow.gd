@@ -130,6 +130,10 @@ func _initialize() -> void:
 		[6802, func(): check(main.series.is_final(), "final"); check(main.hud.text.find("You QB: 1/1") >= 0, "HUD summary shows your QB line")],
 		# A22: match recorded to the leaderboard file; HUD shows your rank
 		[6803, func(): var lb = main.Leaderboard.new(); lb.load_file(main.leaderboard_path); check(lb.rank_of("You", "QB") == 1, "leaderboard file has You|QB at #1"); check(main.hud.text.find("YOUR RANKS: QB #1") >= 0, "HUD shows your rank"); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.leaderboard_path))],
+		# A23: ranked match vs a human rival -> rating change saved + on HUD
+		[6900, func(): main.configure(7); _setup_ranked_rival()],
+		[6902, func(): main.series.score = [7, 0]; main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.world.phase = main.World.Phase.DEAD; main.series.last_result = {"type": "incomplete"}; main.next_play()],
+		[6904, func(): var rk = main.Ranked.new(); rk.load_file(main.ranked_path); check(rk.rating("You") > 1000.0 and rk.rating("Rival") < 1000.0, "ratings saved (You %.0f, Rival %.0f)" % [rk.rating("You"), rk.rating("Rival")]); check(main.hud.text.find("RATING ") >= 0 and main.hud.text.find("(+24)") >= 0, "HUD shows rating change"); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.ranked_path)); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.leaderboard_path))],
 	]
 
 ## First receiver not controlled by the human (humans don't auto-run routes).
@@ -182,6 +186,14 @@ func _connect_listeners() -> void:
 	main.world.event.connect(func(n, d): if n == "catch": caught_by = d["by"])
 	main.world.event.connect(func(n, d): if n == "tackle" and caught_by >= 0: tackled = true)
 	main.world.event.connect(func(n, _d): if n == "interception": picked = true)
+
+func _setup_ranked_rival() -> void:
+	main.ranked_match = true
+	main.ranked_path = "user://test_flow_ranked.json"
+	main.leaderboard_path = "user://test_flow_leaderboard.json"
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(main.ranked_path))
+	main.lobby.players[99] = {"name": "Rival", "ready": true}
+	main.roster.auto_assign_team(99, 1 - main.world.get_athlete(main.my_id).team)
 
 func _force_dead_if_live() -> void:
 	if main.world.phase != main.World.Phase.DEAD:

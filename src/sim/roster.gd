@@ -97,6 +97,15 @@ func auto_assign(player: int) -> int:
 		return -1
 	return slots[s]["athlete_id"]
 
+## Seat a player on a specific team (competitive balancing); falls back to the other team if full.
+func auto_assign_team(player: int, team: int) -> int:
+	var s := _first_free(team)
+	if s < 0:
+		s = _first_free(1 - team)
+	if s < 0 or not claim(player, s):
+		return -1
+	return slots[s]["athlete_id"]
+
 func swap_team(player: int) -> int:
 	var cur := slot_of_player(player)
 	if cur < 0:

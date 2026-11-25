@@ -37,7 +37,7 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 			var size = msg.get("size", 7)
 			var rating = msg.get("rating", 1000.0)
 			var ok := mm.enqueue(from, str(msg.get("mode", "")), int(size) if size is int else 7,
-				float(rating) if (rating is float or rating is int) else 1000.0, _now())
+				float(rating) if (rating is float or rating is int) else 1000.0, _now(), str(msg.get("name", "")).left(16))
 			_send(from, {"k": "queued", "ok": ok, "n": mm.queue.size()})
 			print("MM enqueue %d -> %s (queue %d)" % [from, ok, mm.queue.size()])
 		"hosting":
@@ -55,5 +55,5 @@ func _process(_dt: float) -> void:
 		var others: Array = m["players"].filter(func(p): return p != m["host"])
 		pending[m["host"]] = {"others": others, "match": m}
 		_send(m["host"], {"k": "match", "role": "host", "mode": m["mode"], "size": m["size"],
-			"expected": m["players"].size(), "teams": m["teams"]})
+			"expected": m["players"].size(), "teams": m["team_names"]})
 		print("MM formed %s %dv%d: %s (host %d)" % [m["mode"], m["size"], m["size"], str(m["players"]), m["host"]])

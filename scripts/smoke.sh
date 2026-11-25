@@ -25,4 +25,5 @@ fi
 ./scripts/net_test.sh || exit 1
 # Matchmaking: matchmaker + 2 queued clients
 ./scripts/mm_test.sh | tail -1 | grep -q "MM TEST PASS" || { echo "MM TEST FAIL"; exit 1; }
+MODE=competitive ./scripts/mm_test.sh | tail -1 | grep -q "MM TEST PASS" || { echo "MM TEST FAIL (competitive)"; exit 1; }
 echo "MM TEST PASS"

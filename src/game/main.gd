@@ -23,6 +23,7 @@ const Lobby := preload("res://src/net/lobby.gd")
 const Drills := preload("res://src/sim/drills.gd")
 const Stats := preload("res://src/sim/stats.gd")
 const Leaderboard := preload("res://src/sim/leaderboard.gd")
+const Ranked := preload("res://src/sim/ranked.gd")
 const MMServer := preload("res://src/net/mm_server.gd")
 const MMClient := preload("res://src/net/mm_client.gd")
 const InviteCode := preload("res://src/net/invite_code.gd")
@@ -57,6 +58,11 @@ var drill: Drills = null        # offline practice drill (null = normal match)
 var stats: Stats
 var summary_lines: Array = []   # end-of-match summary (server computes; clients receive)
 var leaderboard_path := Leaderboard.DEFAULT_PATH
+var ranked_path := Ranked.DEFAULT_PATH
+var ranked_match := false       # competitive queue or --ranked: ratings change at FINAL
+var pending_teams := {}         # name -> team (matchmaker's rating-balanced split)
+var ranked_line := ""
+var player_name := "You"
 var my_ranks := ""
 var field_root: Node3D
 var athlete_root: Node3D
@@ -88,6 +94,11 @@ func _ready() -> void:
 	var args := _cli_args()
 	if args.has("leaderboard-file"):
 		leaderboard_path = str(args["leaderboard-file"])
+	if args.has("ranked-file"):
+		ranked_path = str(args["ranked-file"])
+	if args.has("name"):
+		player_name = str(args["name"]).strip_edges().left(16)
+	ranked_match = args.has("ranked")
 	if args.has("leaderboard"):
 		_print_leaderboards(str(args["leaderboard"]) if args["leaderboard"] is String else "")
 		get_tree().quit()
@@ -266,7 +277,7 @@ func owner_name(aid: int) -> String:
 		return "Bot"
 	if lobby.players.has(owner):
 		return str(lobby.players[owner]["name"])
-	return "You" if owner == LOCAL_PLAYER else "P%d" % owner
+	return player_name if owner == LOCAL_PLAYER else "P%d" % owner
 
 func _print_leaderboards(pos: String) -> void:
 	var lb := Leaderboard.new()
@@ -288,10 +299,41 @@ func _record_leaderboard() -> String:
 			ranks.append("%s #%d" % [pos, lb.rank_of(me, pos)])
 	return ", ".join(ranks)
 
+## Host: Elo update for every human by final team; returns {name: delta}.
+func _record_ranked() -> Dictionary:
+	var teams := [[], []]
+	for s in roster.slots:
+		if s["owner"] >= 0:
+			var nm := owner_name(s["athlete_id"])
+			if not teams[s["team"]].has(nm):
+				teams[s["team"]].append(nm)
+	var w := series.winner()
+	var rk := Ranked.new()
+	rk.load_file(ranked_path)
+	rk.ensure_season(Ranked.season_id(Time.get_unix_time_from_system()))
+	var deltas := rk.record_match(teams[0], teams[1], 0.5 if w < 0 else (1.0 if w == 0 else 0.0))
+	rk.save(ranked_path)
+	var labels := {}
+	for nm in deltas:
+		labels[nm] = rk.label(nm)
+	return {"deltas": deltas, "labels": labels}
+
+func _ranked_text(r: Dictionary) -> String:
+	var me := owner_name(my_id)
+	if not r.get("deltas", {}).has(me):
+		return ""
+	return "RATING %s (%+d)" % [r["labels"][me], int(round(r["deltas"][me]))]
+
 func _on_match_event(n: String, _d: Dictionary) -> void:
 	if n == "final":
 		if not is_client() and drill == null:
 			my_ranks = _record_leaderboard()
+			if ranked_match:
+				var r := _record_ranked()
+				ranked_line = _ranked_text(r)
+				print("RANKED: %s" % str(r))
+				if is_server():
+					net.broadcast_event("ranked", r)
 		summary_lines = stats.summary_lines()
 		print("MATCH SUMMARY:\n  " + "\n  ".join(summary_lines))
 		if is_server():
@@ -368,7 +410,7 @@ func _host_game(port: int, opts: Dictionary) -> String:
 		return ""
 	lobby = Lobby.new()
 	lobby.host_id = LOCAL_PLAYER
-	lobby.add(LOCAL_PLAYER, "Host")
+	lobby.add(LOCAL_PLAYER, player_name if player_name != "You" else "Host")
 	lobby.settings["size"] = MatchConfig.normalize(opts.get("size", match_size))
 	lobby.expected = int(opts.get("expected", 0))
 	lobby.code = InviteCode.encode(str(opts.get("advertise", _local_ipv4())), port)
@@ -395,9 +437,12 @@ func _join_game(target: String, port: int, opts: Dictionary) -> void:
 	var readied := [false]
 	net.lobby_received.connect(func(st):
 		lobby.from_dict(st)
-		if auto_ready and not readied[0] and lobby.phase == Lobby.Phase.LOBBY:
+		if not readied[0] and lobby.phase == Lobby.Phase.LOBBY:
 			readied[0] = true
-			net.send_lobby_action({"a": "ready"}))
+			if player_name != "You":
+				net.send_lobby_action({"a": "name", "n": player_name})
+			if auto_ready:
+				net.send_lobby_action({"a": "ready"}))
 	net.snapshot_received.connect(_on_snapshot)
 	net.event_received.connect(_on_world_event)
 
@@ -419,6 +464,8 @@ func _queue_up(args: Dictionary) -> void:
 	var mode := str(args["queue"])
 	var advertise := str(args.get("advertise", _local_ipv4()))
 	mm_client.host_match.connect(func(m):
+		ranked_match = m.get("mode", "") == "competitive"
+		pending_teams = m.get("teams", {}) if m.get("teams") is Dictionary else {}
 		var port := 25000 + randi() % 5000
 		var code := _host_game(port, {"start_when_ready": true, "expected": int(m.get("expected", 2)),
 			"size": int(m.get("size", 7)), "advertise": advertise})
@@ -428,7 +475,10 @@ func _queue_up(args: Dictionary) -> void:
 	mm_client.join_match.connect(func(code):
 		print("QUEUE matched: joining %s" % code)
 		_join_game(code, 0, {"auto_ready": true}))
-	var err := mm_client.queue_up(addr, mm_port, mode, MatchConfig.normalize(args.get("size", 7)), float(args.get("rating", 1000)))
+	var rk := Ranked.new()
+	rk.load_file(ranked_path)
+	var err := mm_client.queue_up(addr, mm_port, mode, MatchConfig.normalize(args.get("size", 7)),
+		float(args.get("rating", rk.rating(player_name))), player_name)
 	print("QUEUE %s via %s:%d: %s" % [mode, addr, mm_port, error_string(err)])
 
 func _practice_kind() -> String:
@@ -503,14 +553,25 @@ func _start_from_lobby() -> void:
 		series.clock.play_clock = debug_playclock
 	net.match_size = match_size
 	net.match_mode = match_mode
+	# Competitive: seat everyone on the matchmaker's rating-balanced team (by name).
+	var host_name: String = lobby.players[LOCAL_PLAYER]["name"]
+	if pending_teams.has(host_name) and world.get_athlete(my_id).team != int(pending_teams[host_name]):
+		my_id = roster.swap_team(LOCAL_PLAYER)
+		set_controlled(my_id)
 	for id in lobby.players:
 		if id == LOCAL_PLAYER:
 			continue
-		var aid := roster.auto_assign(id)
+		var nm: String = lobby.players[id]["name"]
+		var aid := roster.auto_assign_team(id, int(pending_teams[nm])) if pending_teams.has(nm) else roster.auto_assign(id)
 		if aid >= 0:
 			net.set_assignment(id, aid)
 	net.broadcast_lobby(lobby.to_dict())
+	var seats := []
+	for s in roster.slots:
+		if s["owner"] >= 0:
+			seats.append("%s->%d" % [owner_name(s["athlete_id"]), s["team"]])
 	print("NET match started: %s" % lobby.summary())
+	print("NET seats: %s (ranked=%s, teams=%s)" % [", ".join(seats), ranked_match, str(pending_teams)])
 
 ## Client: server (re)assigned our athlete (join, position change, team swap).
 func _on_assigned(aid: int) -> void:
@@ -573,6 +634,8 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 		last_whistle = "INCOMPLETE"
 	if n in ["tackle", "out_of_bounds", "breakup", "touchdown", "explode"]:
 		last_whistle = n.replace("_", " ").to_upper()
+	if n == "ranked":
+		ranked_line = _ranked_text(d)
 	if n == "summary":
 		summary_lines = d.get("lines", []) if d.get("lines") is Array else []
 	if n == "snap":
@@ -786,6 +849,8 @@ func _process(delta: float) -> void:
 			"\n".join(summary_lines) if not summary_lines.is_empty() else "(no stats)"]
 		if my_ranks != "":
 			phase_name += "\nYOUR RANKS: " + my_ranks
+		if ranked_line != "":
+			phase_name += "\n" + ranked_line
 	else:
 		phase_name = "HOME %d - AWAY %d | %s | %s | %s | %s" % [series.score[0], series.score[1], clock_txt, situation, side, phase_name]
 	var charge_txt := ("   THROW %d%%" % int(charge * 100)) if charging else ""
