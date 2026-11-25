@@ -49,6 +49,17 @@ func _initialize() -> void:
 		[1302, func(): check(absf(main.world.los_y - clampf(spot, 1, 99)) < 0.01, "LOS moved to tackle spot"); check(main.series.downs.down == 1 if spot >= 35.0 else main.series.downs.down == 3, "down advanced correctly (spot %.1f, %s)" % [spot, main.series.downs.label()]); check(main.hud.text.find(" & ") >= 0, "HUD shows down & distance")],
 		[1303, func(): main.world.snap(); main.auto_next = true; series_events = 0],
 		[2400, func(): check(series_events >= 1, "auto next play fired after whistle (%d)" % series_events)],
+		# A08: forced touchdown -> score -> try -> kickoff
+		[2401, func(): main.auto_next = false; main.series.start(0, 95.0); main.set_controlled(main.my_id)],
+		[2402, func(): main.world.snap()],
+		[2430, func(): var c = main.world.carrier(); c.position = Vector2(26, 101.0)],
+		[2432, func(): check(main.last_whistle == "TOUCHDOWN", "touchdown whistle")],
+		[2433, func(): main.next_play(); check(main.series.score[0] == 6, "home +6"); check(main.series.state == main.Match.State.TRY, "try state")],
+		[2434, func(): check(main.hud.text.find("HOME 6") >= 0 and main.hud.text.find("TRY") >= 0, "HUD scoreboard + try")],
+		[2435, func(): check(main.series.choose_try(2), "choose 2-pt try"); check(absf(main.world.los_y - 90.0) < 0.01, "2-pt from the 10")],
+		[2436, func(): main.world.snap()],
+		[2470, func(): var c = main.world.carrier(); c.position = Vector2(26, 101.0)],
+		[2472, func(): main.next_play(); check(main.series.score[0] == 8, "try good: 8"); check(main.world.offense_team == 1 and absf(main.world.los_y - 25.0) < 0.01, "kickoff: away ball at its 25")],
 	]
 
 func _lead_to_wr() -> void:

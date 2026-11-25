@@ -229,7 +229,11 @@ func _check_tackles() -> void:
 	var c := carrier()
 	if c == null:
 		return
-	if field.zone_of(c.position) == Field.Zone.OUT_OF_BOUNDS:
+	var z := field.zone_of(c.position)
+	if z == Field.Zone.ENDZONE_B:
+		_whistle("touchdown", {"carrier": c.id, "team": c.team})
+		return
+	if z == Field.Zone.OUT_OF_BOUNDS:
 		_whistle("out_of_bounds", {"carrier": c.id})
 		return
 	for a in athletes:

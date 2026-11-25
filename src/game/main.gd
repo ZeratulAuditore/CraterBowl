@@ -169,7 +169,7 @@ func _unhandled_input(e: InputEvent) -> void:
 func _on_world_event(n: String, d: Dictionary) -> void:
 	if n == "incomplete" and last_whistle == "":
 		last_whistle = "INCOMPLETE"
-	if n in ["tackle", "out_of_bounds", "breakup"]:
+	if n in ["tackle", "out_of_bounds", "breakup", "touchdown"]:
 		last_whistle = n.replace("_", " ").to_upper()
 	if n == "snap":
 		last_whistle = ""
@@ -215,6 +215,10 @@ func _unhandled_key_input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and not e.echo:
 		if e.keycode == KEY_SPACE:
 			world.snap()
+		elif e.keycode == KEY_1:
+			series.choose_try(1)
+		elif e.keycode == KEY_2:
+			series.choose_try(2)
 		elif e.keycode == KEY_E:
 			world.tackle(controlled_id)
 		elif e.keycode == KEY_J:
@@ -254,7 +258,10 @@ func _process(delta: float) -> void:
 		phase_name = "PRE-SNAP (Space: let them snap)"
 	if world.phase == World.Phase.DEAD and last_whistle != "":
 		phase_name = "%s at %.1f" % [last_whistle, world.dead_ball_spot.y]
-	phase_name = "%s | %s | %s" % [series.downs.label(), side, phase_name]
+	var situation: String = series.downs.label()
+	if series.state == Match.State.TRY:
+		situation = "TRY for %d (1: from the 3 / 2: from the 10)" % series.try_points
+	phase_name = "HOME %d - AWAY %d | %s | %s | %s" % [series.score[0], series.score[1], situation, side, phase_name]
 	var charge_txt := ("   THROW %d%%" % int(charge * 100)) if charging else ""
 	hud.text = charge_txt + "\n" + "%s   Yard: %.1f  Speed: %.1f yd/s  Stamina: %d%%%s" % [
 		phase_name, m.position.y, m.speed(), int(m.stamina * 100), "  (WINDED)" if m.sprint_locked else ""]
