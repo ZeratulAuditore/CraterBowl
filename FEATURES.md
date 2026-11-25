@@ -54,6 +54,6 @@ After Phase B, take the first unchecked `C##` item in `docs/gaps/TODO.md` (P0 �
 
 ## Discovered (bugs/follow-ups the loop adds here; fixed before new features)
 - [x] D02 Party queue: friends queue together and land in the same match/team (matchmaker backend + CLI; menu UI belongs to the out-of-game session) — parity G09
-- [ ] D03 Chaosball in matchmaking: queue mode for Chaosball 3v3 — parity G17
+- [x] D03 Chaosball in matchmaking: queue mode for Chaosball 3v3 — parity G17
 - [ ] D04 Achievements: milestone unlocks (first TD, 300-yd game, pick-six, 7-pt Chaosball TD, …) with profile persistence — parity G23
 - [ ] D05 Stats: return yards after interceptions/fumble recoveries (gap noted in A21)

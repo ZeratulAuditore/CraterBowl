@@ -506,6 +506,9 @@ func _host_game(port: int, opts: Dictionary) -> String:
 	lobby.host_id = LOCAL_PLAYER
 	lobby.add(LOCAL_PLAYER, player_name if player_name != "You" else "Host")
 	lobby.settings["size"] = MatchConfig.normalize(opts.get("size", match_size))
+	if opts.get("game", "classic") == "chaosball":
+		lobby.settings["mode"] = "chaosball"
+		lobby.settings["size"] = 3
 	lobby.expected = int(opts.get("expected", 0))
 	lobby.code = InviteCode.encode(str(opts.get("advertise", _local_ipv4())), port)
 	if opts.get("start_when_ready", false):
@@ -562,7 +565,7 @@ func _queue_up(args: Dictionary) -> void:
 		pending_teams = m.get("teams", {}) if m.get("teams") is Dictionary else {}
 		var port := 25000 + randi() % 5000
 		var code := _host_game(port, {"start_when_ready": true, "expected": int(m.get("expected", 2)),
-			"size": int(m.get("size", 7)), "advertise": advertise})
+			"size": int(m.get("size", 7)), "advertise": advertise, "game": str(m.get("game", "classic"))})
 		lobby.settings["half_minutes"] = 5
 		print("QUEUE matched (%s): hosting %s" % [m.get("mode", "?"), code])
 		mm_client.send_hosting(code))
@@ -573,7 +576,8 @@ func _queue_up(args: Dictionary) -> void:
 	rk.load_file(ranked_path)
 	var err := mm_client.queue_up(addr, mm_port, mode, MatchConfig.normalize(args.get("size", 7)),
 		float(args.get("rating", rk.rating(player_name))), player_name,
-		str(args.get("party", "")).get_slice(":", 0), int(str(args.get("party", "x:1")).get_slice(":", 1)) if str(args.get("party", "")).find(":") > 0 else 1)
+		str(args.get("party", "")).get_slice(":", 0), int(str(args.get("party", "x:1")).get_slice(":", 1)) if str(args.get("party", "")).find(":") > 0 else 1,
+		"chaosball" if str(args.get("mode", "")) == "chaosball" else "classic")
 	print("QUEUE %s via %s:%d: %s" % [mode, addr, mm_port, error_string(err)])
 
 func _practice_kind() -> String:

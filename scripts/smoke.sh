@@ -30,6 +30,7 @@ fi
 ./scripts/mm_test.sh | tail -1 | grep -q "MM TEST PASS" || { echo "MM TEST FAIL"; exit 1; }
 MODE=competitive ./scripts/mm_test.sh | tail -1 | grep -q "MM TEST PASS" || { echo "MM TEST FAIL (competitive)"; exit 1; }
 MODE=party ./scripts/mm_test.sh | tail -1 | grep -q "MM TEST PASS" || { echo "MM TEST FAIL (party)"; exit 1; }
+MODE=chaos ./scripts/mm_test.sh | tail -1 | grep -q "MM TEST PASS" || { echo "MM TEST FAIL (chaos)"; exit 1; }
 echo "MM TEST PASS"
 after=$(ls -l --time-style=+%s "$USERDATA"/{profile,leaderboard,ranked}.json 2>/dev/null)
 if [ "$before" != "$after" ]; then echo "USER DATA TOUCHED BY TESTS: $after"; exit 1; fi
