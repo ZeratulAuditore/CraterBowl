@@ -56,7 +56,11 @@ func setup(potg: Array, match_info: Dictionary) -> void:
 	info = match_info
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	if not get_parent() is Control:
+		# Under a CanvasLayer / the root window nothing sizes us: track the viewport.
+		_fit()
+		get_viewport().size_changed.connect(_fit)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var box := SubViewportContainer.new()
 	box.stretch = true
@@ -85,6 +89,10 @@ func _gui_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 		accept_event()
 		advance()
+
+func _fit() -> void:
+	position = Vector2.ZERO
+	size = get_viewport_rect().size
 
 ## Jump to the next beat (intro -> each player -> group -> done).
 func advance() -> void:

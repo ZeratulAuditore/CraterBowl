@@ -104,7 +104,7 @@ static func sanitize_action(act) -> Dictionary:
 	if not (act is Dictionary):
 		return {}
 	match act.get("a", ""):
-		"snap", "tackle":
+		"snap", "tackle", "recall_call", "flip_play":
 			return {"a": act["a"]}
 		"throw":
 			var t = act.get("t", Vector2.ZERO)
@@ -149,6 +149,10 @@ static func apply_action(m, athlete_id: int, action: Dictionary) -> bool:
 			return ath.team == w.offense_team and m.choose_try(act["n"])
 		"play":
 			return ath.team == w.offense_team and w.phase == w.Phase.PRESNAP and w.call_play(act["p"])
+		"recall_call":
+			return w.recall_call(ath.team)
+		"flip_play":
+			return ath.team == w.offense_team and w.flip_play()
 		"defense":
 			return ath.team != w.offense_team and w.call_defense(act["p"])
 		"route":

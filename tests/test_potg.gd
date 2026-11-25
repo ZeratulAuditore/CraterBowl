@@ -26,7 +26,7 @@ func test_min_two_even_with_one_dominant_line() -> void:
 	var a := {1: _line(0, "QB", "Ann", {"att": 20, "comp": 15, "pass_yds": 300, "pass_td": 4}),
 		2: _line(1, "LB", "Bot", {"tkl": 1}), 3: _line(1, "CB", "Bot", {})}
 	var p := Potg.pick(a, 0)
-	assert_eq(p.size(), 2, "dominant line + one more (zero-impact lines never picked)")
+	assert_eq(p.size(), 2, "dominant line + one more; pads stop at the minimum")
 	assert_eq(int(p[0]["id"]), 1)
 	assert_eq(p[0]["owner"], "Ann")
 	assert_eq(p[0]["lines"][0], "15/20  300 YDS  4 TD")
@@ -44,6 +44,11 @@ func test_win_bonus_and_empty() -> void:
 		2: _line(1, "WR", "B", {"rec": 3, "rec_yds": 50, "rec_td": 1})}
 	assert_eq(int(Potg.pick(a, 1)[0]["id"]), 2, "winner breaks an even tie")
 	assert_eq(Potg.pick({}, 0).size(), 0)
+	var lone := {1: _line(0, "QB", "A", {"att": 1, "comp": 1, "pass_td": 1}), 2: _line(1, "S", "B", {"int_thrown": 0, "pbu": 0, "fr": 0, "blk": 0}),
+		3: _line(1, "QB", "C", {"att": 2, "int_thrown": 1})}
+	var p := Potg.pick(lone, 0)
+	assert_eq(p.size(), 2, "one standout still gets a second pick")
+	assert_eq(int(p[1]["id"]), 2, "a zero line outranks a negative one")
 
 func test_defense_category_and_totals() -> void:
 	var l := _line(1, "LB", "Bot", {"tkl": 6, "sack": 2, "int": 1})

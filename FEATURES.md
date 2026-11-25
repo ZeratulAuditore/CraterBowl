@@ -40,7 +40,7 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 ## Phase B: Better than Gridiron (from PLAN.md)
 - [ ] B01 Line play minigame (leverage/hand-fighting timing)
 - [ ] B02 DB press/jam mechanic
-- [ ] B03 Play-card huddle (5s, 6–8 plays per side)
+- [x] B03 Play-card huddle (5s, 6–8 plays per side)
 - [ ] B04 Instant replay of last play + highlight clips
 - [ ] B05 Friend-group seasons + persistent stats
 - [ ] B06 Juice: hit-stop, screenshake, crowd stingers

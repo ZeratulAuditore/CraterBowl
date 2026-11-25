@@ -106,7 +106,7 @@ After that, follow the list order below. B01/B02 (line play, press) come after t
 - **Accept:** Each classic snap starts with the suggested defensive call. The defending team can select any catalog call during presnap, and the selection is synchronized to clients.
 - The huddle control, on-field assignments and bot behavior follow in C08c.
 
-### [~] C08c Defense and B03 huddle (claimed: codex 2026-11-25)
+### [x] C08c Defensive assignments, coverage, blitzes and play art
 
 ### [x] C08d Pre-snap defensive roam + LOS barrier (plan: docs/iterations/032-presnap-defense-roam.md)
 - **Why:** In the reference, defenders spawn in stance and press Space to break it and roam pre-snap. DL stay set. A see-through animated hex wall at the LOS marks the limit. Ours: everyone (DL too) can already move pre-snap, they hit an invisible clamp, and Space on defense does nothing.

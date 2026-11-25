@@ -217,3 +217,9 @@
 - Classic matches seed a defensive call from the game situation each snap. The host accepts catalog calls from defending athletes during presnap and sends the current call in match snapshots.
 - Player controls, assignment behavior and play art remain open in C08c and B03.
 - Tests: 204 unit (+2); full smoke passed, including a remote defender's selection round-tripping through the host.
+
+## 032: C08c + B03 Defensive assignments and play-call huddle (2026-11-25)
+- Classic presnap shows a five-second play-call panel for both teams. Q cycles calls, L recalls the team's last call, X mirrors the offense's wide receiver routes, and Y opts into the situational default without the panel.
+- Calls drive bot man, zone and rush behavior. Presnap turf art shows teammates' coverage landmarks, man tethers, rush lanes, receiver routes and pass protection targets. The local assignment is emphasized.
+- Cover 2 allowed 1 deep completion across 24 matched bot snaps versus 8 with legacy coverage. Deep attempts fell from 10 to 1.
+- Tests: 208 unit (+4) and full smoke passed, including remote recall. Checked offense and defense screenshots offscreen. An initial smoke attempt hit a matchmaker port bind error and passed on retry.

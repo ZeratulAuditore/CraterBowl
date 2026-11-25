@@ -27,13 +27,12 @@ static func impact(line: Dictionary) -> float:
 
 ## Ranked picks: [{id, team, pos, owner, score, title, lines: [String], stats: {field: n}}].
 ## `winner` is the winning team (-1 tie). Deterministic (ties break on athlete id).
+## Always 2 picks when at least two athletes recorded any stat.
 static func pick(athletes: Dictionary, winner: int) -> Array:
 	var ranked := []
 	for aid in athletes:
 		var l: Dictionary = athletes[aid]
 		var sc := impact(l)
-		if sc <= 0.0:
-			continue
 		if winner >= 0 and int(l.get("team", -1)) == winner:
 			sc *= WIN_BONUS
 		ranked.append([sc, int(aid)])
@@ -42,7 +41,8 @@ static func pick(athletes: Dictionary, winner: int) -> Array:
 	for r in ranked:
 		if out.size() >= MAX_PICKS:
 			break
-		if out.size() >= MIN_PICKS and r[0] < ranked[0][0] * CUTOFF:
+		# Past the minimum, only real standouts; below it, pad with the next best line.
+		if out.size() >= MIN_PICKS and (r[0] <= 0.0 or r[0] < ranked[0][0] * CUTOFF):
 			break
 		var l: Dictionary = athletes[r[1]]
 		var stat := {}
