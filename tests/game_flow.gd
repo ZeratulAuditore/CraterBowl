@@ -213,6 +213,7 @@ func _isolate_user_files() -> void:
 	main.profile_path = "user://test_flow_profile.json"
 	main.leaderboard_path = "user://test_flow_leaderboard.json"
 	main.ranked_path = "user://test_flow_ranked.json"
+	main.replay_dir = "user://test_flow_replays"   # every final saves a replay; never into the real replays/
 	for p in [main.profile_path, main.leaderboard_path, main.ranked_path]:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
 	main.profile.load_file(main.profile_path)
