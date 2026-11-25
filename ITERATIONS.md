@@ -22,3 +22,9 @@
 - Game: mouse-aimed ground reticle, hold LMB/J to charge (0.9 s to full), release to throw, trajectory preview arc (better than Gridiron).
 - Tests: 27 unit (+8). New `tests/game_flow.gd` scripted e2e through the real scene, wired into smoke.sh (7 checks).
 - Known gaps: no catching yet (A04); D01 logged for gamepad/InputMap.
+
+## 004: A04 Catching (2026-11-24)
+- Sim: reach-volume catching (radius 1.2 yd, height window 0.3–2.6 yd, closest wins), defenders contest from radius + 0.35 yd margin → "breakup", out-of-bounds catch → incomplete, thrower can't catch own pass, **C/OL ineligible receivers** (found by tests: the C was catching flat passes over his head).
+- Game: placeholder go routes for WR/RB after snap; control switches to the receiver on a catch; R resets control to QB.
+- Tests: 34 unit (+7, one older passing test retargeted off the C's line); game flow 10 checks incl. real lead pass → catch → control switch.
+- Known gaps: auto-catch only (catch/dive button later), defender "win" is a breakup until interceptions (A13).

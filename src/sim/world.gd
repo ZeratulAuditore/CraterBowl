@@ -114,12 +114,66 @@ func _step_flight(dt: float) -> void:
 		return
 	ball.velocity.z -= T.GRAVITY * dt
 	ball.position += ball.velocity * dt
+	if _try_catch():
+		return
 	if ball.position.z <= 0.0:
 		ball.position.z = 0.0
 		ball.velocity = Vector3.ZERO
 		ball.state = Ball.State.DEAD
 		phase = Phase.DEAD
 		event.emit("incomplete", {"at": Vector2(ball.position.x, ball.position.y)})
+
+## Offensive linemen (C, OL) are ineligible; all defenders may play the ball.
+func is_eligible_receiver(a: Athlete) -> bool:
+	if a.team != offense_team:
+		return true
+	return a.role != Athlete.Role.C and a.role != Athlete.Role.OL
+
+## Resolve catches for a ball in flight. Returns true if the play state changed.
+func _try_catch() -> bool:
+	var z := ball.position.z
+	if z < T.CATCH_MIN_HEIGHT or z > T.CATCH_MAX_HEIGHT:
+		return false
+	var bp := Vector2(ball.position.x, ball.position.y)
+	var best := [null, null]   # per side: [offense, defense]
+	var best_d := [INF, INF]
+	for a in athletes:
+		if a.id == last_thrower_id or not is_eligible_receiver(a):
+			continue
+		var d: float = a.position.distance_to(bp)
+		var side := 0 if a.team == offense_team else 1
+		# Defenders contest from slightly further out (body position matters).
+		var reach := T.CATCH_RADIUS + (T.CONTEST_MARGIN if side == 1 else 0.0)
+		if d > reach:
+			continue
+		if d < best_d[side]:
+			best_d[side] = d
+			best[side] = a
+	if best[0] == null and best[1] == null:
+		return false
+	var at := bp
+	var defender_reaches: bool = best[1] != null and best_d[1] <= T.CATCH_RADIUS
+	var defender_contests: bool = best[1] != null and best[0] != null and best_d[1] <= best_d[0] + T.CONTEST_MARGIN
+	if best[0] == null and not defender_reaches:
+		return false
+	if defender_reaches and best[0] == null or defender_contests:
+		_end_incomplete("breakup", {"by": best[1].id, "at": at})
+		return true
+	var rx: Athlete = best[0]
+	if field.zone_of(rx.position) == Field.Zone.OUT_OF_BOUNDS:
+		_end_incomplete("out_of_bounds", {"by": rx.id, "at": at})
+		return true
+	ball.hold(rx.id)
+	event.emit("catch", {"by": rx.id, "at": at})
+	return true
+
+func _end_incomplete(reason: String, data: Dictionary) -> void:
+	ball.velocity = Vector3.ZERO
+	ball.state = Ball.State.DEAD
+	phase = Phase.DEAD
+	event.emit(reason, data)
+	data["reason"] = reason
+	event.emit("incomplete", data)
 
 func _enforce_neutral_zone(a: Athlete) -> void:
 	if a.team == offense_team:

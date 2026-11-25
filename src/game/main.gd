@@ -35,6 +35,7 @@ func _ready() -> void:
 	_spawn_teams()
 	_build_aim_visuals()
 	world.setup_formation(25.0)
+	world.event.connect(_on_world_event)
 	for v in views:
 		v.sync()
 	camera = Camera3D.new()
@@ -146,6 +147,25 @@ func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
 		_set_charging(e.pressed)
 
+## Placeholder until routes (A12) and bots (A14): receivers run a go route.
+func _placeholder_ai_inputs() -> Dictionary:
+	var out := {}
+	if world.phase != World.Phase.LIVE:
+		return out
+	for a in world.athletes:
+		if a.team == world.offense_team and (a.role == Athlete.Role.WR or a.role == Athlete.Role.RB):
+			if not world.ball.is_held_by(a.id):
+				out[a.id] = {"dir": Vector2(0, 1), "sprint": false}
+	return out
+
+func _on_world_event(n: String, d: Dictionary) -> void:
+	if n == "catch" and world.get_athlete(d["by"]).team == world.offense_team:
+		set_controlled(d["by"])
+
+func set_controlled(id: int) -> void:
+	controlled_id = id
+	player = views[id]
+
 func read_input() -> Vector2:
 	var v := Vector2.ZERO
 	if Input.is_key_pressed(KEY_W): v.y += 1
@@ -166,11 +186,14 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			_set_charging(true)
 		elif e.keycode == KEY_R:
 			world.setup_formation(world.los_y)
+			set_controlled(world.find_role(world.offense_team, Athlete.Role.QB).id)
 
 func _physics_process(delta: float) -> void:
 	if charging:
 		charge = minf(1.0, charge + delta / T.THROW_CHARGE_TIME)
-	world.step({controlled_id: {"dir": read_input(), "sprint": Input.is_key_pressed(KEY_SHIFT)}}, delta)
+	var inputs := _placeholder_ai_inputs()
+	inputs[controlled_id] = {"dir": read_input(), "sprint": Input.is_key_pressed(KEY_SHIFT)}
+	world.step(inputs, delta)
 	for v in views:
 		v.sync()
 	var b = world.ball.position

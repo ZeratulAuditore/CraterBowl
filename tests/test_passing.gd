@@ -91,7 +91,7 @@ func test_ground_is_incomplete() -> void:
 	events.clear()
 	var w := _world()
 	var qb := w.find_role(0, Athlete.Role.QB)
-	w.throw(qb.id, Vector2(26, 35), 0.6)
+	w.throw(qb.id, Vector2(45, 35), 0.6)  # away from the C (who could catch it)
 	_run(w, {}, 6.0)
 	assert_eq(w.phase, World.Phase.DEAD, "dead")
 	assert_eq(w.ball.state, Ball.State.DEAD, "ball dead")

@@ -10,7 +10,7 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [x] A01 Field + player: regulation field with end zones, one third-person player with run/sprint/stamina and camera
 - [x] A02 Ball + snap: ball entity, center snap to QB, ball possession state
 - [x] A03 Precision physics passing: aim + charge throw, ballistic flight with leading
-- [ ] A04 Catching: catch radius/timing, contested catches, incompletions
+- [x] A04 Catching: catch radius/timing, contested catches, incompletions
 - [ ] A05 Tackling: tackle input, carrier down, whistle/dead ball
 - [ ] A06 Blocking: body collision, push/engage blocks at the line
 - [ ] A07 Downs: line of scrimmage, 4 downs, first-down line, turnover on downs

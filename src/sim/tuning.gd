@@ -30,3 +30,9 @@ const THROW_SPEED_MIN := 12.0
 const THROW_SPEED_MAX := 30.0
 const THROW_INHERIT := 0.3      # fraction of thrower velocity added to ball
 const THROW_CHARGE_TIME := 0.9  # seconds to full power
+
+# Catching
+const CATCH_RADIUS := 1.2
+const CATCH_MIN_HEIGHT := 0.3
+const CATCH_MAX_HEIGHT := 2.6
+const CONTEST_MARGIN := 0.35
