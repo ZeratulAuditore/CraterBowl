@@ -179,4 +179,4 @@
 - `src/sim/replay.gd`: 30 Hz compact frames (phase, ball xyz, per-athlete x/y/flags), plays bracketed snap → play-end events, player (fractional time, speed, interpolation, seek by play, clip ranges), zstd-compressed save/load (no object decoding). 2-min bot match: 3600 frames, 20 plays, ~170 KB.
 - Main: every match records; **V** at a dead ball = instant replay of the last play at 0.5× (offline the match pauses; host keeps simulating; views read replay frames — no player.gd change); final saves `user://replays/<timestamp>.replay` (`--replay-dir`); `-- --replay=FILE` viewer (Space, ←/→ plays, [ ] speed, V exit); replay HUD line.
 - Coordination: a parallel session owns A26 graphics (branch graphics-overhaul); FEATURES marks A26 `[~]` so the loop skips it; scorebug part of A27 deferred to their overlay; player.gd/_build_field/_draw_routes/_marker left untouched.
-- Tests: 186 unit (+4); flow 98 checks (+11: real V key, frames shown, sim frozen, replay ends, saved at final, viewer + speed key + exit).
+- Tests: 186 unit (+4); flow 97 checks (+11: real V key, frames shown, sim frozen, replay ends, saved at final, viewer + speed key + exit).

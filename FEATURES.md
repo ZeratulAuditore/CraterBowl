@@ -34,7 +34,7 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [x] A24 Cosmetics: earnable through play, no gameplay effect, character customization
 - [x] A25 Replays: record + playback of matches/plays
 - [~] A26 Presentation (IN PROGRESS in a parallel session: branch graphics-overhaul, worktree ~/Coding/football-game-gfx — loop skips this; checked off when merged): original sci-fi lunar stadium, animations, lighting pass
-- [ ] A27 Menus/HUD/settings: main menu, (scoreboard HUD = parallel overlay work, skip), gamepad + InputMap actions, controls rebinding, audio/video settings
+- [~] A27 Menus/HUD/settings (IN PROGRESS in a parallel session: branch out-of-game, worktree ~/Coding/football-game-ux — loop skips this; checked off when merged): main menu, (scoreboard HUD = graphics session overlay), gamepad + InputMap actions, controls rebinding, audio/video settings
 - [ ] A28 Parity audit: walk this list end to end in a built game, file bugs as new items
 
 ## Phase B: Better than Gridiron (from PLAN.md)
@@ -44,7 +44,7 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [ ] B04 Instant replay of last play + highlight clips
 - [ ] B05 Friend-group seasons + persistent stats
 - [ ] B06 Juice: hit-stop, screenshake, crowd stingers
-- [ ] B07 Steam relay / NAT traversal
+- [~] B07 Steam relay / NAT traversal (owned by the out-of-game session: UPnP/public matchmaker)
 - [ ] B08 Tuning data file (TUNING) editable by designers without code
 - [ ] B09 Real kickoffs + returns (A08 uses an automatic touchback)
 - [ ] B10 Overtime (sudden death or alternating possessions) for tied games
