@@ -167,3 +167,10 @@
 - Names: `-- --name=NAME` flows through the queue and the lobby (`name` lobby action); stats/leaderboards/ratings use them.
 - Competitive: matchmaker team split now keyed by name; host seats itself + lobby players on assigned teams (`Roster.auto_assign_team`, falls back if full); ranked flag from competitive queue or `--ranked`. At FINAL the host updates/saves ratings, broadcasts deltas; HUD "RATING 1024 Silver (1-0) (+24)". Queue sends your stored rating.
 - Tests: 176 unit (+7); flow 80 checks (+2: ranked final saves ratings + HUD delta, temp files only); `MODE=competitive mm_test.sh` verifies named players seated by snake draft (Ben 1050 → team 0, Ann 1000 → team 1) and ranked=true — both casual and competitive runs in smoke.sh.
+
+## 025: A24 Cosmetics (2026-11-25)
+- `src/sim/cosmetics.gd`: catalog (trim colors, helmet stripes, numbers 0–99, TD celebrations spin/hop/flip, season badges), level unlocks (500 XP/level), XP award from your stats + win, equip validation, server-side `sanitize_look`, JSON profile.
+- Views: trim band, helmet + stripe, front/back number labels, celebration animation on your TD. Looks never enter the sim (test: identical worlds regardless of looks).
+- Sync: client sends its look after assignment; host sanitizes, stores per peer, broadcasts `looks` (on join, swaps, changes); client shows its look only via the host echo. At FINAL host broadcasts `awards`; each machine credits only its own profile ("XP +182 (Level 1)"); ranked season rewards become badges. CLI `--equip=slot:id,...`, `--profile-file`.
+- **Data-safety fix:** the first smoke run wrote a test XP profile into the real user-data folder (created by this session; deleted). All tests now use temp profile/leaderboard/ranked files and smoke.sh fails if real user data files change.
+- Tests: 182 unit (+6); flow 89 checks (+7); net 12 checks (+1: #88 round-trips via host).

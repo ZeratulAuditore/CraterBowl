@@ -100,6 +100,7 @@ func _physics_process(_dt: float) -> bool:
 		check(saw_live and got_snap_event, "host auto-snap reached client (snapshot LIVE + reliable event)")
 		check(bad_snap_rejected, "defense snap rejected by server")
 		check(swapped_to_team0, "team swap request -> server reassigned to team 0")
+		check(main.views[aid].number_text == "88", "my equipped #88 round-tripped through the host (%s)" % main.views[aid].number_text)
 		check(pick_rejected, "picking the host's occupied slot rejected")
 		print("NET FLOW " + ("PASS" if ok else "FAIL"))
 		quit(0 if ok else 1)

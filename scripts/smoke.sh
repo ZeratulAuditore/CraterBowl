@@ -2,6 +2,9 @@
 # Boot the main scene headless for N frames; fail on any script/engine error.
 set -uo pipefail
 cd "$(dirname "$0")/.."
+# Guard: tests must never write the player's real data files.
+USERDATA="$HOME/.local/share/godot/app_userdata/Fourth & Long"
+before=$(ls -l --time-style=+%s "$USERDATA"/{profile,leaderboard,ranked}.json 2>/dev/null)
 GODOT="${GODOT:-godot}"
 FRAMES="${FRAMES:-300}"
 "$GODOT" --headless --path . --import >/dev/null 2>&1 || true
@@ -27,3 +30,7 @@ fi
 ./scripts/mm_test.sh | tail -1 | grep -q "MM TEST PASS" || { echo "MM TEST FAIL"; exit 1; }
 MODE=competitive ./scripts/mm_test.sh | tail -1 | grep -q "MM TEST PASS" || { echo "MM TEST FAIL (competitive)"; exit 1; }
 echo "MM TEST PASS"
+after=$(ls -l --time-style=+%s "$USERDATA"/{profile,leaderboard,ranked}.json 2>/dev/null)
+if [ "$before" != "$after" ]; then echo "USER DATA TOUCHED BY TESTS: $after"; exit 1; fi
+echo "USER DATA UNTOUCHED"
+rm -f "$USERDATA"/test_*.json

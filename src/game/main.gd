@@ -24,6 +24,7 @@ const Drills := preload("res://src/sim/drills.gd")
 const Stats := preload("res://src/sim/stats.gd")
 const Leaderboard := preload("res://src/sim/leaderboard.gd")
 const Ranked := preload("res://src/sim/ranked.gd")
+const Cosmetics := preload("res://src/sim/cosmetics.gd")
 const MMServer := preload("res://src/net/mm_server.gd")
 const MMClient := preload("res://src/net/mm_client.gd")
 const InviteCode := preload("res://src/net/invite_code.gd")
@@ -63,6 +64,11 @@ var ranked_match := false       # competitive queue or --ranked: ratings change 
 var pending_teams := {}         # name -> team (matchmaker's rating-balanced split)
 var ranked_line := ""
 var player_name := "You"
+var profile := Cosmetics.new()
+var profile_path := Cosmetics.DEFAULT_PATH
+var looks := {}            # athlete_id -> look (view-only)
+var peer_looks := {}       # server: peer_id -> sanitized look
+var xp_line := ""
 var my_ranks := ""
 var field_root: Node3D
 var athlete_root: Node3D
@@ -99,6 +105,16 @@ func _ready() -> void:
 	if args.has("name"):
 		player_name = str(args["name"]).strip_edges().left(16)
 	ranked_match = args.has("ranked")
+	if args.has("profile-file"):
+		profile_path = str(args["profile-file"])
+	profile.load_file(profile_path)
+	if args.has("equip"):
+		for pair in str(args["equip"]).split(","):
+			var kv := pair.split(":")
+			if kv.size() == 2:
+				var v = int(kv[1]) if kv[0] == "number" else kv[1]
+				print("EQUIP %s=%s: %s" % [kv[0], kv[1], profile.equip(kv[0], v)])
+		profile.save(profile_path)
 	if args.has("leaderboard"):
 		_print_leaderboards(str(args["leaderboard"]) if args["leaderboard"] is String else "")
 		get_tree().quit()
@@ -170,8 +186,29 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 			drill.start_rep(world)
 	los_marker = _marker(Color(0.2, 0.5, 1.0), "LOSMarker")
 	fd_marker = _marker(Color(1.0, 0.85, 0.1), "FirstDownMarker")
+	looks = {}
+	if not is_client():
+		_sync_looks()
 	for v in views:
 		v.sync()
+
+## Host/offline: rebuild athlete looks (yours + peers'), apply to views, broadcast.
+func _sync_looks() -> void:
+	looks = {}
+	looks[my_id] = profile.equipped.duplicate()
+	if is_server():
+		for peer in net.peer_athlete:
+			if peer_looks.has(peer):
+				looks[net.peer_athlete[peer]] = peer_looks[peer]
+	_apply_looks()
+	if is_server():
+		net.broadcast_event("looks", {"looks": looks})
+
+func _apply_looks() -> void:
+	for aid in looks:
+		var i := int(aid)
+		if i >= 0 and i < views.size() and views[i].is_inside_tree():
+			views[i].apply_look(looks[aid])
 
 func _spawn_teams() -> void:
 	var drill_me := -1
@@ -324,12 +361,51 @@ func _ranked_text(r: Dictionary) -> String:
 		return ""
 	return "RATING %s (%+d)" % [r["labels"][me], int(round(r["deltas"][me]))]
 
+## XP per human (by name) from this match's stats + result.
+func _match_awards() -> Dictionary:
+	var lines := {}
+	var team_of := {}
+	for s in roster.slots:
+		if s["owner"] >= 0:
+			team_of[owner_name(s["athlete_id"])] = s["team"]
+	if roster.slots.is_empty():
+		team_of[owner_name(my_id)] = world.get_athlete(my_id).team
+	for k in stats.lines:
+		var nm: String = k.get_slice("|", 0)
+		if nm == "Bot":
+			continue
+		if not lines.has(nm):
+			lines[nm] = {}
+		for f in stats.lines[k]:
+			lines[nm][f] = lines[nm].get(f, 0.0) + float(stats.lines[k][f])
+	var xp := {}
+	for nm in team_of:
+		xp[nm] = Cosmetics.award_xp(lines.get(nm, {}), series.winner() == team_of[nm])
+	return xp
+
+## Every machine credits only its own player's local profile.
+func _apply_award(xp: Dictionary) -> void:
+	var me := owner_name(my_id) if not is_client() else player_name
+	if not xp.has(me):
+		return
+	var gained := profile.add_xp(int(xp[me]))
+	profile.save(profile_path)
+	xp_line = "XP +%d (Level %d%s)" % [int(xp[me]), profile.level(), " - LEVEL UP!" if gained > 0 else ""]
+
 func _on_match_event(n: String, _d: Dictionary) -> void:
 	if n == "final":
 		if not is_client() and drill == null:
+			var awards := _match_awards()
+			_apply_award(awards)
+			if is_server():
+				net.broadcast_event("awards", {"xp": awards})
 			my_ranks = _record_leaderboard()
 			if ranked_match:
 				var r := _record_ranked()
+				var rk := Ranked.new()
+				rk.load_file(ranked_path)
+				profile.season_rewards = rk.rewards.get(owner_name(my_id), [])
+				profile.save(profile_path)
 				ranked_line = _ranked_text(r)
 				print("RANKED: %s" % str(r))
 				if is_server():
@@ -354,6 +430,7 @@ func do_action(action: Dictionary) -> bool:
 		if aid >= 0:
 			my_id = aid
 			set_controlled(aid)
+			_sync_looks()
 		return aid >= 0
 	return Protocol.apply_action(series, controlled_id, action)
 
@@ -566,6 +643,7 @@ func _start_from_lobby() -> void:
 		if aid >= 0:
 			net.set_assignment(id, aid)
 	net.broadcast_lobby(lobby.to_dict())
+	_sync_looks()
 	var seats := []
 	for s in roster.slots:
 		if s["owner"] >= 0:
@@ -581,6 +659,8 @@ func _on_assigned(aid: int) -> void:
 	predictor = Predictor.new()
 	set_controlled(aid)
 	print("NET assigned athlete %d" % aid)
+	# Our look goes to the host; we only show it once the host echoes it back.
+	net.send_action({"a": "look", "look": profile.equipped})
 
 ## Roster changes (position/team). Authoritative on server/offline; only outside live play.
 ## Returns the player's (possibly new) athlete id, or -1 if rejected.
@@ -636,6 +716,15 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 		last_whistle = n.replace("_", " ").to_upper()
 	if n == "ranked":
 		ranked_line = _ranked_text(d)
+	if n == "looks" and d.get("looks") is Dictionary:
+		looks = d["looks"]
+		_apply_looks()
+	if n == "awards" and d.get("xp") is Dictionary:
+		_apply_award(d["xp"])
+	if n == "touchdown":
+		var cid: int = d.get("carrier", -1)
+		if cid >= 0 and cid < views.size():
+			views[cid].celebrate(str(looks.get(cid, {}).get("celebration", "none")))
 	if n == "summary":
 		summary_lines = d.get("lines", []) if d.get("lines") is Array else []
 	if n == "snap":
@@ -765,6 +854,10 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 				var aid := roster_action(pa[0], act)
 				if aid >= 0:
 					net.set_assignment(pa[0], aid)
+					_sync_looks()
+			elif act is Dictionary and act.get("a", "") == "look":
+				peer_looks[pa[0]] = Cosmetics.sanitize_look(act.get("look", {}))
+				_sync_looks()
 			else:
 				Protocol.apply_action(series, pa[1], act)
 	ai.presnap_tick(world, humans, delta, series.downs.down, series.downs.distance())
@@ -851,6 +944,8 @@ func _process(delta: float) -> void:
 			phase_name += "\nYOUR RANKS: " + my_ranks
 		if ranked_line != "":
 			phase_name += "\n" + ranked_line
+		if xp_line != "":
+			phase_name += "\n" + xp_line
 	else:
 		phase_name = "HOME %d - AWAY %d | %s | %s | %s | %s" % [series.score[0], series.score[1], clock_txt, situation, side, phase_name]
 	var charge_txt := ("   THROW %d%%" % int(charge * 100)) if charging else ""

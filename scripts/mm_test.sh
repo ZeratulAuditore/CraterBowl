@@ -9,10 +9,10 @@ MODE="${MODE:-casual}"
 timeout 60 "$GODOT" --headless --path . -- --matchmaker --port="$MMPORT" > .mm-server.log 2>&1 &
 MM=$!
 sleep 1
-timeout 55 "$GODOT" --headless --path . -- --queue=$MODE --mm=127.0.0.1:"$MMPORT" --size=3 --advertise=127.0.0.1 --name=Ann --rating=1000 > .mm-a.log 2>&1 &
+timeout 55 "$GODOT" --headless --path . -- --queue=$MODE --mm=127.0.0.1:"$MMPORT" --size=3 --advertise=127.0.0.1 --name=Ann --rating=1000 --profile-file=user://test_mm_profile.json --leaderboard-file=user://test_mm_lb.json --ranked-file=user://test_mm_ranked.json > .mm-a.log 2>&1 &
 A=$!
 sleep 0.5
-timeout 55 "$GODOT" --headless --path . -- --queue=$MODE --mm=127.0.0.1:"$MMPORT" --size=3 --advertise=127.0.0.1 --name=Ben --rating=1050 > .mm-b.log 2>&1 &
+timeout 55 "$GODOT" --headless --path . -- --queue=$MODE --mm=127.0.0.1:"$MMPORT" --size=3 --advertise=127.0.0.1 --name=Ben --rating=1050 --profile-file=user://test_mm_b_profile.json --leaderboard-file=user://test_mm_b_lb.json --ranked-file=user://test_mm_b_ranked.json > .mm-b.log 2>&1 &
 B=$!
 ok=0
 for i in $(seq 1 450); do

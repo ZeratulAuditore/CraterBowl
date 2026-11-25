@@ -14,6 +14,7 @@ var before_id := -1
 var slant_wr = null
 var slant_x := 0.0
 var picked := false
+var xp0 := 0
 var wr_id := -1
 
 func check(cond: bool, msg: String) -> void:
@@ -27,7 +28,7 @@ func _initialize() -> void:
 	main.auto_next = false
 	# scripted steps drive play changes; auto-advance checked at the end
 	steps = [
-		[2, func(): _connect_listeners()],  # world/series are (re)built in main._ready -> connect after
+		[2, func(): _connect_listeners(); _isolate_user_files()],  # world/series are (re)built in main._ready -> connect after
 		[5, func(): check(main.world.phase == main.World.Phase.PRESNAP, "starts presnap")],
 		[6, func(): check(main.world.snap(), "snap")],
 		[40, func(): check(main.world.ball.is_held_by(main.controlled_id), "QB has ball")],
@@ -134,6 +135,14 @@ func _initialize() -> void:
 		[6900, func(): main.configure(7); _setup_ranked_rival()],
 		[6902, func(): main.series.score = [7, 0]; main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.world.phase = main.World.Phase.DEAD; main.series.last_result = {"type": "incomplete"}; main.next_play()],
 		[6904, func(): var rk = main.Ranked.new(); rk.load_file(main.ranked_path); check(rk.rating("You") > 1000.0 and rk.rating("Rival") < 1000.0, "ratings saved (You %.0f, Rival %.0f)" % [rk.rating("You"), rk.rating("Rival")]); check(main.hud.text.find("RATING ") >= 0 and main.hud.text.find("(+24)") >= 0, "HUD shows rating change"); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.ranked_path)); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.leaderboard_path))],
+		# A24: earned cosmetics on your athlete, TD celebration, XP at final
+		[7000, func(): main.profile.xp = 600; check(main.profile.equip("trim", "ember") and main.profile.equip("celebration", "spin") and main.profile.equip("number", 88), "equip earned items (level 1)"); check(not main.profile.equip("trim", "aurora"), "locked item refused"); main.configure(7)],
+		[7002, func(): var v = main.views[main.my_id]; check(v.number_text == "88" and v.trim_color.is_equal_approx(main.Cosmetics.color_of("trim", "ember")), "your look shown on your athlete"); check(main.views[(main.my_id + 1) % main.views.size()].number_text != "88", "others keep their own looks")],
+		[7003, func(): _key(KEY_SPACE)],
+		[7030, func(): main.world.carrier().position = Vector2(26, 101.0)],
+		[7032, func(): check(main.views[main.my_id].is_celebrating(), "TD celebration plays")],
+		[7033, func(): xp0 = main.profile.xp; main.next_play(); main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.world.phase = main.World.Phase.DEAD; main.series.last_result = {"type": "incomplete"}; main.next_play()],
+		[7035, func(): check(main.profile.xp > xp0 and main.hud.text.find("XP +") >= 0, "XP awarded at final (%d -> %d)" % [xp0, main.profile.xp]); var saved = main.Cosmetics.new(); saved.load_file(main.profile_path); check(saved.xp == main.profile.xp, "XP saved to (temp) profile"); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.profile_path))],
 	]
 
 ## First receiver not controlled by the human (humans don't auto-run routes).
@@ -180,6 +189,15 @@ func _key(code: int) -> void:
 	ev.keycode = code
 	ev.pressed = true
 	main._unhandled_key_input(ev)
+
+## Never touch the player's real profile / leaderboard / ratings from tests.
+func _isolate_user_files() -> void:
+	main.profile_path = "user://test_flow_profile.json"
+	main.leaderboard_path = "user://test_flow_leaderboard.json"
+	main.ranked_path = "user://test_flow_ranked.json"
+	for p in [main.profile_path, main.leaderboard_path, main.ranked_path]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
+	main.profile.load_file(main.profile_path)
 
 func _connect_listeners() -> void:
 	main.series.match_event.connect(func(_n, _d): series_events += 1)
