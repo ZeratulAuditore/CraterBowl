@@ -10,3 +10,9 @@
 - Better than Gridiron: exhaustion lockout makes sprint a decision.
 - Tests: 13 unit passing; smoke boot 300 frames clean. `smoke.sh` allowlists one verified Godot 4.3 headless dummy-renderer message.
 - Known gaps: keyboard only (no gamepad/InputMap yet; A27), no animation, camera doesn't collide.
+
+## 002: A02 Ball + snap (2026-11-24)
+- Sim: `world.gd` (authoritative World: athletes, ball, phase PRESNAP/LIVE/DEAD, formation, neutral-zone clamp, timed snap flight, events), `athlete.gd` (id/team/role), `ball.gd` (HELD/IN_FLIGHT/LOOSE/DEAD).
+- Game: 7v7 athletes rendered in team colors; you control the QB; Space snaps, R resets; ball mesh follows sim; HUD shows phase.
+- Tests: 19 unit passing (+6); smoke clean.
+- Known gaps: non-controlled athletes stand still (bots in A14); no play end yet (A05).

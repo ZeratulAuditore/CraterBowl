@@ -17,3 +17,7 @@ const FIELD_LENGTH := 100.0
 const FIELD_WIDTH := 53.33
 const ENDZONE_DEPTH := 10.0
 const OOB_MARGIN := 2.0
+
+# Ball
+const SNAP_TIME := 0.35        # seconds for snap flight C -> QB
+const BALL_CARRY_HEIGHT := 1.1 # yards above turf when held
