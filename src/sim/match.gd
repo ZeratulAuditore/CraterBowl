@@ -45,12 +45,21 @@ func start(offense: int = 0, los: float = -1.0) -> void:
 	state = State.SCRIMMAGE
 	opening_receiver = offense
 	clock.reset()
+	world.last_offensive_calls = ["", ""]
+	world.last_defensive_calls = ["", ""]
 	downs.reset(offense, los)
 	world.set_offense(offense)
 	_setup_formation()
 
 func _setup_formation() -> void:
 	world.setup_formation(downs.los)
+	if not world.is_chaos():
+		if downs.distance() <= 3.0:
+			world.call_play("Slants")
+		elif downs.distance() >= 15.0 and goal() - downs.los >= 25.0:
+			world.call_play("Deep Shot")
+		else:
+			world.call_play("Mesh")
 	world.call_defense(World.DefensivePlaybook.suggest(downs.down, downs.distance(),
 		goal() - downs.los, clock.remaining))
 

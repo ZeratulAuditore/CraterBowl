@@ -24,6 +24,7 @@ var lobby_size := 0
 var lobby_code := ""
 var lead_samples := 0
 var defense_call_seen := false
+var defense_recall_seen := false
 
 func check(cond: bool, msg: String) -> void:
 	print(("  NET OK   " if cond else "  NET FAIL ") + msg)
@@ -82,9 +83,11 @@ func _physics_process(_dt: float) -> bool:
 	if saw_live and bad_snap_sent_at < 0 and main.world.phase == 0:
 		main.input_override = Vector2.ZERO
 		main.do_action({"a": "snap"})
+		main.do_action({"a": "recall_call"})
 		bad_snap_sent_at = f
 	if bad_snap_sent_at > 0 and f == bad_snap_sent_at + 30:
 		bad_snap_rejected = main.world.phase == 0
+		defense_recall_seen = main.world.defensive_call == "edge_blitz"
 		aid_before_swap = aid
 		main.do_action({"a": "team"})
 	if bad_snap_sent_at > 0 and f == bad_snap_sent_at + 60:
@@ -102,6 +105,7 @@ func _physics_process(_dt: float) -> bool:
 		check(max_dx > 2.0, "own input moved own athlete on server (dx %.1f)" % max_dx)
 		check(lead_samples > 10, "own athlete predicted ahead of server state (%d frames)" % lead_samples)
 		check(saw_live and got_snap_event, "host auto-snap reached client (snapshot LIVE + reliable event)")
+		check(defense_recall_seen, "remote defender recalled the previous snap's call")
 		check(defense_call_seen, "defensive selection reached host and returned in a snapshot")
 		check(bad_snap_rejected, "defense snap rejected by server")
 		check(swapped_to_team0, "team swap request -> server reassigned to team 0")
