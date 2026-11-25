@@ -8,3 +8,4 @@
 .mm-server.log
 .mm-a.log
 .mm-b.log
+.parity-*.log

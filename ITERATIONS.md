@@ -180,3 +180,8 @@
 - Main: every match records; **V** at a dead ball = instant replay of the last play at 0.5× (offline the match pauses; host keeps simulating; views read replay frames — no player.gd change); final saves `user://replays/<timestamp>.replay` (`--replay-dir`); `-- --replay=FILE` viewer (Space, ←/→ plays, [ ] speed, V exit); replay HUD line.
 - Coordination: a parallel session owns A26 graphics (branch graphics-overhaul); FEATURES marks A26 `[~]` so the loop skips it; scorebug part of A27 deferred to their overlay; player.gd/_build_field/_draw_routes/_marker left untouched.
 - Tests: 186 unit (+4); flow 97 checks (+11: real V key, frames shown, sim frozen, replay ends, saved at final, viewer + speed key + exit).
+
+## 027: A28 pre-audit (2026-11-25)
+- `docs/PARITY.md`: every Gridiron feature (G01–G26) → where it's built → machine-checkable evidence lines (unit PASS / flow OK / net OK / mm PASS). `scripts/parity_audit.sh` runs all suites and verifies evidence; exit 0 only with 0 fail, 0 gaps, 0 pending (`SKIP_RUN=1` re-checks last logs). Verified it discriminates (planted fake evidence → FAIL).
+- Result: 21 PASS, 3 GAP → filed D02 party queue (G09), D03 Chaosball in matchmaking (G17), D04 achievements (G23); +D05 return yards (A21 gap). 2 PENDING in parallel sessions: G25 controls/menus/settings (A27), G26 stadium presentation (A26).
+- A28 stays unchecked until the gaps are closed and A26/A27 merge; then the audit must pass.

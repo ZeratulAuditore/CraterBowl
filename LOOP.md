@@ -21,7 +21,8 @@ Each run is one iteration. Each iteration builds on the last. **Tackle exactly o
    - `./scripts/smoke.sh`: main scene boots headless for ~300 frames with zero script errors, then `tests/game_flow.gd` drives the real scene through a scripted play. **Extend game_flow.gd with a step for each new player-facing feature.**
    - `./scripts/mm_test.sh` (also run by smoke.sh): matchmaker + 2 queued clients → hosted match starts.
    - `./scripts/net_test.sh` (also run by smoke.sh): headless host + client over localhost. Extend `tests/net_client.gd` when a feature changes networked behavior.
-   Iterate until both pass. Do not weaken or delete older tests to go green.
+   - `./scripts/shot.sh` for any visual change (art, HUD, camera, effects): renders the real scene offscreen (Xvfb + software GL) to PNGs. **View the PNGs before calling it done.** See `docs/TESTING.md`.
+   Iterate until both pass. Do not weaken or delete older tests to go green. **Never launch a windowed game** (`godot --path .`) to check your work; it opens on the user's desktop. Everything in `docs/TESTING.md` runs offscreen.
 6. **Record.** Check off the item in `FEATURES.md` and add any follow-ups under "Discovered". Append to `ITERATIONS.md`: number, item, what was built, test counts, known gaps.
 7. **Commit** locally on `main`: `iter NNN: <item>`. Never push or publish.
 8. **Report.** Summarize what shipped, the test results, and what's next, ending with a `result:` line.
@@ -29,4 +30,4 @@ Each run is one iteration. Each iteration builds on the last. **Tackle exactly o
 ## Guardrails
 - One item per iteration. If an item is too big, split it in `FEATURES.md` and do the first half.
 - If blocked (missing tool, design decision only the user can make), record it in `ITERATIONS.md` and report `needs input:`. Don't guess on irreversible things.
-- Keep the game runnable: `godot --path . ` opens to a playable scene after every iteration.
+- Keep the game runnable: `godot --path . ` opens to a playable scene after every iteration. Verify that with `./scripts/smoke.sh` + `./scripts/shot.sh`, not by opening a window.

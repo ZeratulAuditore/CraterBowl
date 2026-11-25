@@ -50,3 +50,7 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [ ] B10 Overtime (sudden death or alternating possessions) for tied games
 
 ## Discovered (bugs/follow-ups the loop adds here; fixed before new features)
+- [ ] D02 Party queue: friends queue together and land in the same match/team (matchmaker backend + CLI; menu UI belongs to the out-of-game session) — parity G09
+- [ ] D03 Chaosball in matchmaking: queue mode for Chaosball 3v3 — parity G17
+- [ ] D04 Achievements: milestone unlocks (first TD, 300-yd game, pick-six, 7-pt Chaosball TD, …) with profile persistence — parity G23
+- [ ] D05 Stats: return yards after interceptions/fumble recoveries (gap noted in A21)
