@@ -462,7 +462,9 @@ func _apply_award(xp: Dictionary, ctx: Dictionary = {}) -> void:
 	xp_line = "XP +%d (Level %d%s)" % [total, profile.level(), " - LEVEL UP!" if gained > 0 else ""]
 	achievement_line = ("ACHIEVEMENTS: " + ", ".join(unlocked)) if not unlocked.is_empty() else ""
 
-func _on_match_event(n: String, _d: Dictionary) -> void:
+func _on_match_event(n: String, data: Dictionary) -> void:
+	if n in ["timeout", "clock_warning"]:
+		_on_world_event(n, data)
 	if n == "final" and drill == null:
 		saved_replay = _save_replay()
 		print("REPLAY saved: %s" % saved_replay)
@@ -986,6 +988,9 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			do_action({"a": "tackle"})
 		KEY_G:
 			do_action({"a": "handoff"})
+		KEY_U:
+			if drill == null:
+				do_action({"a": "timeout"})
 		KEY_J:
 			_set_charging(true)
 		KEY_Y:
@@ -1261,11 +1266,14 @@ func huddle_remaining() -> int:
 		return 0
 	return maxi(0, int(ceil(series.clock.play_clock - (Match.Clock.PLAY_CLOCK - T.HUDDLE_SECONDS))))
 
+func bound_key_name(action: String) -> String:
+	var launch := get_node_or_null("/root/Launch")
+	var bindings: Dictionary = launch.settings.bindings if launch else {}
+	return Controls.key_name(Controls.key_for(action, bindings)).to_upper()
+
 func handoff_hint() -> String:
 	if world.handoff_receiver(controlled_id) != null:
-		var launch := get_node_or_null("/root/Launch")
-		var bindings: Dictionary = launch.settings.bindings if launch else {}
-		return "%s HANDOFF" % Controls.key_name(Controls.key_for("handoff", bindings)).to_upper()
+		return "%s HANDOFF" % bound_key_name("handoff")
 	var holder := world.carrier()
 	if world.phase == World.Phase.LIVE and world.is_run_play() and holder and holder.id == controlled_id and holder.role == Athlete.Role.QB and holder.position.y <= world.los_y:
 		return "MEET THE BACK"

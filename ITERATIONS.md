@@ -229,3 +229,9 @@
 - The QB uses G or gamepad R3 to hand off to an adjacent RB behind the line. The host validates the exchange and its cooldown. Offline control follows the RB. Online players keep their assigned slots.
 - Bots mix runs with passes and block for the chosen lane. The RB gets the carry and yards at the whistle or fumble spot. The two-minute bot match finished 0–2 with 12 handoffs and 33 throws.
 - Verified 238 unit tests and full headless smoke, including a remote QB handoff. Viewed offscreen captures of the sweep, the exchange prompt and the controlled RB. The smoke guard now checks the active XDG data directory so other checkouts' replay files cannot invalidate an isolated run.
+
+## 034: C04a Running clock and team timeouts (2026-11-25)
+- The game clock runs between plays after a short in-bounds tackle. First downs, possession changes, sideline stops, incompletions and scores stop the clock. Tries are untimed.
+- Each half has a one-minute warning. A live play can finish before the warning. A half can also end between snaps.
+- U spends a team timeout between plays. The scorebug shows three per team, or two in 3v3. The host validates the caller, and halftime restores the counts.
+- Verified 245 unit tests and full headless smoke, including a remote timeout. Viewed offscreen captures of the timeout banner and visible pips before and after the snap. Quarters and the mercy rule remain in C04b.

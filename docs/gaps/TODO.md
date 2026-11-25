@@ -57,7 +57,7 @@ After that, follow the list order below. B01/B02 (line play, press) come after t
 - **Addendum (Chaosball):** double jump, dash-down, and a dive-cancel (O 1.0.4.12).
 - **Guardrail:** Gridiron's "everyone jump-spams for the Hail Mary" meta. Jump catches need a stamina cost and a contested-catch rule (C07).
 
-### [~] C04a Running clock, one-minute warning and team timeouts (claimed: codex 2026-11-25)
+### [x] C04a Running clock, one-minute warning and team timeouts (iter 034)
 - **Why:** Gridiron used a one-minute warning and timeouts on a key (O 1.0.3.18/20). A running clock makes teams decide when to hurry or stop play.
 - **Accept:**
   - The clock keeps running between plays after an in-bounds tackle and stops on an incompletion, out of bounds, a score or a change of possession.

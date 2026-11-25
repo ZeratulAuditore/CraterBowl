@@ -30,6 +30,9 @@ var crossed_line := false   # predicted defender ever past the neutral zone
 var defense_call_seen := false
 var defense_recall_seen := false
 var requested_qb_slot := false
+var sent_timeout := false
+var got_timeout_event := false
+var timeout_confirmed := false
 var called_run := false
 var snapped_run := false
 var sent_handoff := false
@@ -65,6 +68,8 @@ func _on_welcome(id: int) -> void:
 func _on_event(n: String, _d: Dictionary) -> void:
 	if n == "snap":
 		got_snap_event = true
+	if n == "timeout" and _d.get("team") == 1 and _d.get("remaining") == 2:
+		got_timeout_event = true
 	if n == "handoff" and _d.get("by") == aid:
 		handoff_to = int(_d["to"])
 
@@ -138,6 +143,7 @@ func _physics_process(_dt: float) -> bool:
 		check(swapped_to_team0, "team swap request -> server reassigned to team 0")
 		check(equipped_number == "88", "my equipped #88 round-tripped through the host (%s)" % equipped_number)
 		check(pick_rejected, "picking the host's occupied slot rejected")
+		check(timeout_confirmed and got_timeout_event, "remote U decrements only its team's timeouts and broadcasts the event")
 		check(remote_handoff_confirmed, "client QB hands off through G and sees the host's RB possession")
 		check(remote_handoff_confirmed and main.controlled_id == aid, "online QB keeps the same athlete after the handoff")
 		print("NET FLOW " + ("PASS" if ok else "FAIL"))
@@ -154,7 +160,12 @@ func _test_remote_handoff() -> void:
 		requested_qb_slot = true
 	if w.offense_team != 1 or me.role != main.Athlete.Role.QB:
 		return
-	if not called_run and w.phase == w.Phase.PRESNAP:
+	if not sent_timeout and w.phase == w.Phase.PRESNAP:
+		_key(KEY_U)
+		sent_timeout = true
+	if sent_timeout and main.series.clock.timeouts == [3, 2]:
+		timeout_confirmed = true
+	if timeout_confirmed and not called_run and w.phase == w.Phase.PRESNAP:
 		main.do_action({"a": "play", "p": "Inside Zone"})
 		called_run = true
 	if not snapped_run and w.phase == w.Phase.PRESNAP and w.play_name == "Inside Zone":

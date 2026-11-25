@@ -205,6 +205,24 @@ func _initialize() -> void:
 			main.input_override = Vector2.ZERO],
 		[7832, func():
 			check(main.world.phase == main.World.Phase.DEAD and main.stats.total("car") == 1 and main.stats.total("rush_yds") > 0.0, "whistle records the RB's rushing attempt and gain")],
+		# C04a: U from dead ball, then the one-minute warning at the next whistle.
+		[7850, func():
+			main.configure(3)
+			main.ai.defense_enabled = false
+			main.series.clock.remaining = 60.1
+			_key(KEY_U)
+			check(main.series.clock.timeouts == [1, 2], "U spends a timeout in 3v3")
+			check(main.pres.overlay.banner.text == "TIMEOUT", "timeout banner appears")
+			_key(KEY_SPACE)],
+		[7870, func():
+			check(main.world.phase == main.World.Phase.LIVE and main.series.clock.remaining < 60.0, "play stays live below 1:00")
+			check(not main.pres.overlay.banner.visible, "timeout banner clears on the snap")
+			check(main.pres.overlay.timeout_pips[0].is_visible_in_tree() and main.pres.overlay.timeout_pips[0].text == "●○", "live scorebug shows remaining timeouts")
+			_key(KEY_U)
+			check(main.series.clock.timeouts == [1, 2], "U cannot call timeout during the play")
+			main.world.carrier().position.x = -0.5],
+		[7874, func():
+			check(main.world.phase == main.World.Phase.DEAD and main.pres.overlay.banner.text == "ONE-MINUTE WARNING", "warning appears after the whistle")],
 	]
 
 ## First receiver not controlled by the human (humans don't auto-run routes).

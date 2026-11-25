@@ -9,7 +9,7 @@ const ACTIONS := [
 	["move_left", "Move left", KEY_A], ["move_right", "Move right", KEY_D],
 	["sprint", "Sprint", KEY_SHIFT], ["snap", "Snap / hike", KEY_SPACE],
 	["throw", "Throw (hold to charge)", KEY_J], ["lob", "Lob modifier", KEY_CTRL],
-	["tackle", "Tackle", KEY_E], ["handoff", "Handoff", KEY_G],
+	["tackle", "Tackle", KEY_E], ["handoff", "Handoff", KEY_G], ["timeout", "Team timeout", KEY_U],
 	["play", "Cycle play", KEY_Q], ["route", "Cycle route", KEY_F],
 	["position", "Switch position", KEY_TAB], ["team", "Switch team", KEY_T],
 	["next", "Next play", KEY_R], ["replay", "Instant replay", KEY_V],
