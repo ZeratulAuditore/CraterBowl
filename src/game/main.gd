@@ -30,8 +30,11 @@ const MMServer := preload("res://src/net/mm_server.gd")
 const MMClient := preload("res://src/net/mm_client.gd")
 const InviteCode := preload("res://src/net/invite_code.gd")
 const T := preload("res://src/sim/tuning.gd")
-const RC := preload("res://src/game/render_cache.gd")
-const GfxQuality := preload("res://src/game/gfx_quality.gd")
+const Presentation := preload("res://src/game/presentation.gd")
+const FieldArt := preload("res://src/game/art/field_art.gd")
+const StadiumArt := preload("res://src/game/art/stadium.gd")
+const ArtMats := preload("res://src/game/art/materials.gd")
+const ArtQuality := preload("res://src/game/art/quality.gd")
 const ARC_DOTS := 24
 
 const TEAM_COLORS := [Color(0.95, 0.75, 0.15), Color(0.3, 0.8, 0.95)]
@@ -44,14 +47,11 @@ var views: Array = []
 var player: Node3D  # view of the controlled athlete
 var ball_view: MeshInstance3D
 var reticle: MeshInstance3D
-var arc_mm: MultiMeshInstance3D   # throw-arc preview: one draw call for all dots
-var sun: DirectionalLight3D
-var quality := GfxQuality.Level.MEDIUM
+var arc_dots: Array = []
 # Render interpolation for the ball (views interpolate themselves; see player.gd).
 var _ball_prev := Vector3.ZERO
 var _ball_cur := Vector3.ZERO
 var _route_key := 0          # last drawn route-art state; rebuild only when it changes
-var _hud_text := ""
 var charging := false
 var charge := 0.0
 var aim_point := Vector2(26, 45)
@@ -104,17 +104,18 @@ var latest_snap_tick := 0
 var latest_snap_at := 0.0
 var camera: Camera3D
 var hud: Label
+var pres: Presentation   # visuals-only layer (ball model, rings, FX, overlay)
 
 static func to_world(p: Vector2, h: float = 0.0) -> Vector3:
 	return Vector3(p.x, h, -p.y)
 
 func _ready() -> void:
+	pres = Presentation.new()
+	add_child(pres)
 	_build_environment()
 	_build_ball_view()
 	_build_aim_visuals()
 	var args := _cli_args()
-	quality = GfxQuality.parse(str(args["quality"]), GfxQuality.auto_level()) if args.has("quality") else GfxQuality.auto_level()
-	GfxQuality.apply(quality, sun, get_viewport())
 	if args.has("leaderboard-file"):
 		leaderboard_path = str(args["leaderboard-file"])
 	if args.has("ranked-file"):
@@ -146,8 +147,14 @@ func _ready() -> void:
 	route_lines = MeshInstance3D.new()
 	route_lines.name = "RouteLines"
 	route_lines.mesh = route_mesh
-	route_lines.material_override = RC.mat(Color.WHITE, true, true)
+	var rlm := StandardMaterial3D.new()
+	rlm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	rlm.vertex_color_use_as_albedo = true
+	rlm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	rlm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	rlm.no_depth_test = false
 	route_lines.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	route_lines.material_override = rlm
 	add_child(route_lines)
 	for v in views:
 		v.sync()
@@ -243,7 +250,7 @@ func _spawn_teams() -> void:
 	for a in world.athletes:
 		var v := PlayerNode.new()
 		v.name = "Athlete%d" % a.id
-		v.setup(a, TEAM_COLORS[a.team])
+		v.setup(a, TEAM_COLORS[a.team], world)
 		athlete_root.add_child(v)
 		views.append(v)
 	my_id = drill_me if drill_me >= 0 else roster.auto_assign(LOCAL_PLAYER)
@@ -251,35 +258,37 @@ func _spawn_teams() -> void:
 	player = views[controlled_id]
 
 func _build_ball_view() -> void:
-	ball_view = MeshInstance3D.new()
-	ball_view.name = "Ball"
-	ball_view.mesh = RC.sphere(0.18, 0.36)
-	ball_view.material_override = RC.mat(Color(0.45, 0.25, 0.1))
-	ball_view.scale = Vector3(1, 1, 1.7)
+	ball_view = Presentation.make_ball()
 	add_child(ball_view)
 
 func _build_aim_visuals() -> void:
 	reticle = MeshInstance3D.new()
 	reticle.name = "Reticle"
-	reticle.mesh = RC.torus(0.6, 0.8)
-	reticle.material_override = RC.mat(Color(1, 1, 1, 0.8), true)
+	var q := QuadMesh.new()
+	q.size = Vector2(2.2, 2.2)
+	q.orientation = PlaneMesh.FACE_Y
+	reticle.mesh = q
+	var rm := ArtMats.shader("res://src/game/art/ring.gdshader")
+	rm.set_shader_parameter("color", Color(1.0, 1.0, 1.0, 0.9))
+	rm.set_shader_parameter("dashes", 4.0)
+	rm.set_shader_parameter("pulse", 1.0)
+	reticle.material_override = rm
 	reticle.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(reticle)
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = RC.sphere(0.08)
-	mm.instance_count = ARC_DOTS
-	mm.visible_instance_count = 0
-	arc_mm = MultiMeshInstance3D.new()
-	arc_mm.name = "ThrowArc"
-	arc_mm.multimesh = mm
-	arc_mm.material_override = RC.mat(Color(1, 0.9, 0.3), true)
-	arc_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(arc_mm)
-
-## True while the throw-arc preview is visible (tests + HUD).
-func arc_shown() -> bool:
-	return arc_mm.multimesh.visible_instance_count > 0
+	for i in ARC_DOTS:
+		var d := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		var r := lerpf(0.05, 0.11, float(i) / ARC_DOTS)
+		sm.radius = r
+		sm.height = r * 2.0
+		sm.radial_segments = 8
+		sm.rings = 4
+		d.mesh = sm
+		d.material_override = ArtMats.emissive(Color(1.0, 0.9, 0.3).lerp(Color(1.0, 0.55, 0.15), float(i) / ARC_DOTS), 3.0)
+		d.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		d.visible = false
+		add_child(d)
+		arc_dots.append(d)
 
 ## Mouse ray onto the turf plane -> field coordinates.
 func _update_aim() -> void:
@@ -300,7 +309,8 @@ func _update_arc() -> void:
 	var show := charging and world.ball.is_held_by(controlled_id)
 	reticle.position = Vector3(aim_point.x, 0.05, -aim_point.y)
 	if not show:
-		arc_mm.multimesh.visible_instance_count = 0
+		for d in arc_dots:
+			d.visible = false
 		return
 	var from := Vector3(qb.position.x, qb.position.y, T.RELEASE_HEIGHT)
 	var v := Passing.solve_velocity(from, aim_point, charge, world.gravity(), lob_held())
@@ -309,8 +319,8 @@ func _update_arc() -> void:
 	for i in ARC_DOTS:
 		var t := tf * float(i + 1) / ARC_DOTS
 		var p := from + v * t + Vector3(0, 0, -0.5 * world.gravity() * t * t)
-		arc_mm.multimesh.set_instance_transform(i, Transform3D(Basis(), Vector3(p.x, p.z, -p.y)))
-	arc_mm.multimesh.visible_instance_count = ARC_DOTS
+		arc_dots[i].position = Vector3(p.x, p.z, -p.y)
+		arc_dots[i].visible = true
 
 func _set_charging(on: bool) -> void:
 	if on and world.ball.is_held_by(controlled_id) and not charging:
@@ -735,6 +745,8 @@ func _unhandled_input(e: InputEvent) -> void:
 
 
 func _on_world_event(n: String, d: Dictionary) -> void:
+	if pres:
+		pres.on_event(n, d)
 	if n == "incomplete" and last_whistle == "":
 		last_whistle = "INCOMPLETE"
 	if n in ["tackle", "out_of_bounds", "breakup", "touchdown", "explode"]:
@@ -768,8 +780,13 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 
 func _marker(c: Color, n: String) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
-	mi.mesh = RC.box(Vector3(field.width, 0.13, 0.25))
-	mi.material_override = RC.mat(c, true)
+	var q := QuadMesh.new()
+	q.size = Vector2(field.width, 0.55)
+	q.orientation = PlaneMesh.FACE_Y
+	mi.mesh = q
+	var m := ArtMats.shader("res://src/game/art/line_marker.gdshader")
+	m.set_shader_parameter("color", c)
+	mi.material_override = m
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.name = n
 	field_root.add_child(mi)
@@ -957,20 +974,25 @@ func _render_replay() -> void:
 		return
 	var pos: Array = smp["pos"]
 	for i in mini(pos.size(), views.size()):
-		views[i].place(Vector3(pos[i].x, 0, -pos[i].y), views[i]._cur_yaw)
+		views[i].place(Vector3(pos[i].x, 0, -pos[i].y), views[i].rotation.y)
 	var b: Vector3 = smp["ball"]
 	_place_ball(Vector3(b.x, b.z, -b.y))
 
 ## Per physics tick: copy sim state into view targets. Cheap, change-driven work only.
+## Anything that moves on screen is drawn per frame in _render_frame (interpolated).
 func _render() -> void:
 	for v in views:
 		v.sync()
 	var b = world.ball.position
 	_place_ball(Vector3(b.x, b.z, -b.y))
-	los_marker.position = Vector3(field.width / 2.0, 0.0, -series.downs.los)
-	fd_marker.position = Vector3(field.width / 2.0, 0.0, -series.downs.first_down_y)
+	los_marker.position = Vector3(field.width / 2.0, 0.03, -series.downs.los)
+	fd_marker.position = Vector3(field.width / 2.0, 0.03, -series.downs.first_down_y)
 	fd_marker.visible = not series.downs.is_goal_to_go()
 	_draw_routes()
+
+## True while the throw-arc preview is visible (tests).
+func arc_shown() -> bool:
+	return not arc_dots.is_empty() and arc_dots[0].visible
 
 ## Ball interpolation target (same teleport rule as athlete views).
 func _place_ball(p: Vector3) -> void:
@@ -978,8 +1000,10 @@ func _place_ball(p: Vector3) -> void:
 	_ball_cur = p
 	ball_view.position = p
 
-## Per display frame: draw between the last two sim ticks so motion is smooth at
-## any refresh rate (60 Hz sim on a 144 Hz screen, or a frame that ran 2 ticks).
+## Per display frame: draw between the last two sim ticks, so motion is smooth at any
+## refresh rate (60 Hz sim on a 144 Hz screen, or a slow frame that ran 2 ticks).
+## Runs before presentation.gd's _process (parent first), which then pins a held ball
+## to the (interpolated) carrier's hand.
 func _render_frame() -> void:
 	var f := Engine.get_physics_interpolation_fraction()
 	for v in views:
@@ -988,7 +1012,11 @@ func _render_frame() -> void:
 	_update_aim()
 	_update_arc()
 
-## Presnap route art for your own offense only (the defense never sees it).
+## Presnap route art for your own offense only (the defense never sees it):
+## flat glowing ribbons, a distinct color per receiver, arrowheads, start dots.
+const ROUTE_COLORS := [Color(1.0, 0.82, 0.25), Color(1.0, 0.45, 0.75), Color(0.55, 0.6, 1.0), Color(1.0, 0.55, 0.2), Color(0.75, 0.5, 1.0)]
+const MY_ROUTE_COLOR := Color(0.35, 1.0, 0.55)
+
 func _draw_routes() -> void:
 	var me = world.get_athlete(my_id)
 	if me == null or world.phase != World.Phase.PRESNAP or me.team != world.offense_team or world.route_of.is_empty():
@@ -996,7 +1024,7 @@ func _draw_routes() -> void:
 			route_mesh.clear_surfaces()
 			_route_key = 0
 		return
-	# Rebuilding an ImmediateMesh re-uploads it to the GPU: only do it when the art changes.
+	# Rebuilding an ImmediateMesh re-uploads it to the GPU every tick; only do it when the art changes.
 	var key_src := [my_id, field.width, world.route_of]
 	for id in world.route_of:
 		key_src.append(world.get_athlete(id).position)
@@ -1005,21 +1033,64 @@ func _draw_routes() -> void:
 		return
 	_route_key = key
 	route_mesh.clear_surfaces()
-	route_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
+	route_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	var k := 0
 	for id in world.route_of:
 		var a = world.get_athlete(id)
 		var pts: Array = [a.position] + Routes.path_for(world.route_of[id], a.position, field.width)
-		route_mesh.surface_set_color(Color(1.0, 0.95, 0.3) if id != my_id else Color(0.3, 1.0, 0.5))
-		for k in range(pts.size() - 1):
-			route_mesh.surface_add_vertex(Vector3(pts[k].x, 0.15, -pts[k].y))
-			route_mesh.surface_add_vertex(Vector3(pts[k + 1].x, 0.15, -pts[k + 1].y))
+		var mine: bool = id == my_id
+		var c: Color = MY_ROUTE_COLOR if mine else ROUTE_COLORS[k % ROUTE_COLORS.size()]
+		k += 1
+		_route_ribbon(pts, c, 0.42 if mine else 0.3)
 	route_mesh.surface_end()
+
+func _route_ribbon(pts: Array, c: Color, wdt: float) -> void:
+	var h := 0.06
+	var total := 0.0
+	for i in range(pts.size() - 1):
+		total += (pts[i + 1] - pts[i]).length()
+	var run := 0.0
+	for i in range(pts.size() - 1):
+		var p0: Vector2 = pts[i]
+		var p1: Vector2 = pts[i + 1]
+		var seg := p1 - p0
+		if seg.length() < 0.01:
+			continue
+		var dir := seg.normalized()
+		var is_last := i == pts.size() - 2
+		if is_last:   # leave room for the arrowhead
+			p1 = p1 - dir * minf(1.1, seg.length() * 0.6)
+		var n := Vector2(-dir.y, dir.x) * wdt * 0.5
+		var a0 := c * Color(1, 1, 1, lerpf(0.75, 1.0, run / maxf(total, 0.01)))
+		run += seg.length()
+		var a1 := c * Color(1, 1, 1, lerpf(0.75, 1.0, run / maxf(total, 0.01)))
+		_tri(p0 + n, p0 - n, p1 + n, a0, a0, a1, h)
+		_tri(p1 + n, p0 - n, p1 - n, a1, a0, a1, h)
+		if i > 0:   # round the joint
+			_disc(p0, wdt * 0.5, a0, h)
+		if is_last:
+			var tip: Vector2 = pts[i + 1]
+			var base := p1
+			var wing := Vector2(-dir.y, dir.x) * wdt * 1.6
+			_tri(base + wing, base - wing, tip, a1, a1, a1, h)
+	_disc(pts[0], wdt * 1.1, c, h)
+
+func _tri(a: Vector2, b: Vector2, c2: Vector2, ca: Color, cb: Color, cc: Color, h: float) -> void:
+	for pc in [[a, ca], [b, cb], [c2, cc]]:
+		route_mesh.surface_set_color(pc[1])
+		route_mesh.surface_add_vertex(Vector3(pc[0].x, h, -pc[0].y))
+
+func _disc(p: Vector2, r: float, c: Color, h: float) -> void:
+	for s in 10:
+		var t0 := TAU * s / 10.0
+		var t1 := TAU * (s + 1) / 10.0
+		_tri(p, p + Vector2(cos(t0), sin(t0)) * r, p + Vector2(cos(t1), sin(t1)) * r, c, c, c, h)
 
 func _process(delta: float) -> void:
 	_render_frame()
 	var target := player.global_position
 	var desired := target + Vector3(0, 6, 9)
-	# Exponential smoothing: same feel at 30, 60 or 144 fps (delta*k lerp is not).
+	# Exponential smoothing: identical feel at 30, 60 or 144 fps (a delta*k lerp is not).
 	camera.global_position = camera.global_position.lerp(desired, 1.0 - exp(-6.0 * delta))
 	camera.look_at(target + Vector3(0, 1, -4))
 	var m = player.athlete
@@ -1076,72 +1147,23 @@ func _process(delta: float) -> void:
 		phase_name, m.position.y, m.speed(), int(m.stamina * 100), "  (WINDED)" if m.sprint_locked else ""]
 
 func _build_environment() -> void:
-	sun = DirectionalLight3D.new()
-	sun.name = "Sun"
-	sun.rotation_degrees = Vector3(-55, 30, 0)
-	sun.shadow_enabled = true
-	add_child(sun)
-	var env := WorldEnvironment.new()
-	var e := Environment.new()
-	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color(0.03, 0.03, 0.08)  # night sky, lunar stadium vibe
-	e.ambient_light_color = Color(0.6, 0.65, 0.8)
-	e.ambient_light_energy = 0.5
-	env.environment = e
-	add_child(env)
+	StadiumArt.build_environment(self)
+	var q := ArtQuality.level()
+	get_viewport().msaa_3d = Viewport.MSAA_4X if q == "high" else (Viewport.MSAA_2X if q == "medium" else Viewport.MSAA_DISABLED)
 
-## Field geometry is static: boxes are batched into one mesh per color (a handful of
-## draw calls instead of ~30) and never cast shadows (they are flat on the ground).
-var _field_batches := {}   # Color -> [verts, normals, indices]
-
-func _box(size: Vector3, center: Vector3, color: Color, _n: String) -> void:
-	if not _field_batches.has(color):
-		_field_batches[color] = [PackedVector3Array(), PackedVector3Array(), PackedInt32Array()]
-	var batch: Array = _field_batches[color]
-	var arr := RC.box(size).get_mesh_arrays()
-	var base: int = batch[0].size()
-	for v in arr[Mesh.ARRAY_VERTEX]:
-		batch[0].append(v + center)
-	batch[1].append_array(arr[Mesh.ARRAY_NORMAL])
-	for i in arr[Mesh.ARRAY_INDEX]:
-		batch[2].append(base + i)
-
-func _flush_field() -> void:
-	var k := 0
-	for color in _field_batches:
-		var b: Array = _field_batches[color]
-		var arrays := []
-		arrays.resize(Mesh.ARRAY_MAX)
-		arrays[Mesh.ARRAY_VERTEX] = b[0]
-		arrays[Mesh.ARRAY_NORMAL] = b[1]
-		arrays[Mesh.ARRAY_INDEX] = b[2]
-		var am := ArrayMesh.new()
-		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-		am.set_meta("tris", b[2].size() / 3)
-		var mi := MeshInstance3D.new()
-		mi.name = "FieldBatch%d" % k
-		mi.mesh = am
-		mi.material_override = RC.mat(color)
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		field_root.add_child(mi)
-		k += 1
-	_field_batches = {}
+func _box(size: Vector3, center: Vector3, color: Color, n: String) -> void:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	bm.material = mat
+	mi.mesh = bm
+	mi.position = center
+	mi.name = n
+	field_root.add_child(mi)
 
 func _build_field() -> void:
-	var total := field.length + field.endzone_depth * 2.0
-	# Turf (whole playing surface)
-	_box(Vector3(field.width, 0.1, total), Vector3(field.width / 2, -0.05, -field.length / 2),
-		Color(0.12, 0.42, 0.22), "Turf")
-	# End zones
-	_box(Vector3(field.width, 0.11, field.endzone_depth), to_world(Vector2(field.width / 2, -field.endzone_depth / 2), -0.04),
-		Color(0.15, 0.3, 0.65), "EndZoneA")
-	_box(Vector3(field.width, 0.11, field.endzone_depth), to_world(Vector2(field.width / 2, field.length + field.endzone_depth / 2), -0.04),
-		Color(0.65, 0.25, 0.15), "EndZoneB")
-	# Yard lines every 5 yards, thicker at goal lines
-	for yd in range(0, int(field.length) + 1, 5):
-		var w := 0.4 if yd == 0 or yd == int(field.length) else 0.15
-		_box(Vector3(field.width, 0.12, w), to_world(Vector2(field.width / 2, yd), -0.03), Color(0.95, 0.95, 0.95), "Line%d" % yd)
-	# Sidelines
-	for x in [0.0, field.width]:
-		_box(Vector3(0.3, 0.12, total), Vector3(x, -0.03, -field.length / 2), Color.WHITE, "Sideline")
-	_flush_field()
+	FieldArt.build(field_root, field, TEAM_COLORS)
+	if pres:
+		pres.rebuild(field_root)

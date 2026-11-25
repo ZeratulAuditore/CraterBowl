@@ -29,15 +29,17 @@ static func capsule(radius: float, height: float) -> CapsuleMesh:
 		_meshes[k] = m
 	return _meshes[k]
 
-static func sphere(radius: float, height: float = -1.0) -> SphereMesh:
+## segments/rings: raise only for big, glossy, close-up shapes (helmets); default is plenty
+## for pads, dots and anything that is scaled small.
+static func sphere(radius: float, height: float = -1.0, segments: int = SEGMENTS, rings: int = RINGS + 2) -> SphereMesh:
 	var h := radius * 2.0 if height < 0.0 else height
-	var k := "sphere:%.3f:%.3f" % [radius, h]
+	var k := "sphere:%.3f:%.3f:%d:%d" % [radius, h, segments, rings]
 	if not _meshes.has(k):
 		var m := SphereMesh.new()
 		m.radius = radius
 		m.height = h
-		m.radial_segments = SEGMENTS
-		m.rings = RINGS + 2
+		m.radial_segments = segments
+		m.rings = rings
 		_meshes[k] = m
 	return _meshes[k]
 
@@ -69,6 +71,16 @@ static func torus(inner: float, outer: float) -> TorusMesh:
 		m.outer_radius = outer
 		m.rings = 24
 		m.ring_segments = 4
+		_meshes[k] = m
+	return _meshes[k]
+
+## Flat quad lying on the ground (blob shadows, rings, decals).
+static func ground_quad(size: Vector2) -> QuadMesh:
+	var k := "gquad:%s" % size
+	if not _meshes.has(k):
+		var m := QuadMesh.new()
+		m.size = size
+		m.orientation = PlaneMesh.FACE_Y
 		_meshes[k] = m
 	return _meshes[k]
 
