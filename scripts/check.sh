@@ -6,6 +6,11 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 start=$(date +%s)
+# Isolate user:// (Godot uses $XDG_DATA_HOME on Linux): tests can never touch the player's real
+# saves/settings, and edits the user (or another session) makes mid-run can't fail the guard.
+# A fresh empty dir also shows how a first-time player boots (no profile, no settings).
+export XDG_DATA_HOME="$(mktemp -d "${TMPDIR:-/tmp}/fl-userdata.XXXXXX")"
+trap 'rm -rf "$XDG_DATA_HOME"' EXIT
 step() {
   local name=$1; shift
   echo "== $name"

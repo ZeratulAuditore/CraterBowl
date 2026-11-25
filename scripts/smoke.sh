@@ -3,7 +3,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 # Guard: tests must never write the player's real data files.
-USERDATA="$HOME/.local/share/crater-bowl"   # project.godot custom_user_dir_name
+USERDATA="${XDG_DATA_HOME:-$HOME/.local/share}/crater-bowl"   # project.godot custom_user_dir_name
 before=$(ls -l --time-style=+%s "$USERDATA"/{profile,leaderboard,ranked}.json "$USERDATA"/settings.cfg 2>/dev/null)
 GODOT="${GODOT:-godot}"
 FRAMES="${FRAMES:-300}"
