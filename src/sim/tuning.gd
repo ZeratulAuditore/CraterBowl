@@ -59,3 +59,11 @@ const BLOCKER_BEATEN := 1.5   # after a shed, the blocker cannot re-engage for t
 # AI QB
 const AI_QB_THROW_TIME := 2.0
 const AI_QB_PRESSURE := 3.0
+
+# Fumbles / loose ball
+const FUMBLE_BEHIND_DOT := 0.5
+const FUMBLE_KNOCKDOWN := 0.8
+const LOOSE_FRICTION := 6.0       # yd/s^2 rolling deceleration
+const LOOSE_BOUNCE := 0.35        # vertical restitution
+const RECOVER_RADIUS := 0.8
+const RECOVER_MAX_HEIGHT := 1.0

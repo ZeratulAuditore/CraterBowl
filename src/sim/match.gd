@@ -39,11 +39,11 @@ func start(offense: int = 0, los: float = 25.0) -> void:
 func _on_world_event(n: String, d: Dictionary) -> void:
 	match n:
 		"tackle", "out_of_bounds":
-			last_result = {"type": n, "spot": d["spot"].y}
+			last_result = {"type": n, "spot": d["spot"].y, "team": d.get("team", world.offense_team)}
 		"incomplete":
 			last_result = {"type": "incomplete"}
 		"touchdown":
-			last_result = {"type": "touchdown"}
+			last_result = {"type": "touchdown", "team": d.get("team", world.offense_team)}
 
 ## During try presnap: choose 1 (from the 3) or 2 (from the 10).
 func choose_try(points: int) -> bool:
@@ -87,8 +87,9 @@ func next_play() -> Dictionary:
 	last_result = {}
 	var off := downs.offense_team
 	var def := 1 - off
+	var r_team: int = r.get("team", off)
 	if state == State.TRY:
-		if r["type"] == "touchdown":
+		if r["type"] == "touchdown" and r_team == off:
 			_award(off, try_points, "try")
 			last_outcome = _kickoff(def)
 			last_outcome["try"] = "good"
@@ -96,13 +97,21 @@ func next_play() -> Dictionary:
 			last_outcome = _kickoff(def)
 			last_outcome["try"] = "no_good"
 	elif r["type"] == "touchdown":
-		_award(off, TD_POINTS, "touchdown")
+		_award(r_team, TD_POINTS, "touchdown" if r_team == off else "defensive_touchdown")
+		downs.offense_team = r_team   # the scoring team attempts the try
 		state = State.TRY
 		try_points = 1
 		downs.down = 1
 		downs.los = TRY_LOS[1]
 		downs.first_down_y = Downs.GOAL
 		last_outcome = {"outcome": "try", "los": downs.los}
+	elif r["type"] != "incomplete" and r_team != off:
+		# Takeaway: new offense from the mirrored spot; downed in own end zone -> touchback.
+		var spot := 100.0 - float(r["spot"])
+		if spot <= 0.0:
+			spot = KICKOFF_LOS
+		downs.reset(r_team, clampf(spot, 1.0, 99.0))
+		last_outcome = {"outcome": "turnover", "los": downs.los, "offense": r_team}
 	elif r["type"] != "incomplete" and r.get("spot", 1.0) < 0.0:
 		_award(def, SAFETY_POINTS, "safety")
 		last_outcome = _kickoff(def)

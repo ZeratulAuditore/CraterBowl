@@ -9,6 +9,7 @@ var velocity := Vector2.ZERO
 var facing := Vector2(0, 1)
 var stamina := 1.0
 var sprint_locked := false
+var last_sprinting := false
 var field: Field
 
 func _init(start: Vector2 = Vector2.ZERO, f: Field = null) -> void:
@@ -22,6 +23,7 @@ func is_sprinting(wants_sprint: bool, input: Vector2) -> bool:
 func step(input: Vector2, wants_sprint: bool, dt: float) -> void:
 	var dir := input.limit_length(1.0)
 	var sprinting := is_sprinting(wants_sprint, dir)
+	last_sprinting = sprinting
 	var max_speed := T.SPRINT_SPEED if sprinting else T.RUN_SPEED
 	var target := dir * max_speed
 	var rate := T.ACCEL if dir.length_squared() > 0.0001 else T.DECEL

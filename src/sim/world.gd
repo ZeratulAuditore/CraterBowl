@@ -26,6 +26,8 @@ var _snap_to_id := -1
 var forward_pass_thrown := false
 var last_thrower_id := -1
 var dead_ball_spot := Vector2.ZERO
+var last_possession := 0
+var dead_ball_team := 0
 var play_time := 0.0
 var play_name := "Verticals"
 var route_of := {}      # athlete_id -> route name (eligible offense receivers)
@@ -91,6 +93,7 @@ func setup_formation(los: float) -> void:
 	last_thrower_id = -1
 	_snap_to_id = -1
 	route_paths = {}
+	last_possession = offense_team
 	call_play("Verticals")
 	phase = Phase.PRESNAP
 	_sync_ball()
@@ -177,6 +180,15 @@ func tackle(id: int) -> bool:
 		return false
 	return a.start_dive()
 
+## Team in possession during live play (carrier's team), else the offense.
+func possession_team() -> int:
+	var c := carrier()
+	if c != null:
+		return c.team
+	if ball.state == Ball.State.LOOSE:
+		return last_possession
+	return offense_team
+
 func carrier() -> Athlete:
 	return get_athlete(ball.holder_id) if ball.state == Ball.State.HELD else null
 
@@ -196,6 +208,8 @@ func step(inputs: Dictionary, dt: float) -> void:
 			_enforce_neutral_zone(a)
 	_step_snap(dt)
 	_step_flight(dt)
+	if phase == Phase.LIVE:
+		_step_loose(dt)
 	_sync_ball()
 	if phase == Phase.LIVE:
 		_check_tackles()
@@ -203,15 +217,18 @@ func step(inputs: Dictionary, dt: float) -> void:
 ## Linemen block any time; skill players only block downfield (after a catch
 ## or once the carrier is past the LOS), so receivers run routes instead.
 func _can_block(a: Athlete) -> bool:
-	if a.team != offense_team or ball.is_held_by(a.id) or not a.can_act() or a.engaged_with >= 0 or a.immune_t > 0.0:
+	var pt := possession_team()
+	if a.team != pt or ball.is_held_by(a.id) or not a.can_act() or a.engaged_with >= 0 or a.immune_t > 0.0:
 		return false
+	if pt != offense_team:
+		return true   # return after a takeaway: anyone can block
 	if a.role == Athlete.Role.OL or a.role == Athlete.Role.C:
 		return true
 	var c := carrier()
 	return c != null and (c.role != Athlete.Role.QB or c.position.y > los_y)
 
 func _can_be_blocked(d: Athlete) -> bool:
-	return d.team != offense_team and not d.is_grounded() and d.engaged_with < 0 and d.immune_t <= 0.0
+	return d.team != possession_team() and not d.is_grounded() and d.engaged_with < 0 and d.immune_t <= 0.0
 
 func _step_blocks(prev: Array, dt: float) -> void:
 	for a in athletes:
@@ -232,8 +249,9 @@ func _step_blocks(prev: Array, dt: float) -> void:
 				event.emit("block", {"blocker": b.id, "defender": d.id})
 				break
 	# Apply engagements: defender displacement driven by blocker
+	var pt := possession_team()
 	for d in athletes:
-		if d.team == offense_team or d.engaged_with < 0:
+		if d.team == pt or d.engaged_with < 0:
 			continue
 		var b := get_athlete(d.engaged_with)
 		d.engage_t += dt
@@ -275,21 +293,81 @@ func _check_tackles() -> void:
 	var c := carrier()
 	if c == null:
 		return
+	last_possession = c.team
 	var z := field.zone_of(c.position)
-	if z == Field.Zone.ENDZONE_B:
+	var scoring_zone := Field.Zone.ENDZONE_B if c.team == offense_team else Field.Zone.ENDZONE_A
+	if z == scoring_zone:
 		_whistle("touchdown", {"carrier": c.id, "team": c.team})
 		return
 	if z == Field.Zone.OUT_OF_BOUNDS:
-		_whistle("out_of_bounds", {"carrier": c.id})
+		_whistle("out_of_bounds", {"carrier": c.id, "team": c.team})
 		return
 	for a in athletes:
-		if a.team != offense_team and a.is_diving() and a.position.distance_to(c.position) <= T.TACKLE_REACH:
-			_whistle("tackle", {"by": a.id, "carrier": c.id})
+		if a.team != c.team and a.is_diving() and a.position.distance_to(c.position) <= T.TACKLE_REACH:
+			if _is_strip(a, c):
+				_fumble(c, a)
+			else:
+				_whistle("tackle", {"by": a.id, "carrier": c.id, "team": c.team})
 			return
+
+## Deterministic strip: sprinting carrier hit from behind.
+func _is_strip(diver: Athlete, c: Athlete) -> bool:
+	if not c.last_sprinting or c.velocity.length() < 1.0:
+		return false
+	return diver.facing.dot(c.velocity.normalized()) > T.FUMBLE_BEHIND_DOT
+
+func _fumble(c: Athlete, by: Athlete) -> void:
+	ball.state = Ball.State.LOOSE
+	ball.holder_id = -1
+	ball.position = Vector3(c.position.x, c.position.y, T.BALL_CARRY_HEIGHT)
+	ball.velocity = Vector3(c.velocity.x * 0.5, c.velocity.y * 0.5, 3.0)
+	c.recover_t = T.FUMBLE_KNOCKDOWN
+	c.velocity *= 0.3
+	last_possession = c.team
+	event.emit("fumble", {"carrier": c.id, "by": by.id, "at": c.position})
+
+func _step_loose(dt: float) -> void:
+	if ball.state != Ball.State.LOOSE:
+		return
+	ball.velocity.z -= T.GRAVITY * dt
+	ball.position += ball.velocity * dt
+	if ball.position.z <= 0.0:
+		ball.position.z = 0.0
+		ball.velocity.z = -ball.velocity.z * T.LOOSE_BOUNCE if absf(ball.velocity.z) > 1.0 else 0.0
+		var flat := Vector2(ball.velocity.x, ball.velocity.y)
+		flat = flat.move_toward(Vector2.ZERO, T.LOOSE_FRICTION * dt)
+		ball.velocity.x = flat.x
+		ball.velocity.y = flat.y
+	var bp := Vector2(ball.position.x, ball.position.y)
+	if field.zone_of(bp) == Field.Zone.OUT_OF_BOUNDS:
+		dead_ball_spot = bp
+		dead_ball_team = last_possession
+		ball.state = Ball.State.DEAD
+		phase = Phase.DEAD
+		var data := {"spot": bp, "team": last_possession, "loose": true}
+		event.emit("out_of_bounds", data)
+		event.emit("whistle", data)
+		return
+	if ball.position.z > T.RECOVER_MAX_HEIGHT:
+		return
+	var best: Athlete = null
+	var best_d := T.RECOVER_RADIUS
+	for a in athletes:
+		if not a.can_act():
+			continue
+		var d: float = a.position.distance_to(bp)
+		if d <= best_d:
+			best_d = d
+			best = a
+	if best:
+		ball.hold(best.id)
+		event.emit("recovery", {"by": best.id, "team": best.team, "turnover": best.team != last_possession})
+		last_possession = best.team
 
 func _whistle(reason: String, data: Dictionary) -> void:
 	var c := carrier()
 	dead_ball_spot = c.position
+	dead_ball_team = c.team
 	data["spot"] = dead_ball_spot
 	ball.state = Ball.State.DEAD
 	phase = Phase.DEAD
@@ -343,8 +421,17 @@ func _try_catch() -> bool:
 	var defender_contests: bool = best[1] != null and best[0] != null and best_d[1] <= best_d[0] + T.CONTEST_MARGIN
 	if best[0] == null and not defender_reaches:
 		return false
-	if defender_reaches and best[0] == null or defender_contests:
+	if defender_contests:
 		_end_incomplete("breakup", {"by": best[1].id, "at": at})
+		return true
+	if defender_reaches and best[0] == null:
+		var dfn: Athlete = best[1]
+		if field.zone_of(dfn.position) == Field.Zone.OUT_OF_BOUNDS:
+			_end_incomplete("breakup", {"by": dfn.id, "at": at})
+			return true
+		ball.hold(dfn.id)
+		last_possession = dfn.team
+		event.emit("interception", {"by": dfn.id, "at": at, "team": dfn.team})
 		return true
 	var rx: Athlete = best[0]
 	if field.zone_of(rx.position) == Field.Zone.OUT_OF_BOUNDS:

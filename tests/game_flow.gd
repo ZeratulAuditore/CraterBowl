@@ -13,6 +13,7 @@ var series_events := 0
 var before_id := -1
 var slant_wr = null
 var slant_x := 0.0
+var picked := false
 var wr_id := -1
 
 func check(cond: bool, msg: String) -> void:
@@ -27,6 +28,7 @@ func _initialize() -> void:
 	# scripted steps drive play changes; auto-advance checked at the end
 	main.world.event.connect(func(n, d): if n == "catch": caught_by = d["by"])
 	main.world.event.connect(func(n, d): if n == "tackle" and caught_by >= 0: tackled = true)
+	main.world.event.connect(func(n, _d): if n == "interception": picked = true)
 	steps = [
 		[2, func(): main.series.match_event.connect(func(_n, _d): series_events += 1)],  # series exists after _ready
 		[5, func(): check(main.world.phase == main.World.Phase.PRESNAP, "starts presnap")],
@@ -80,6 +82,12 @@ func _initialize() -> void:
 		[3209, func(): check(main.route_mesh.get_surface_count() > 0, "route lines drawn presnap"); check(main.hud.text.find("PLAY: Slants") >= 0, "HUD shows play")],
 		[3210, func(): slant_wr = _ai_receiver(); slant_x = slant_wr.position.x; main.world.snap()],
 		[3300, func(): check(absf(slant_wr.position.x - slant_x) > 2.0 and absf(slant_wr.position.x - main.field.width / 2.0) < absf(slant_x - main.field.width / 2.0), "AI WR broke inside on slant (dx %.1f)" % (slant_wr.position.x - slant_x)); check(main.route_mesh.get_surface_count() == 0, "route lines hidden after snap")],
+		# A13: forced interception -> live return -> whistle -> possession flips
+		[3301, func(): _force_dead_if_live(); main.series.start(0, 30.0); main.world.snap()],
+		[3330, func(): _setup_pick()],
+		[3331, func(): main.world.throw(main.world.find_role(0, main.Athlete.Role.QB).id, Vector2(50, 60), 0.9)],
+		[3470, func(): check(picked, "interception happened"); check(main.hud.text.find("INTERCEPTION") >= 0, "HUD interception banner")],
+		[4300, func(): _force_dead_if_live(); main.next_play(); check(main.world.offense_team == 1, "possession flipped after the pick (%s)" % main.series.last_outcome.get("outcome", "?"))],
 	]
 
 ## First receiver not controlled by the human (humans don't auto-run routes).
@@ -88,6 +96,14 @@ func _ai_receiver():
 		if r.id != main.controlled_id and r.role == main.Athlete.Role.WR:
 			return r
 	return null
+
+## Put an opposing CB alone at the throw spot; everyone else well away from it.
+func _setup_pick() -> void:
+	var cb = main.world.find_role(1, main.Athlete.Role.CB)
+	for a in main.world.athletes:
+		if a.id != cb.id and a.position.distance_to(Vector2(50, 60)) < 6.0:
+			a.position.x = 30.0
+	cb.position = Vector2(50, 60)
 
 func _force_dead_if_live() -> void:
 	if main.world.phase != main.World.Phase.DEAD:

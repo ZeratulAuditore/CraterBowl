@@ -37,6 +37,8 @@ var charge := 0.0
 var aim_point := Vector2(26, 45)
 var ai := AI.new()
 var last_whistle := ""
+var banner := ""
+var banner_t := 0.0
 var series: Match
 var roster := Roster.new()
 var my_id := -1          # the human's athlete (QB on offense, LB on defense)
@@ -289,10 +291,16 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 		last_whistle = n.replace("_", " ").to_upper()
 	if n == "snap":
 		last_whistle = ""
+	if n in ["interception", "fumble", "recovery"]:
+		banner = {"interception": "INTERCEPTION!", "fumble": "FUMBLE!", "recovery": "RECOVERED!"}[n]
+		banner_t = 2.0
 	if is_server():
 		net.broadcast_event(n, d)
 	# Offline convenience: follow the ball to the receiver. Online: fixed athlete (Gridiron parity).
 	if net == null and n == "catch" and world.get_athlete(d["by"]).team == world.offense_team:
+		set_controlled(d["by"])
+	# Offline: take control of whoever on your team just took the ball away.
+	if net == null and n in ["interception", "recovery"] and world.get_athlete(d["by"]).team == world.get_athlete(my_id).team:
 		set_controlled(d["by"])
 
 func _marker(c: Color, n: String) -> MeshInstance3D:
@@ -439,6 +447,9 @@ func _process(delta: float) -> void:
 	var situation: String = series.downs.label()
 	if series.state == Match.State.TRY:
 		situation = "TRY for %d (1: from the 3 / 2: from the 10)" % series.try_points
+	banner_t = maxf(0.0, banner_t - delta)
+	if banner_t > 0.0:
+		phase_name = banner + "  " + phase_name
 	var clock_txt: String = series.clock.label()
 	if world.phase == World.Phase.PRESNAP:
 		clock_txt += " | PLAY %d" % int(ceil(series.clock.play_clock))

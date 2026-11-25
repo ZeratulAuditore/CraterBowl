@@ -16,8 +16,21 @@ func think(world, human_ids: Array) -> Dictionary:
 		return out
 	var c = world.carrier()
 	var caught: bool = c != null and c.role != Athlete.Role.QB
+	var loose: bool = world.ball.state == world.ball.State.LOOSE
+	var returning: bool = c != null and c.team != world.offense_team
 	for a in world.athletes:
 		if human_ids.has(a.id):
+			continue
+		if loose:
+			if a.can_act():
+				var bp := Vector2(world.ball.position.x, world.ball.position.y)
+				out[a.id] = {"dir": (bp - a.position).normalized(), "sprint": true}
+			continue
+		if returning:
+			if a.team == c.team:
+				out[a.id] = _escort(world, a, c)
+			else:
+				out[a.id] = _pursue(world, a, c)
 			continue
 		if a.team == world.offense_team:
 			if not offense_enabled:
@@ -31,14 +44,34 @@ func think(world, human_ids: Array) -> Dictionary:
 			elif (a.role == Athlete.Role.OL or a.role == Athlete.Role.C) and c != null:
 				out[a.id] = _protect(world, a, c)
 		elif defense_enabled and c != null and (caught or a.role == Athlete.Role.DL or world.play_time >= T.AI_RUSH_DELAY):
-			var to: Vector2 = c.position - a.position
-			# lead the carrier a little
-			to += c.velocity * clampf(to.length() / T.SPRINT_SPEED, 0.0, 0.6)
-			out[a.id] = {"dir": to.normalized(), "sprint": true}
-			if to.length() <= T.AI_DIVE_RANGE and a.can_act():
-				a.facing = (c.position - a.position).normalized()
-				world.tackle(a.id)
+			out[a.id] = _pursue(world, a, c)
 	return out
+
+func _pursue(world, a, c) -> Dictionary:
+	var to: Vector2 = c.position - a.position
+	to += c.velocity * clampf(to.length() / T.SPRINT_SPEED, 0.0, 0.6)  # lead the carrier
+	if to.length() <= T.AI_DIVE_RANGE and a.can_act():
+		a.facing = (c.position - a.position).normalized()
+		world.tackle(a.id)
+	return {"dir": to.normalized(), "sprint": true}
+
+## Returner's teammates: get in front of the nearest pursuer.
+func _escort(world, a, c) -> Dictionary:
+	if a.id == c.id:
+		return {}
+	var best = null
+	var best_d := INF
+	for o in world.athletes:
+		if o.team == a.team or o.is_grounded():
+			continue
+		var d: float = o.position.distance_to(c.position)
+		if d < best_d:
+			best_d = d
+			best = o
+	if best == null:
+		return {"dir": Vector2(0, -1), "sprint": true}
+	var spot: Vector2 = best.position + (c.position - best.position).normalized() * 0.9
+	return {"dir": (spot - a.position).normalized(), "sprint": true}
 
 ## Throw to the most open eligible receiver after QB_THROW_TIME, or early under pressure.
 func _qb_decide(world, qb) -> void:

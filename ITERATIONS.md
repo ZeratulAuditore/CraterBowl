@@ -91,3 +91,12 @@
 - Game: Q cycles play, F cycles your own route; presnap route art for your team only (yours green); HUD shows PLAY/ROUTE.
 - Tests: 91 unit (+5); flow 44 checks (+6: play call, route art shown/hidden, HUD, AI slant breaks inside).
 - Known gaps: no defensive coverage schemes yet (bots A14 will add man/zone basics).
+
+## 014: A13 Interceptions + fumbles (2026-11-24)
+- Interceptions: lone defender within reach catches it (contested → breakup still). Live returns via `possession_team()`: tackles/blocks/TD direction generalized (defense scores in end zone A).
+- Fumbles, deterministic: dive on a sprinting carrier from behind strips the ball; loose ball bounces/rolls with friction; nearest standing athlete recovers; loose ball OOB → dead, fumbling team keeps.
+- Match: results carry carrier team → turnovers with mirrored spot, pick-six scoring + try for the defense, touchback at 25 when a takeaway is downed in own end zone.
+- AI: chase loose balls; pursue whoever has the ball; returner's teammates escort/block.
+- Game: INTERCEPTION/FUMBLE/RECOVERED banners; offline control follows your team's takeaway.
+- Test runner now counts scripts that fail to load as failures (previously relied only on the grep in test.sh).
+- Tests: 101 unit (+10); flow 47 checks (+3: forced pick, banner, possession flip).
