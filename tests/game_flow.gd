@@ -60,7 +60,17 @@ func _initialize() -> void:
 		[2436, func(): main.world.snap()],
 		[2470, func(): var c = main.world.carrier(); c.position = Vector2(26, 101.0)],
 		[2472, func(): main.next_play(); check(main.series.score[0] == 8, "try good: 8"); check(main.world.offense_team == 1 and absf(main.world.los_y - 25.0) < 0.01, "kickoff: away ball at its 25")],
+		# A09: play clock auto-snap, untimed down, halftime
+		[2473, func(): check(main.hud.text.find("H1 ") >= 0 and main.hud.text.find("PLAY ") >= 0, "HUD game + play clock"); main.series.clock.play_clock = 0.3],
+		[2500, func(): check(main.world.phase == main.World.Phase.LIVE, "play clock auto-snapped"); main.series.clock.remaining = 0.2],
+		[2530, func(): check(main.series.clock.expired(), "clock hit 0:00")],
+		[3200, func(): _force_dead_if_live(); main.next_play(); check(main.series.clock.half == 2, "halftime -> 2nd half"); check(main.world.offense_team == 1 - main.series.opening_receiver, "other team receives 2nd half")],
 	]
+
+func _force_dead_if_live() -> void:
+	if main.world.phase != main.World.Phase.DEAD:
+		main.series.last_result = {"type": "incomplete"}
+		main.world.phase = main.World.Phase.DEAD
 
 func _lead_to_wr() -> void:
 	var qb = main.world.find_role(0, main.Athlete.Role.QB)

@@ -229,7 +229,8 @@ func _unhandled_key_input(e: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if charging:
 		charge = minf(1.0, charge + delta / T.THROW_CHARGE_TIME)
-	if world.phase == World.Phase.DEAD and auto_next:
+	series.tick(delta)
+	if world.phase == World.Phase.DEAD and auto_next and not series.is_final():
 		dead_t += delta
 		if dead_t >= NEXT_PLAY_DELAY:
 			next_play()
@@ -261,7 +262,14 @@ func _process(delta: float) -> void:
 	var situation: String = series.downs.label()
 	if series.state == Match.State.TRY:
 		situation = "TRY for %d (1: from the 3 / 2: from the 10)" % series.try_points
-	phase_name = "HOME %d - AWAY %d | %s | %s | %s" % [series.score[0], series.score[1], situation, side, phase_name]
+	var clock_txt: String = series.clock.label()
+	if world.phase == World.Phase.PRESNAP:
+		clock_txt += " | PLAY %d" % int(ceil(series.clock.play_clock))
+	if series.is_final():
+		var w := series.winner()
+		phase_name = "FINAL: HOME %d - AWAY %d  %s" % [series.score[0], series.score[1], "TIE" if w < 0 else ("HOME WINS" if w == 0 else "AWAY WINS")]
+	else:
+		phase_name = "HOME %d - AWAY %d | %s | %s | %s | %s" % [series.score[0], series.score[1], clock_txt, situation, side, phase_name]
 	var charge_txt := ("   THROW %d%%" % int(charge * 100)) if charging else ""
 	hud.text = charge_txt + "\n" + "%s   Yard: %.1f  Speed: %.1f yd/s  Stamina: %d%%%s" % [
 		phase_name, m.position.y, m.speed(), int(m.stamina * 100), "  (WINDED)" if m.sprint_locked else ""]

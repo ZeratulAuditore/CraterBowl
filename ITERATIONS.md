@@ -55,3 +55,9 @@
 - Game: HUD scoreboard (HOME/AWAY), TRY prompt, 1/2 keys choose try, TOUCHDOWN whistle text.
 - Tests: 66 unit (+6); game flow 27 checks (forced TD → +6 → 2-pt try good → kickoff to away at 25).
 - Known gaps: real kickoffs/returns logged as B09.
+
+## 009: A09 Match flow (2026-11-24)
+- Sim: `clock.gd` (2 × 5:00 halves, game clock runs only during LIVE, 20 s play clock during PRESNAP). Match: `tick()` advances clocks + auto-snaps on play-clock expiry; untimed down (play in progress at 0:00 finishes, try still played); halftime → 2nd half kickoff to the team that didn't open with the ball; FINAL with winner, `next_play()` no-op after.
+- Game: HUD "H1 4:32 | PLAY 17", FINAL banner with winner; auto-advance stops at final.
+- Tests: 72 unit (+6); game flow 32 checks. Flow now runs with `--fixed-fps 60` (uncapped, deterministic): ~53 s → 0.65 s.
+- Known gaps: overtime logged as B10.

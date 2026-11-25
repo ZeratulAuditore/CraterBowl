@@ -3,6 +3,7 @@ extends RefCounted
 
 const World := preload("res://src/sim/world.gd")
 const Downs := preload("res://src/sim/downs.gd")
+const Clock := preload("res://src/sim/clock.gd")
 
 const TD_POINTS := 6
 const SAFETY_POINTS := 2
@@ -15,6 +16,8 @@ signal match_event(name: String, data: Dictionary)
 
 var world: World
 var downs := Downs.new()
+var clock := Clock.new()
+var opening_receiver := 0
 var score := [0, 0]
 var state: State = State.SCRIMMAGE
 var try_points := 1
@@ -27,6 +30,8 @@ func _init(w: World) -> void:
 
 func start(offense: int = 0, los: float = 25.0) -> void:
 	state = State.SCRIMMAGE
+	opening_receiver = offense
+	clock.reset()
 	downs.reset(offense, los)
 	world.set_offense(offense)
 	world.setup_formation(los)
@@ -58,8 +63,24 @@ func _kickoff(receiving: int) -> Dictionary:
 	downs.reset(receiving, KICKOFF_LOS)
 	return {"outcome": "kickoff", "los": KICKOFF_LOS, "offense": receiving}
 
+## Advance clocks; auto-snap when the play clock expires.
+func tick(dt: float) -> void:
+	var snap_now := clock.tick(dt, world.phase == World.Phase.LIVE, world.phase == World.Phase.PRESNAP)
+	if snap_now and world.snap():
+		match_event.emit("auto_snap", {})
+
+func is_final() -> bool:
+	return clock.final
+
+func winner() -> int:
+	if score[0] == score[1]:
+		return -1
+	return 0 if score[0] > score[1] else 1
+
 ## Apply the last play's result and line up for the next snap.
 func next_play() -> Dictionary:
+	if clock.final:
+		return {"outcome": "final"}
 	if last_result.is_empty():
 		last_result = {"type": "incomplete"}
 	var r := last_result
@@ -88,6 +109,19 @@ func next_play() -> Dictionary:
 		last_outcome["safety"] = true
 	else:
 		last_outcome = downs.apply(r)
+	# Half/game ends once the clock is out and no try is pending.
+	if clock.expired() and state != State.TRY:
+		if clock.half < Clock.HALVES:
+			clock.start_next_half()
+			last_outcome = _kickoff(1 - opening_receiver)
+			last_outcome["outcome"] = "halftime"
+		else:
+			clock.final = true
+			world.phase = World.Phase.DEAD
+			last_outcome = {"outcome": "final", "score": score.duplicate(), "winner": winner()}
+			match_event.emit("final", last_outcome)
+			return last_outcome
+	clock.new_play()
 	if downs.offense_team != world.offense_team:
 		world.set_offense(downs.offense_team)
 	world.setup_formation(downs.los)

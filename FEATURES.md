@@ -15,7 +15,7 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [x] A06 Blocking: body collision, push/engage blocks at the line
 - [x] A07 Downs: line of scrimmage, 4 downs, first-down line, turnover on downs
 - [x] A08 Scoring: touchdown, extra point/2pt, safety, kickoff/possession reset
-- [ ] A09 Match flow: game clock, halves, play clock, halftime, end of game
+- [x] A09 Match flow: game clock, halves, play clock, halftime, end of game
 - [ ] A10 Networking core: host/join over ENet, server-authoritative sim, client input + prediction
 - [ ] A11 Teams + positions: 7v7 rosters, position select (QB, C, WR, RB, LB, CB, S), team swap
 - [ ] A12 Routes + play calling: pre-snap route selection, real-time route coordination for receivers
@@ -46,5 +46,6 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [ ] B07 Steam relay / NAT traversal
 - [ ] B08 Tuning data file (TUNING) editable by designers without code
 - [ ] B09 Real kickoffs + returns (A08 uses an automatic touchback)
+- [ ] B10 Overtime (sudden death or alternating possessions) for tied games
 
 ## Discovered (bugs/follow-ups the loop adds here; fixed before new features)

@@ -15,7 +15,7 @@ if grep -E "SCRIPT ERROR|Parse Error|ERROR:|at: " .smoke-output.log | grep -vE "
 fi
 echo "SMOKE PASS ($FRAMES frames)"
 # Scripted gameplay flow through the real scene
-timeout 150 "$GODOT" --headless --path . -s res://tests/game_flow.gd > .flow-output.log 2>&1
+timeout 150 "$GODOT" --headless --path . --fixed-fps 60 -s res://tests/game_flow.gd > .flow-output.log 2>&1
 flow=$?
 grep -E "FLOW|GAME FLOW" .flow-output.log
 if [ $flow -ne 0 ] || grep -E "SCRIPT ERROR|Parse Error" .flow-output.log | grep -q .; then
