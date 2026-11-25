@@ -6,6 +6,7 @@ const World := preload("res://src/sim/world.gd")
 const Athlete := preload("res://src/sim/athlete.gd")
 const PlayerNode := preload("res://src/game/player.gd")
 const Passing := preload("res://src/sim/passing.gd")
+const AI := preload("res://src/sim/ai.gd")
 const T := preload("res://src/sim/tuning.gd")
 const ARC_DOTS := 24
 
@@ -23,6 +24,8 @@ var arc_dots: Array = []
 var charging := false
 var charge := 0.0
 var aim_point := Vector2(26, 45)
+var ai := AI.new()
+var last_whistle := ""
 var camera: Camera3D
 var hud: Label
 
@@ -146,19 +149,17 @@ func _set_charging(on: bool) -> void:
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
 		_set_charging(e.pressed)
+	elif e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_RIGHT and e.pressed:
+		world.tackle(controlled_id)
 
-## Placeholder until routes (A12) and bots (A14): receivers run a go route.
-func _placeholder_ai_inputs() -> Dictionary:
-	var out := {}
-	if world.phase != World.Phase.LIVE:
-		return out
-	for a in world.athletes:
-		if a.team == world.offense_team and (a.role == Athlete.Role.WR or a.role == Athlete.Role.RB):
-			if not world.ball.is_held_by(a.id):
-				out[a.id] = {"dir": Vector2(0, 1), "sprint": false}
-	return out
 
 func _on_world_event(n: String, d: Dictionary) -> void:
+	if n == "incomplete" and last_whistle == "":
+		last_whistle = "INCOMPLETE"
+	if n in ["tackle", "out_of_bounds", "breakup"]:
+		last_whistle = n.replace("_", " ").to_upper()
+	if n == "snap":
+		last_whistle = ""
 	if n == "catch" and world.get_athlete(d["by"]).team == world.offense_team:
 		set_controlled(d["by"])
 
@@ -182,6 +183,8 @@ func _unhandled_key_input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and not e.echo:
 		if e.keycode == KEY_SPACE:
 			world.snap()
+		elif e.keycode == KEY_E:
+			world.tackle(controlled_id)
 		elif e.keycode == KEY_J:
 			_set_charging(true)
 		elif e.keycode == KEY_R:
@@ -191,7 +194,7 @@ func _unhandled_key_input(e: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if charging:
 		charge = minf(1.0, charge + delta / T.THROW_CHARGE_TIME)
-	var inputs := _placeholder_ai_inputs()
+	var inputs := ai.think(world, [controlled_id])
 	inputs[controlled_id] = {"dir": read_input(), "sprint": Input.is_key_pressed(KEY_SHIFT)}
 	world.step(inputs, delta)
 	for v in views:
@@ -208,6 +211,8 @@ func _process(delta: float) -> void:
 	camera.look_at(target + Vector3(0, 1, -4))
 	var m = player.athlete
 	var phase_name: String = ["PRE-SNAP (Space to snap)", "LIVE", "DEAD (R to reset)"][world.phase]
+	if world.phase == World.Phase.DEAD and last_whistle != "":
+		phase_name = "%s at %.1f - R to reset" % [last_whistle, world.dead_ball_spot.y]
 	var charge_txt := ("   THROW %d%%" % int(charge * 100)) if charging else ""
 	hud.text = charge_txt + "\n" + "%s   Yard: %.1f  Speed: %.1f yd/s  Stamina: %d%%%s" % [
 		phase_name, m.position.y, m.speed(), int(m.stamina * 100), "  (WINDED)" if m.sprint_locked else ""]

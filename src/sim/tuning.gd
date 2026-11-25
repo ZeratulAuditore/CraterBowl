@@ -36,3 +36,13 @@ const CATCH_RADIUS := 1.2
 const CATCH_MIN_HEIGHT := 0.3
 const CATCH_MAX_HEIGHT := 2.6
 const CONTEST_MARGIN := 0.35
+
+# Tackling
+const DIVE_SPEED := 11.0
+const DIVE_TIME := 0.35
+const TACKLE_REACH := 1.0
+const DIVE_RECOVER := 1.0
+
+# Placeholder AI
+const AI_RUSH_DELAY := 2.5
+const AI_DIVE_RANGE := 2.0

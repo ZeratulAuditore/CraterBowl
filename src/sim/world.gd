@@ -24,6 +24,8 @@ var _snap_from := Vector3.ZERO
 var _snap_to_id := -1
 var forward_pass_thrown := false
 var last_thrower_id := -1
+var dead_ball_spot := Vector2.ZERO
+var play_time := 0.0
 
 func add_athlete(team: int, role: int, pos: Vector2) -> Athlete:
 	var a := Athlete.new(athletes.size(), team, role, pos, field)
@@ -46,8 +48,9 @@ func setup_formation(los: float) -> void:
 	var cx := field.width / 2.0
 	var c := find_role(offense_team, Athlete.Role.C)
 	var qb := find_role(offense_team, Athlete.Role.QB)
+	play_time = 0.0
 	for a in athletes:
-		a.velocity = Vector2.ZERO
+		a.reset_state()
 		if a.team == offense_team:
 			a.position.y = los - 1.0
 		else:
@@ -99,7 +102,19 @@ func throw(id: int, target: Vector2, power: float) -> bool:
 	event.emit("throw", {"by": id, "target": target, "power": power})
 	return true
 
+## Defender starts a dive tackle in their facing direction.
+func tackle(id: int) -> bool:
+	var a := get_athlete(id)
+	if a == null or phase != Phase.LIVE:
+		return false
+	return a.start_dive()
+
+func carrier() -> Athlete:
+	return get_athlete(ball.holder_id) if ball.state == Ball.State.HELD else null
+
 func step(inputs: Dictionary, dt: float) -> void:
+	if phase == Phase.LIVE:
+		play_time += dt
 	for a in athletes:
 		var inp: Dictionary = inputs.get(a.id, {})
 		a.step(inp.get("dir", Vector2.ZERO), inp.get("sprint", false), dt)
@@ -108,6 +123,29 @@ func step(inputs: Dictionary, dt: float) -> void:
 	_step_snap(dt)
 	_step_flight(dt)
 	_sync_ball()
+	if phase == Phase.LIVE:
+		_check_tackles()
+
+func _check_tackles() -> void:
+	var c := carrier()
+	if c == null:
+		return
+	if field.zone_of(c.position) == Field.Zone.OUT_OF_BOUNDS:
+		_whistle("out_of_bounds", {"carrier": c.id})
+		return
+	for a in athletes:
+		if a.team != offense_team and a.is_diving() and a.position.distance_to(c.position) <= T.TACKLE_REACH:
+			_whistle("tackle", {"by": a.id, "carrier": c.id})
+			return
+
+func _whistle(reason: String, data: Dictionary) -> void:
+	var c := carrier()
+	dead_ball_spot = c.position
+	data["spot"] = dead_ball_spot
+	ball.state = Ball.State.DEAD
+	phase = Phase.DEAD
+	event.emit(reason, data)
+	event.emit("whistle", data)
 
 func _step_flight(dt: float) -> void:
 	if ball.state != Ball.State.IN_FLIGHT or _snap_to_id >= 0:

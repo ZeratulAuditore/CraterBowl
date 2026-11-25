@@ -19,9 +19,17 @@ func _ready() -> void:
 	mi.mesh = cap
 	mi.position.y = 0.95
 	add_child(mi)
+	body = mi
 	sync()
+
+var body: MeshInstance3D
 
 func sync() -> void:
 	position = Vector3(athlete.position.x, 0, -athlete.position.y)
+	if body:
+		# lay the capsule forward while diving or on the ground
+		var down: bool = athlete.is_diving() or athlete.is_grounded()
+		body.rotation.x = -PI / 2.0 if down else 0.0
+		body.position.y = 0.4 if down else 0.95
 	if athlete.speed() > 0.1:
 		rotation.y = atan2(-athlete.velocity.x, athlete.velocity.y)

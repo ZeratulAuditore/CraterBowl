@@ -7,6 +7,7 @@ var frame := 0
 var ok := true
 var steps: Array = []
 var caught_by := -1
+var tackled := false
 var wr_id := -1
 
 func check(cond: bool, msg: String) -> void:
@@ -18,6 +19,7 @@ func _initialize() -> void:
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 	main.world.event.connect(func(n, d): if n == "catch": caught_by = d["by"])
+	main.world.event.connect(func(n, d): if n == "tackle" and caught_by >= 0: tackled = true)
 	steps = [
 		[5, func(): check(main.world.phase == main.World.Phase.PRESNAP, "starts presnap")],
 		[6, func(): check(main.world.snap(), "snap")],
@@ -35,6 +37,8 @@ func _initialize() -> void:
 		[530, func(): main._set_charging(false)],
 		[531, func(): check(main.world.forward_pass_thrown, "lead pass thrown")],
 		[800, func(): check(caught_by >= 0, "WR caught it"); check(main.controlled_id == caught_by, "control switched to receiver")],
+		# A05: idle receiver gets run down by AI pursuit and tackled
+		[1300, func(): check(tackled, "AI defender tackled the carrier"); check(main.world.phase == main.World.Phase.DEAD, "whistle: play dead"); check(main.last_whistle == "TACKLE", "HUD whistle reason")],
 	]
 
 func _lead_to_wr() -> void:

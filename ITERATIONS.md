@@ -28,3 +28,10 @@
 - Game: placeholder go routes for WR/RB after snap; control switches to the receiver on a catch; R resets control to QB.
 - Tests: 34 unit (+7, one older passing test retargeted off the C's line); game flow 10 checks incl. real lead pass → catch → control switch.
 - Known gaps: auto-catch only (catch/dive button later), defender "win" is a breakup until interceptions (A13).
+
+## 005: A05 Tackling (2026-11-24)
+- Sim: committed dive tackle (0.35 s @ 11 yd/s in facing dir, 1.0 yd reach; miss = 1.0 s grounded), `facing` on motion, whistle on tackle/carrier OOB → DEAD + `dead_ball_spot`, sacks behind LOS, `play_time`.
+- `src/sim/ai.gd`: placeholder AI moved into the sim (go routes; defenders hold 2.5 s then pursue with lead + dive in range; pursue immediately after a catch). Base for A14 bots.
+- Game: E / RMB dive, diving/grounded athletes lie flat, HUD shows whistle reason + spot.
+- Tests: 41 unit (+7); game flow 13 checks (catch → AI pursuit → tackle → HUD reason). Flow caught a HUD ordering bug (generic whistle overwrote reason).
+- Known gaps: no broken tackles/stiff-arm yet (could come with B06 juice), defense not human-playable until A11 team select.

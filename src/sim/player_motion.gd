@@ -6,6 +6,7 @@ const Field := preload("res://src/sim/field.gd")
 
 var position := Vector2.ZERO
 var velocity := Vector2.ZERO
+var facing := Vector2(0, 1)
 var stamina := 1.0
 var sprint_locked := false
 var field: Field
@@ -26,6 +27,8 @@ func step(input: Vector2, wants_sprint: bool, dt: float) -> void:
 	var rate := T.ACCEL if dir.length_squared() > 0.0001 else T.DECEL
 	velocity = velocity.move_toward(target, rate * dt)
 	position = field.clamp_playable(position + velocity * dt)
+	if dir.length_squared() > 0.0001:
+		facing = dir.normalized()
 
 	if sprinting:
 		stamina = maxf(0.0, stamina - T.STAMINA_DRAIN * dt)
