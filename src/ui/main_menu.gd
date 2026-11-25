@@ -66,12 +66,14 @@ func build() -> void:
 	left.add_theme_constant_override("separation", 10)
 	row.add_child(left)
 	var logo := TextureRect.new()
-	logo.texture = UITheme.svg_texture("res://assets/brand/logo_stacked.svg", 0.5)
+	logo.texture = UITheme.svg_texture("res://assets/brand/logo_stacked.svg", 0.38)
+	if logo.texture == null:
+		push_error("MENU logo missing (svg not exported?)")
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	logo.custom_minimum_size = Vector2(320, 265)
+	logo.custom_minimum_size = Vector2(320, 205)
 	left.add_child(logo)
 	nav = VBoxContainer.new()
-	nav.add_theme_constant_override("separation", 8)
+	nav.add_theme_constant_override("separation", 6)
 	left.add_child(nav)
 	for item in [["online", "Play online"], ["bots", "Play vs bots"], ["practice", "Practice"],
 			["locker", "Locker"], ["leaders", "Leaderboards"], ["replays", "Replays"],
@@ -79,7 +81,7 @@ func build() -> void:
 		var b := Button.new()
 		b.text = item[1].to_upper()
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.add_theme_font_size_override("font_size", 24)
+		b.add_theme_font_size_override("font_size", 21)
 		var id: String = item[0]
 		b.pressed.connect(func(): show_screen(id))
 		b.focus_entered.connect(func(): if id != "quit" and current != "welcome": show_screen(id))
@@ -202,7 +204,7 @@ func _screen_practice() -> void:
 		content.add_child(h)
 		var b := _button(k.capitalize(), func(): launch.start_game({"practice": k}), h)
 		b.custom_minimum_size = Vector2(170, 0)
-		_text(desc.get(k, ""), h)
+		_text(desc.get(k, ""), h).size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 func _screen_locker() -> void:
 	content.add_child(UITheme.heading("Locker"))
@@ -430,7 +432,8 @@ func _text(t: String, parent: Node = null) -> Label:
 	var l := Label.new()
 	l.text = t
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if parent == null:
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	l.add_theme_font_override("font", UITheme.font(400))
 	l.add_theme_font_size_override("font_size", 18)
 	(parent if parent else content).add_child(l)

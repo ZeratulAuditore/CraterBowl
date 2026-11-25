@@ -14,6 +14,7 @@ boot_splash/image="res://assets/brand/logo_stacked.png"
 boot_splash/fullsize=false
 boot_splash/use_filter=true
 config/icon="res://assets/brand/icon_256.png"
+run/flush_stdout_on_print=true
 
 [autoload]
 Launch="*res://src/ui/launch.gd"
@@ -23,3 +24,7 @@ window/size/viewport_width=1280
 window/size/viewport_height=720
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+
+[rendering]
+
+textures/vram_compression/import_etc2_astc=true

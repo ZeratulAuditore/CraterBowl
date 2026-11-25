@@ -28,6 +28,7 @@ var _stick := Vector2.ZERO
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	print("Crater Bowl v%s (%s)" % [version(), OS.get_name()])
 	var args := OS.get_cmdline_user_args()
 	for a in args:
 		if a.begins_with("--settings-file="):

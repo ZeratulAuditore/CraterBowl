@@ -77,11 +77,13 @@ static func build() -> Theme:
 	return t
 
 ## Rasterize an SVG at runtime (crisp at any scale, no import step needed).
+## Exported builds only contain the imported texture, so fall back to load().
 static func svg_texture(path: String, scale: float = 1.0) -> Texture2D:
+	var src := FileAccess.get_file_as_string(path) if FileAccess.file_exists(path) else ""
 	var img := Image.new()
-	if img.load_svg_from_string(FileAccess.get_file_as_string(path), scale) != OK:
-		return null
-	return ImageTexture.create_from_image(img)
+	if src != "" and img.load_svg_from_string(src, scale) == OK:
+		return ImageTexture.create_from_image(img)
+	return load(path) as Texture2D
 
 static func heading(text: String, size: int = 34, color: Color = CREAM) -> Label:
 	var l := Label.new()
