@@ -283,15 +283,26 @@ func _jumbotrons(ox: float, oz: float, team_colors: Array) -> void:
 		var lab := Label3D.new()
 		lab.font = Mats.number_font()
 		lab.font_size = 160
-		lab.pixel_size = 0.03
+		lab.pixel_size = 0.022
 		lab.outline_size = 0
 		lab.modulate = Color(1, 1, 1)
-		lab.position = Vector3(0, 0, -sz * 0.75)
+		lab.position = Vector3(0, -2.6, -sz * 0.75)
 		lab.rotation.y = PI if sz > 0.0 else 0.0
 		lab.text = "CRATER BOWL"
 		lab.name = "JumboText"
 		frame.add_child(lab)
 		jumbo_labels.append(lab)
+		var logo_tex: Texture2D = load("res://assets/brand/logo_wide.svg")
+		if logo_tex:
+			var logo := Sprite3D.new()
+			logo.name = "JumboLogo"
+			logo.texture = logo_tex
+			logo.pixel_size = 15.0 / maxf(logo_tex.get_width(), 1.0)
+			logo.double_sided = false
+			logo.shaded = false
+			logo.position = Vector3(0, 3.4, -sz * 0.75)
+			logo.rotation.y = lab.rotation.y
+			frame.add_child(logo)
 
 func _benches(w: float, L: float, team_colors: Array) -> void:
 	for i in 2:
