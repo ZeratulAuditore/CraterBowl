@@ -33,7 +33,7 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [ ] A24 Cosmetics: earnable through play, no gameplay effect, character customization
 - [ ] A25 Replays: record + playback of matches/plays
 - [ ] A26 Presentation: original sci-fi lunar stadium, animations, lighting pass
-- [ ] A27 Menus/HUD/settings: main menu, scoreboard HUD, controls rebinding, audio/video settings
+- [ ] A27 Menus/HUD/settings: main menu, scoreboard HUD, gamepad + InputMap actions, controls rebinding, audio/video settings
 - [ ] A28 Parity audit: walk this list end to end in a built game, file bugs as new items
 
 ## Phase B: Better than Gridiron (from PLAN.md)
@@ -47,4 +47,3 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [ ] B08 Tuning data file (TUNING) editable by designers without code
 
 ## Discovered (bugs/follow-ups the loop adds here; fixed before new features)
-- [ ] D01 Controls: gamepad support + InputMap actions (currently raw keys/mouse) — fold into A27 unless a playtest needs it earlier
