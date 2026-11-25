@@ -42,6 +42,8 @@ docs-only commits skip it. Bypass with `--no-verify` only in an emergency, and s
 - A new gate must fail when you plant the bug it's meant to catch. Plant it once, see it go red, then revert.
 - Never weaken or delete an older test to go green. If a test encodes old behavior on purpose,
   change it in the same commit as the behavior and say so in the message.
+- Anything that binds a port picks a random one per run (`net_test.sh`, `mm_test.sh`, `menu_flow.gd`):
+  several sessions run `smoke.sh` at once, and a fixed port made `menu_flow` fail whenever two overlapped.
 - Timing checks use medians and generous budgets. Count-based checks (triangles, nodes, events) are preferred
   because they're identical on every machine.
 
