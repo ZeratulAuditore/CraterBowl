@@ -108,7 +108,7 @@ After that, follow the list order below. B01/B02 (line play, press) come after t
 
 ### [~] C08c Defense and B03 huddle (claimed: codex 2026-11-25)
 
-### [ ] C08d Pre-snap defensive roam + LOS barrier (plan: docs/iterations/032-presnap-defense-roam.md)
+### [x] C08d Pre-snap defensive roam + LOS barrier (plan: docs/iterations/032-presnap-defense-roam.md)
 - **Why:** In the reference, defenders spawn in stance and press Space to break it and roam pre-snap. DL stay set. A see-through animated hex wall at the LOS marks the limit. Ours: everyone (DL too) can already move pre-snap, they hit an invisible clamp, and Space on defense does nothing.
 - **Accept:** Defense lines up locked. Space breaks stance for LB/CB/S only. The neutral-zone clamp is shared by host and client prediction. The barrier is visible pre-snap with proximity reveal and contact ripples, and dissolves at the snap.
 - Splits the "non-DL defenders can move freely" bullet out of C08b, so it can ship independently of the playbook work (C08a).

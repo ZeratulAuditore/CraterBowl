@@ -215,6 +215,9 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	replay.meta = {"size": match_size, "mode": match_mode}
 	replay_active = false
 	summary_lines = []
+	if postgame != null:
+		postgame.get_parent().queue_free()
+		postgame = null
 	potg = []
 	team_totals = []
 	postgame_t = -1.0

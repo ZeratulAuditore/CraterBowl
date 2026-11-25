@@ -15,6 +15,7 @@ const PortMapper := preload("res://src/net/port_mapper.gd")
 const NetSession := preload("res://src/net/net_session.gd")
 const Lobby := preload("res://src/ui/lobby_stage.gd")
 const Music := preload("res://src/ui/music_player.gd")
+const GameOverview := preload("res://src/ui/game_overview.gd")
 const QUEUE_HOST_PORT := 24566    # fixed so UPnP can map it before queueing
 const SIZES := [3, 5, 7]
 const TOP_H := 78
@@ -107,6 +108,9 @@ func build() -> void:
 	_set_mode(mode_id)
 	if settings().player_name == "":
 		show_screen("welcome")
+	elif not launch.last_match.is_empty():
+		show_screen("overview")   # just back from a match: show how it went
+		play_button.grab_focus.call_deferred()
 	else:
 		show_screen("home")
 		play_button.grab_focus.call_deferred()
@@ -359,8 +363,11 @@ func _build_footer() -> void:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 26)
 	bar.add_child(h)
-	for l in [["Replays", func(): show_screen("replays")], ["Controls", func(): show_screen("settings")],
-			["Report a bug", func(): OS.shell_open(BUG_URL)], ["Quit", func(): show_screen("quit")]]:
+	var links := [["Replays", func(): show_screen("replays")], ["Controls", func(): show_screen("settings")],
+			["Report a bug", func(): OS.shell_open(BUG_URL)], ["Quit", func(): show_screen("quit")]]
+	if not launch.last_match.is_empty():
+		links.push_front(["Last game", func(): show_screen("overview")])
+	for l in links:
 		var b := Button.new()
 		b.text = str(l[0]).to_upper()
 		b.focus_mode = Control.FOCUS_NONE
@@ -497,6 +504,22 @@ func show_screen(id: String) -> void:
 	_refresh_profile()
 	if not home:
 		call("_screen_" + id)
+
+## Last match: result, players of the game, team stats, your line (src/ui/game_overview.gd).
+func _screen_overview() -> void:
+	var ov: Dictionary = launch.last_match
+	if ov.is_empty():
+		_text("No finished match yet this session.")
+		return
+	GameOverview.build(content, ov)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 10)
+	content.add_child(h)
+	_button("Play again", play_selected, h).name = "PlayAgain"
+	var rp := str(ov.get("replay", ""))
+	if rp != "" and FileAccess.file_exists(rp):
+		_button("Watch replay", func(): launch.start_game({"replay": rp}), h)
+	_button("Close", func(): show_screen("home"), h).name = "CloseOverview"
 
 func _screen_welcome() -> void:
 	content.add_child(UITheme.heading("Welcome to the Crater", 40, UITheme.CYAN))
