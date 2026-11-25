@@ -19,7 +19,7 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [x] A10a Networking core: protocol, host/join over ENet, server-authoritative sim, client input → snapshots
 - [x] A10b Netcode feel: client-side prediction for own athlete + snapshot interpolation for others
 - [x] A11 Teams + positions: 7v7 rosters, position select (QB, C, WR, RB, LB, CB, S), team swap
-- [ ] A12 Routes + play calling: pre-snap route selection, real-time route coordination for receivers
+- [x] A12 Routes + play calling: pre-snap route selection, real-time route coordination for receivers
 - [ ] A13 Interceptions + fumbles: turnovers during live play
 - [ ] A14 Bots: AI fills empty slots for offense and defense
 - [ ] A15 Match sizes: custom matches 3v3, 5v5 and 7v7 (field scaling + roster rules)

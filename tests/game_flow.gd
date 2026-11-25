@@ -11,6 +11,8 @@ var tackled := false
 var spot := 0.0
 var series_events := 0
 var before_id := -1
+var slant_wr = null
+var slant_x := 0.0
 var wr_id := -1
 
 func check(cond: bool, msg: String) -> void:
@@ -72,7 +74,20 @@ func _initialize() -> void:
 		[3203, func(): check(main.hud.text.find("[TAB pos") >= 0, "HUD shows position")],
 		[3204, func(): main.world.snap()],
 		[3205, func(): check(not main.do_action({"a": "team"}), "no team swap during live play")],
+		# A12: play call -> route art -> receivers run it
+		[3206, func(): _force_dead_if_live(); main.series.start(0, 30.0); if main.world.get_athlete(main.my_id).team != 0: main.do_action({"a": "team"})],
+		[3207, func(): check(main.do_action({"a": "play", "p": "Slants"}), "call Slants"); check(main.world.play_name == "Slants", "play set")],
+		[3209, func(): check(main.route_mesh.get_surface_count() > 0, "route lines drawn presnap"); check(main.hud.text.find("PLAY: Slants") >= 0, "HUD shows play")],
+		[3210, func(): slant_wr = _ai_receiver(); slant_x = slant_wr.position.x; main.world.snap()],
+		[3300, func(): check(absf(slant_wr.position.x - slant_x) > 2.0 and absf(slant_wr.position.x - main.field.width / 2.0) < absf(slant_x - main.field.width / 2.0), "AI WR broke inside on slant (dx %.1f)" % (slant_wr.position.x - slant_x)); check(main.route_mesh.get_surface_count() == 0, "route lines hidden after snap")],
 	]
+
+## First receiver not controlled by the human (humans don't auto-run routes).
+func _ai_receiver():
+	for r in main.world.receivers_in_order():
+		if r.id != main.controlled_id and r.role == main.Athlete.Role.WR:
+			return r
+	return null
 
 func _force_dead_if_live() -> void:
 	if main.world.phase != main.World.Phase.DEAD:

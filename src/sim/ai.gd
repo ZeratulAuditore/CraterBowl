@@ -27,7 +27,7 @@ func think(world, human_ids: Array) -> Dictionary:
 					_qb_decide(world, a)
 				continue
 			if a.role == Athlete.Role.WR or a.role == Athlete.Role.RB:
-				out[a.id] = {"dir": _avoid(world, a, Vector2(0, 1)), "sprint": false}
+				out[a.id] = {"dir": _avoid(world, a, _route_dir(world, a)), "sprint": false}
 			elif (a.role == Athlete.Role.OL or a.role == Athlete.Role.C) and c != null:
 				out[a.id] = _protect(world, a, c)
 		elif defense_enabled and c != null and (caught or a.role == Athlete.Role.DL or world.play_time >= T.AI_RUSH_DELAY):
@@ -66,6 +66,28 @@ func _qb_decide(world, qb) -> void:
 		return
 	var from := Vector3(qb.position.x, qb.position.y, T.RELEASE_HEIGHT)
 	world.throw(qb.id, Passing.lead_target(from, best.position, best.velocity, 0.85), 0.85)
+
+## Follow the assigned route path; after the last waypoint keep the final direction.
+var _route_progress := {}   # athlete_id -> waypoint index (reset when paths change)
+var _paths_ref = null
+
+func _route_dir(world, a) -> Vector2:
+	if world.route_paths != _paths_ref:
+		_paths_ref = world.route_paths
+		_route_progress = {}
+	var path: Array = world.route_paths.get(a.id, [])
+	if path.is_empty():
+		return Vector2(0, 1)
+	var i: int = _route_progress.get(a.id, 0)
+	while i < path.size() and a.position.distance_to(path[i]) < 1.0:
+		i += 1
+	_route_progress[a.id] = i
+	if i < path.size():
+		return (path[i] - a.position).normalized()
+	var last: Vector2 = path[-1]
+	var prev: Vector2 = path[-2] if path.size() > 1 else last - Vector2(0, 1)
+	var d := (last - prev).normalized()
+	return d if d.length_squared() > 0.0 else Vector2(0, 1)
 
 ## Steer around an opponent standing directly in the running lane.
 func _avoid(world, a, dir: Vector2) -> Vector2:

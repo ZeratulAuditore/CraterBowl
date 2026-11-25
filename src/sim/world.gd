@@ -8,6 +8,7 @@ const Field := preload("res://src/sim/field.gd")
 const Athlete := preload("res://src/sim/athlete.gd")
 const Ball := preload("res://src/sim/ball.gd")
 const Passing := preload("res://src/sim/passing.gd")
+const Routes := preload("res://src/sim/routes.gd")
 
 enum Phase { PRESNAP, LIVE, DEAD }
 
@@ -26,6 +27,9 @@ var forward_pass_thrown := false
 var last_thrower_id := -1
 var dead_ball_spot := Vector2.ZERO
 var play_time := 0.0
+var play_name := "Verticals"
+var route_of := {}      # athlete_id -> route name (eligible offense receivers)
+var route_paths := {}   # athlete_id -> Array[Vector2] absolute, set at snap
 
 ## role/pos are for the athlete's current side. Optional two-way setup:
 ## off/def roles + x via set_two_way().
@@ -86,8 +90,46 @@ func setup_formation(los: float) -> void:
 	forward_pass_thrown = false
 	last_thrower_id = -1
 	_snap_to_id = -1
+	route_paths = {}
+	call_play("Verticals")
 	phase = Phase.PRESNAP
 	_sync_ball()
+
+## Eligible receivers in playbook order: left WR, right WR, RB.
+func receivers_in_order() -> Array:
+	var wrs := []
+	var rb = null
+	for a in athletes:
+		if a.team != offense_team:
+			continue
+		if a.role == Athlete.Role.WR:
+			wrs.append(a)
+		elif a.role == Athlete.Role.RB:
+			rb = a
+	wrs.sort_custom(func(p, q): return p.home_x < q.home_x)
+	if rb:
+		wrs.append(rb)
+	return wrs
+
+func call_play(name: String) -> bool:
+	if not Routes.PLAYBOOK.has(name):
+		return false
+	play_name = name
+	route_of = {}
+	var recv := receivers_in_order()
+	var routes: Array = Routes.PLAYBOOK[name]
+	for i in mini(recv.size(), routes.size()):
+		route_of[recv[i].id] = routes[i]
+	return true
+
+func set_route(id: int, route: String) -> bool:
+	var a := get_athlete(id)
+	if a == null or a.team != offense_team or not is_eligible_receiver(a) or a.role == Athlete.Role.QB:
+		return false
+	if not Routes.ROUTES.has(route):
+		return false
+	route_of[id] = route
+	return true
 
 func snap() -> bool:
 	if phase != Phase.PRESNAP:
@@ -101,6 +143,10 @@ func snap() -> bool:
 	_snap_t = 0.0
 	_snap_from = ball.position
 	_snap_to_id = qb.id
+	route_paths = {}
+	for id in route_of:
+		var a := get_athlete(id)
+		route_paths[id] = Routes.path_for(route_of[id], a.position, field.width)
 	phase = Phase.LIVE
 	event.emit("snap", {"qb": qb.id})
 	return true

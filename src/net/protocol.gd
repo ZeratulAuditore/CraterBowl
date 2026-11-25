@@ -1,6 +1,7 @@
 extends RefCounted
 ## Wire protocol: snapshot codec, input sanitizing, authoritative action routing. Pure.
 
+const Routes := preload("res://src/sim/routes.gd")
 const DIVE_FLAG := 1
 const GROUND_FLAG := 2
 
@@ -20,8 +21,15 @@ static func encode_snapshot(m, tick: int, acks: Dictionary = {}) -> Dictionary:
 		"d": PackedFloat32Array([m.downs.offense_team, m.downs.down, m.downs.los, m.downs.first_down_y]),
 		"s": PackedInt32Array(m.score),
 		"c": PackedFloat32Array([m.clock.half, m.clock.remaining, m.clock.play_clock, 1.0 if m.clock.final else 0.0]),
-		"ms": m.state, "tp": m.try_points, "ack": acks,
+		"ms": m.state, "tp": m.try_points, "ack": acks, "pl": w.play_name, "rt": _routes_array(w),
 	}
+
+static func _routes_array(w) -> PackedInt32Array:
+	var out := PackedInt32Array()
+	out.resize(w.athletes.size())
+	for i in w.athletes.size():
+		out[i] = Routes.route_index(w.route_of.get(i, "")) if w.route_of.has(i) else -1
+	return out
 
 static func apply_snapshot(m, s: Dictionary) -> void:
 	var w = m.world
@@ -61,6 +69,12 @@ static func apply_snapshot(m, s: Dictionary) -> void:
 	m.clock.final = c[3] > 0.5
 	m.state = s["ms"]
 	m.try_points = s["tp"]
+	w.play_name = str(s.get("pl", w.play_name))
+	var rt: PackedInt32Array = s.get("rt", PackedInt32Array())
+	w.route_of = {}
+	for i in rt.size():
+		if rt[i] >= 0 and rt[i] < Routes.ROUTE_NAMES.size():
+			w.route_of[i] = Routes.ROUTE_NAMES[rt[i]]
 
 static func _finite_v(v) -> bool:
 	return v is Vector2 and is_finite(v.x) and is_finite(v.y)
@@ -92,6 +106,12 @@ static func sanitize_action(act) -> Dictionary:
 		"try":
 			var n = act.get("n", 1)
 			return {"a": "try", "n": n} if n is int and (n == 1 or n == 2) else {}
+		"play":
+			var p = act.get("p", "")
+			return {"a": "play", "p": p} if p is String and Routes.PLAYBOOK.has(p) else {}
+		"route":
+			var r = act.get("r", "")
+			return {"a": "route", "r": r} if r is String and Routes.ROUTES.has(r) else {}
 	return {}
 
 ## Authoritative: perform `action` on behalf of `athlete_id`. Returns success.
@@ -112,4 +132,8 @@ static func apply_action(m, athlete_id: int, action: Dictionary) -> bool:
 			return w.throw(athlete_id, act["t"], act["p"])
 		"try":
 			return ath.team == w.offense_team and m.choose_try(act["n"])
+		"play":
+			return ath.team == w.offense_team and w.phase == w.Phase.PRESNAP and w.call_play(act["p"])
+		"route":
+			return w.phase == w.Phase.PRESNAP and w.set_route(athlete_id, act["r"])
 	return false

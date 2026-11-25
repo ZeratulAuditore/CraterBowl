@@ -83,3 +83,11 @@
 - Online: server's Roster replaces A10a's fixed pool (NetSession `assign_fn`/`release_fn`, `set_assignment` re-welcomes); clients request cycle/team/pick as reliable actions; client resets prediction on reassignment.
 - Tests: 86 unit (+6); flow 38 checks (+6 incl. no swap while live); net 9 checks (+2: team-swap reassignment, occupied-slot pick rejected). Fixed a test-ordering bug (initial-team check ran after the deliberate swap).
 - Known gaps: no lobby UI to see who's where (A16).
+
+## 013: A12 Routes + play calling (2026-11-24)
+- `src/sim/routes.gd`: 9 mirrored routes (GO, SLANT, OUT, IN, CURL, POST, CORNER, FLAT, WHEEL) + 6-play playbook (Verticals, Slants, Mesh, Curls, Flood, Deep Shot) by receiver order (left WR, right WR, RB).
+- World: `call_play`, `set_route` (eligible receivers only), route paths computed at snap; defaults to Verticals each play. AI receivers follow paths (then continue final direction) with lane avoidance.
+- Protocol: `play`/`route` actions (offense-only, presnap-only, sanitized), snapshots carry play + per-athlete routes.
+- Game: Q cycles play, F cycles your own route; presnap route art for your team only (yours green); HUD shows PLAY/ROUTE.
+- Tests: 91 unit (+5); flow 45 checks (+7: play call, route art shown/hidden, HUD, AI slant breaks inside).
+- Known gaps: no defensive coverage schemes yet (bots A14 will add man/zone basics).
