@@ -29,6 +29,11 @@ const MMServer := preload("res://src/net/mm_server.gd")
 const MMClient := preload("res://src/net/mm_client.gd")
 const InviteCode := preload("res://src/net/invite_code.gd")
 const T := preload("res://src/sim/tuning.gd")
+const Presentation := preload("res://src/game/presentation.gd")
+const FieldArt := preload("res://src/game/art/field_art.gd")
+const StadiumArt := preload("res://src/game/art/stadium.gd")
+const ArtMats := preload("res://src/game/art/materials.gd")
+const ArtQuality := preload("res://src/game/art/quality.gd")
 const ARC_DOTS := 24
 
 const TEAM_COLORS := [Color(0.95, 0.75, 0.15), Color(0.3, 0.8, 0.95)]
@@ -89,11 +94,14 @@ var latest_snap_tick := 0
 var latest_snap_at := 0.0
 var camera: Camera3D
 var hud: Label
+var pres: Presentation   # visuals-only layer (ball model, rings, FX, overlay)
 
 static func to_world(p: Vector2, h: float = 0.0) -> Vector3:
 	return Vector3(p.x, h, -p.y)
 
 func _ready() -> void:
+	pres = Presentation.new()
+	add_child(pres)
 	_build_environment()
 	_build_ball_view()
 	_build_aim_visuals()
@@ -128,6 +136,10 @@ func _ready() -> void:
 	var rlm := StandardMaterial3D.new()
 	rlm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	rlm.vertex_color_use_as_albedo = true
+	rlm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	rlm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	rlm.no_depth_test = false
+	route_lines.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	route_lines.material_override = rlm
 	add_child(route_lines)
 	for v in views:
@@ -220,7 +232,7 @@ func _spawn_teams() -> void:
 	for a in world.athletes:
 		var v := PlayerNode.new()
 		v.name = "Athlete%d" % a.id
-		v.setup(a, TEAM_COLORS[a.team])
+		v.setup(a, TEAM_COLORS[a.team], world)
 		athlete_root.add_child(v)
 		views.append(v)
 	my_id = drill_me if drill_me >= 0 else roster.auto_assign(LOCAL_PLAYER)
@@ -228,40 +240,34 @@ func _spawn_teams() -> void:
 	player = views[controlled_id]
 
 func _build_ball_view() -> void:
-	ball_view = MeshInstance3D.new()
-	ball_view.name = "Ball"
-	var sm := SphereMesh.new()
-	sm.radius = 0.18
-	sm.height = 0.36
-	var bm := StandardMaterial3D.new()
-	bm.albedo_color = Color(0.45, 0.25, 0.1)
-	sm.material = bm
-	ball_view.mesh = sm
-	ball_view.scale = Vector3(1, 1, 1.7)
+	ball_view = Presentation.make_ball()
 	add_child(ball_view)
 
 func _build_aim_visuals() -> void:
 	reticle = MeshInstance3D.new()
 	reticle.name = "Reticle"
-	var tm := TorusMesh.new()
-	tm.inner_radius = 0.6
-	tm.outer_radius = 0.8
-	var rm := StandardMaterial3D.new()
-	rm.albedo_color = Color(1, 1, 1, 0.8)
-	rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	tm.material = rm
-	reticle.mesh = tm
+	var q := QuadMesh.new()
+	q.size = Vector2(2.2, 2.2)
+	q.orientation = PlaneMesh.FACE_Y
+	reticle.mesh = q
+	var rm := ArtMats.shader("res://src/game/art/ring.gdshader")
+	rm.set_shader_parameter("color", Color(1.0, 1.0, 1.0, 0.9))
+	rm.set_shader_parameter("dashes", 4.0)
+	rm.set_shader_parameter("pulse", 1.0)
+	reticle.material_override = rm
+	reticle.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(reticle)
-	var dm := StandardMaterial3D.new()
-	dm.albedo_color = Color(1, 0.9, 0.3)
-	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	for i in ARC_DOTS:
 		var d := MeshInstance3D.new()
 		var sm := SphereMesh.new()
-		sm.radius = 0.08
-		sm.height = 0.16
-		sm.material = dm
+		var r := lerpf(0.05, 0.11, float(i) / ARC_DOTS)
+		sm.radius = r
+		sm.height = r * 2.0
+		sm.radial_segments = 8
+		sm.rings = 4
 		d.mesh = sm
+		d.material_override = ArtMats.emissive(Color(1.0, 0.9, 0.3).lerp(Color(1.0, 0.55, 0.15), float(i) / ARC_DOTS), 3.0)
+		d.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		d.visible = false
 		add_child(d)
 		arc_dots.append(d)
@@ -710,6 +716,8 @@ func _unhandled_input(e: InputEvent) -> void:
 
 
 func _on_world_event(n: String, d: Dictionary) -> void:
+	if pres:
+		pres.on_event(n, d)
 	if n == "incomplete" and last_whistle == "":
 		last_whistle = "INCOMPLETE"
 	if n in ["tackle", "out_of_bounds", "breakup", "touchdown", "explode"]:
@@ -743,13 +751,14 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 
 func _marker(c: Color, n: String) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(field.width, 0.13, 0.25)
-	var m := StandardMaterial3D.new()
-	m.albedo_color = c
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	bm.material = m
-	mi.mesh = bm
+	var q := QuadMesh.new()
+	q.size = Vector2(field.width, 0.55)
+	q.orientation = PlaneMesh.FACE_Y
+	mi.mesh = q
+	var m := ArtMats.shader("res://src/game/art/line_marker.gdshader")
+	m.set_shader_parameter("color", c)
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.name = n
 	field_root.add_child(mi)
 	return mi
@@ -879,26 +888,73 @@ func _render() -> void:
 	ball_view.position = Vector3(b.x, b.z, -b.y)
 	_update_aim()
 	_update_arc()
-	los_marker.position = Vector3(field.width / 2.0, 0.0, -series.downs.los)
-	fd_marker.position = Vector3(field.width / 2.0, 0.0, -series.downs.first_down_y)
+	los_marker.position = Vector3(field.width / 2.0, 0.03, -series.downs.los)
+	fd_marker.position = Vector3(field.width / 2.0, 0.03, -series.downs.first_down_y)
 	fd_marker.visible = not series.downs.is_goal_to_go()
 	_draw_routes()
 
-## Presnap route art for your own offense only (the defense never sees it).
+## Presnap route art for your own offense only (the defense never sees it):
+## flat glowing ribbons, a distinct color per receiver, arrowheads, start dots.
+const ROUTE_COLORS := [Color(1.0, 0.82, 0.25), Color(1.0, 0.45, 0.75), Color(0.55, 0.6, 1.0), Color(1.0, 0.55, 0.2), Color(0.75, 0.5, 1.0)]
+const MY_ROUTE_COLOR := Color(0.35, 1.0, 0.55)
+
 func _draw_routes() -> void:
 	route_mesh.clear_surfaces()
 	var me = world.get_athlete(my_id)
 	if me == null or world.phase != World.Phase.PRESNAP or me.team != world.offense_team or world.route_of.is_empty():
 		return
-	route_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
+	route_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	var k := 0
 	for id in world.route_of:
 		var a = world.get_athlete(id)
 		var pts: Array = [a.position] + Routes.path_for(world.route_of[id], a.position, field.width)
-		route_mesh.surface_set_color(Color(1.0, 0.95, 0.3) if id != my_id else Color(0.3, 1.0, 0.5))
-		for k in range(pts.size() - 1):
-			route_mesh.surface_add_vertex(Vector3(pts[k].x, 0.15, -pts[k].y))
-			route_mesh.surface_add_vertex(Vector3(pts[k + 1].x, 0.15, -pts[k + 1].y))
+		var mine: bool = id == my_id
+		var c: Color = MY_ROUTE_COLOR if mine else ROUTE_COLORS[k % ROUTE_COLORS.size()]
+		k += 1
+		_route_ribbon(pts, c, 0.42 if mine else 0.3)
 	route_mesh.surface_end()
+
+func _route_ribbon(pts: Array, c: Color, wdt: float) -> void:
+	var h := 0.06
+	var total := 0.0
+	for i in range(pts.size() - 1):
+		total += (pts[i + 1] - pts[i]).length()
+	var run := 0.0
+	for i in range(pts.size() - 1):
+		var p0: Vector2 = pts[i]
+		var p1: Vector2 = pts[i + 1]
+		var seg := p1 - p0
+		if seg.length() < 0.01:
+			continue
+		var dir := seg.normalized()
+		var is_last := i == pts.size() - 2
+		if is_last:   # leave room for the arrowhead
+			p1 = p1 - dir * minf(1.1, seg.length() * 0.6)
+		var n := Vector2(-dir.y, dir.x) * wdt * 0.5
+		var a0 := c * Color(1, 1, 1, lerpf(0.45, 0.95, run / maxf(total, 0.01)))
+		run += seg.length()
+		var a1 := c * Color(1, 1, 1, lerpf(0.45, 0.95, run / maxf(total, 0.01)))
+		_tri(p0 + n, p0 - n, p1 + n, a0, a0, a1, h)
+		_tri(p1 + n, p0 - n, p1 - n, a1, a0, a1, h)
+		if i > 0:   # round the joint
+			_disc(p0, wdt * 0.5, a0, h)
+		if is_last:
+			var tip: Vector2 = pts[i + 1]
+			var base := p1
+			var wing := Vector2(-dir.y, dir.x) * wdt * 1.6
+			_tri(base + wing, base - wing, tip, a1, a1, a1, h)
+	_disc(pts[0], wdt * 1.1, c, h)
+
+func _tri(a: Vector2, b: Vector2, c2: Vector2, ca: Color, cb: Color, cc: Color, h: float) -> void:
+	for pc in [[a, ca], [b, cb], [c2, cc]]:
+		route_mesh.surface_set_color(pc[1])
+		route_mesh.surface_add_vertex(Vector3(pc[0].x, h, -pc[0].y))
+
+func _disc(p: Vector2, r: float, c: Color, h: float) -> void:
+	for s in 10:
+		var t0 := TAU * s / 10.0
+		var t1 := TAU * (s + 1) / 10.0
+		_tri(p, p + Vector2(cos(t0), sin(t0)) * r, p + Vector2(cos(t1), sin(t1)) * r, c, c, c, h)
 
 func _process(delta: float) -> void:
 	var target := player.global_position
@@ -953,18 +1009,9 @@ func _process(delta: float) -> void:
 		phase_name, m.position.y, m.speed(), int(m.stamina * 100), "  (WINDED)" if m.sprint_locked else ""]
 
 func _build_environment() -> void:
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-55, 30, 0)
-	sun.shadow_enabled = true
-	add_child(sun)
-	var env := WorldEnvironment.new()
-	var e := Environment.new()
-	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color(0.03, 0.03, 0.08)  # night sky, lunar stadium vibe
-	e.ambient_light_color = Color(0.6, 0.65, 0.8)
-	e.ambient_light_energy = 0.5
-	env.environment = e
-	add_child(env)
+	StadiumArt.build_environment(self)
+	var q := ArtQuality.level()
+	get_viewport().msaa_3d = Viewport.MSAA_4X if q == "high" else (Viewport.MSAA_2X if q == "medium" else Viewport.MSAA_DISABLED)
 
 func _box(size: Vector3, center: Vector3, color: Color, n: String) -> void:
 	var mi := MeshInstance3D.new()
@@ -979,19 +1026,6 @@ func _box(size: Vector3, center: Vector3, color: Color, n: String) -> void:
 	field_root.add_child(mi)
 
 func _build_field() -> void:
-	var total := field.length + field.endzone_depth * 2.0
-	# Turf (whole playing surface)
-	_box(Vector3(field.width, 0.1, total), Vector3(field.width / 2, -0.05, -field.length / 2),
-		Color(0.12, 0.42, 0.22), "Turf")
-	# End zones
-	_box(Vector3(field.width, 0.11, field.endzone_depth), to_world(Vector2(field.width / 2, -field.endzone_depth / 2), -0.04),
-		Color(0.15, 0.3, 0.65), "EndZoneA")
-	_box(Vector3(field.width, 0.11, field.endzone_depth), to_world(Vector2(field.width / 2, field.length + field.endzone_depth / 2), -0.04),
-		Color(0.65, 0.25, 0.15), "EndZoneB")
-	# Yard lines every 5 yards, thicker at goal lines
-	for yd in range(0, int(field.length) + 1, 5):
-		var w := 0.4 if yd == 0 or yd == int(field.length) else 0.15
-		_box(Vector3(field.width, 0.12, w), to_world(Vector2(field.width / 2, yd), -0.03), Color(0.95, 0.95, 0.95), "Line%d" % yd)
-	# Sidelines
-	for x in [0.0, field.width]:
-		_box(Vector3(0.3, 0.12, total), Vector3(x, -0.03, -field.length / 2), Color.WHITE, "Sideline")
+	FieldArt.build(field_root, field, TEAM_COLORS)
+	if pres:
+		pres.rebuild(field_root)
