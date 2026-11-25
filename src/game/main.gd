@@ -21,6 +21,8 @@ const Routes := preload("res://src/sim/routes.gd")
 const MatchConfig := preload("res://src/sim/match_config.gd")
 const Lobby := preload("res://src/net/lobby.gd")
 const Drills := preload("res://src/sim/drills.gd")
+const MMServer := preload("res://src/net/mm_server.gd")
+const MMClient := preload("res://src/net/mm_client.gd")
 const InviteCode := preload("res://src/net/invite_code.gd")
 const T := preload("res://src/sim/tuning.gd")
 const ARC_DOTS := 24
@@ -264,44 +266,106 @@ func _cli_args() -> Dictionary:
 
 func _setup_net() -> void:
 	var args := _cli_args()
+	if args.has("matchmaker"):
+		var mms := MMServer.new()
+		mms.name = "Matchmaker"
+		add_child(mms)
+		var p := int(args.get("port", MMServer.DEFAULT_PORT))
+		print("MM server on %d: %s" % [p, error_string(mms.start(p))])
+		return
+	if args.has("queue"):
+		_queue_up(args)
+		return
 	if not (args.has("host") or args.has("join")):
 		return
-	net = NetSession.new()
-	net.name = "Net"
-	add_child(net)
 	var port := int(args.get("port", NetSession.DEFAULT_PORT))
 	if args.has("host"):
-		if args.has("playclock"):  # test/debug: shorten the first play clock
-			debug_playclock = float(args["playclock"])
-			series.clock.play_clock = debug_playclock
-		net.match_size = match_size
-		var err := net.host(port, func(peer): return roster.auto_assign(peer), func(peer): roster.release(peer))
-		print("NET host on %d: %s" % [port, error_string(err)])
-		if not args.has("no-lobby"):
-			lobby = Lobby.new()
-			lobby.host_id = LOCAL_PLAYER
-			lobby.add(LOCAL_PLAYER, "Host")
-			lobby.settings["size"] = match_size
-			lobby.code = InviteCode.encode(str(args.get("advertise", _local_ipv4())), port)
-			if args.has("start-when-ready"):
-				lobby.set_ready(LOCAL_PLAYER, true)
-			net.lobby = lobby
-			net.lobby_mode = true
-			net.lobby_changed.connect(func(): net.broadcast_lobby(lobby.to_dict()))
-			print("NET invite code: %s" % lobby.code)
+		_host_game(port, {"playclock": float(args.get("playclock", -1.0)), "no_lobby": args.has("no-lobby"),
+			"start_when_ready": args.has("start-when-ready"), "advertise": str(args.get("advertise", _local_ipv4()))})
 	else:
-		var target := str(args["join"])
-		if InviteCode.looks_like_code(target):
-			var d := InviteCode.decode(target)
-			target = d["ip"]
-			port = d["port"]
-		var err := net.join(target, port)
-		print("NET join %s:%d: %s" % [target, port, error_string(err)])
-		auto_next = false
-		net.welcomed.connect(_on_assigned)
-		net.lobby_received.connect(func(st): lobby.from_dict(st))
-		net.snapshot_received.connect(_on_snapshot)
-		net.event_received.connect(_on_world_event)
+		_join_game(str(args["join"]), port, {})
+
+func _ensure_net() -> void:
+	if net == null:
+		net = NetSession.new()
+		net.name = "Net"
+		add_child(net)
+
+## Open a hosted match (lobby by default). opts: playclock, no_lobby, start_when_ready, advertise, expected, size, mode
+func _host_game(port: int, opts: Dictionary) -> String:
+	_ensure_net()
+	if opts.get("playclock", -1.0) > 0.0:
+		debug_playclock = opts["playclock"]
+		series.clock.play_clock = debug_playclock
+	net.match_size = match_size
+	var err := net.host(port, func(peer): return roster.auto_assign(peer), func(peer): roster.release(peer))
+	print("NET host on %d: %s" % [port, error_string(err)])
+	if opts.get("no_lobby", false):
+		return ""
+	lobby = Lobby.new()
+	lobby.host_id = LOCAL_PLAYER
+	lobby.add(LOCAL_PLAYER, "Host")
+	lobby.settings["size"] = MatchConfig.normalize(opts.get("size", match_size))
+	lobby.expected = int(opts.get("expected", 0))
+	lobby.code = InviteCode.encode(str(opts.get("advertise", _local_ipv4())), port)
+	if opts.get("start_when_ready", false):
+		lobby.set_ready(LOCAL_PLAYER, true)
+	net.lobby = lobby
+	net.lobby_mode = true
+	net.lobby_changed.connect(func(): net.broadcast_lobby(lobby.to_dict()))
+	print("NET invite code: %s" % lobby.code)
+	return lobby.code
+
+## Join a match by invite code or address. opts: auto_ready
+func _join_game(target: String, port: int, opts: Dictionary) -> void:
+	_ensure_net()
+	if InviteCode.looks_like_code(target):
+		var d := InviteCode.decode(target)
+		target = d["ip"]
+		port = d["port"]
+	var err := net.join(target, port)
+	print("NET join %s:%d: %s" % [target, port, error_string(err)])
+	auto_next = false
+	net.welcomed.connect(_on_assigned)
+	var auto_ready: bool = opts.get("auto_ready", false)
+	var readied := [false]
+	net.lobby_received.connect(func(st):
+		lobby.from_dict(st)
+		if auto_ready and not readied[0] and lobby.phase == Lobby.Phase.LOBBY:
+			readied[0] = true
+			net.send_lobby_action({"a": "ready"}))
+	net.snapshot_received.connect(_on_snapshot)
+	net.event_received.connect(_on_world_event)
+
+## Queued for matchmaking and not yet hosting/joining a match.
+func searching() -> bool:
+	return mm_client != null and net == null
+
+## Matchmaking: queue, then host or join as the matchmaker decides.
+var mm_client: MMClient
+func _queue_up(args: Dictionary) -> void:
+	mm_client = MMClient.new()
+	mm_client.name = "Queue"
+	add_child(mm_client)
+	var addr := str(args.get("mm", "127.0.0.1"))
+	var mm_port := MMServer.DEFAULT_PORT
+	if addr.find(":") > 0:
+		mm_port = int(addr.get_slice(":", 1))
+		addr = addr.get_slice(":", 0)
+	var mode := str(args["queue"])
+	var advertise := str(args.get("advertise", _local_ipv4()))
+	mm_client.host_match.connect(func(m):
+		var port := 25000 + randi() % 5000
+		var code := _host_game(port, {"start_when_ready": true, "expected": int(m.get("expected", 2)),
+			"size": int(m.get("size", 7)), "advertise": advertise})
+		lobby.settings["half_minutes"] = 5
+		print("QUEUE matched (%s): hosting %s" % [m.get("mode", "?"), code])
+		mm_client.send_hosting(code))
+	mm_client.join_match.connect(func(code):
+		print("QUEUE matched: joining %s" % code)
+		_join_game(code, 0, {"auto_ready": true}))
+	var err := mm_client.queue_up(addr, mm_port, mode, MatchConfig.normalize(args.get("size", 7)), float(args.get("rating", 1000)))
+	print("QUEUE %s via %s:%d: %s" % [mode, addr, mm_port, error_string(err)])
 
 func _practice_kind() -> String:
 	if _pending_practice != "":
@@ -325,6 +389,8 @@ func _local_ipv4() -> String:
 
 ## True while the private lobby is open (server) / we haven't been placed yet (client).
 func in_lobby() -> bool:
+	if searching():
+		return true
 	if is_server():
 		return net.lobby_mode and lobby.phase == Lobby.Phase.LOBBY
 	if is_client():
@@ -495,7 +561,8 @@ func _unhandled_key_input(e: InputEvent) -> void:
 	if not (e is InputEventKey and e.pressed and not e.echo):
 		return
 	if in_lobby():
-		lobby_key(e.keycode)
+		if not searching():
+			lobby_key(e.keycode)
 		return
 	match e.keycode:
 		KEY_SPACE:
@@ -630,6 +697,9 @@ func _process(delta: float) -> void:
 	banner_t = maxf(0.0, banner_t - delta)
 	if banner_t > 0.0:
 		phase_name = banner + "  " + phase_name
+	if searching():
+		hud.text = "SEARCHING FOR A %s MATCH..." % str(_cli_args().get("queue", "")).to_upper()
+		return
 	if in_lobby():
 		var who := "host: [3/5/7] size, [H] half length, " if is_server() else ""
 		hud.text = "PRIVATE MATCH LOBBY   Invite code: %s\n%s\n[Enter] ready  (%s starts when everyone is ready)" % [lobby.code, lobby.summary(), who]

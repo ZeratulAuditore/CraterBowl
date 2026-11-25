@@ -23,3 +23,6 @@ if [ $flow -ne 0 ] || grep -E "SCRIPT ERROR|Parse Error" .flow-output.log | grep
 fi
 # Two-process online test (host + client over localhost)
 ./scripts/net_test.sh || exit 1
+# Matchmaking: matchmaker + 2 queued clients
+./scripts/mm_test.sh | tail -1 | grep -q "MM TEST PASS" || { echo "MM TEST FAIL"; exit 1; }
+echo "MM TEST PASS"

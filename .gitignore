@@ -5,3 +5,6 @@
 .flow-output.log
 .net-host.log
 .net-client.log
+.mm-server.log
+.mm-a.log
+.mm-b.log

@@ -128,3 +128,10 @@
 - Main: `-- --practice=KIND`, `start_practice()`, practice never runs clocks, HUD shows drill stats; `sprint_override` hook for tests.
 - **Bug found + fixed:** man coverage at the snap sent the CB "behind" an unreleased WR, i.e. through him into the backfield, shoving the receiver backwards (bots hid it by sidestepping). Defenders now hold level/inside until the receiver gets past. Bot game after fix: 10-min 70% comp, 27–41.
 - Tests: 131 unit (+6 incl. regression); flow 68 checks (+7: passing drill completion via real game, rep reset, tackling drill via real E key). Route-glue flow step now runs without AI defense (inside leverage legitimately takes slants away).
+
+## 019: A18 Casual + competitive queues (2026-11-24)
+- `src/net/matchmaker.gd` (pure): casual = full teams FCFS or ≥2 after 8 s (bots fill); competitive = rating window ±(100+25/s, cap 600), full teams or ≥2 after 15 s; host = longest waiting; snake-draft teams by rating. Modes/sizes never mix.
+- `src/net/mm_server.gd` (`-- --matchmaker [--port]`): queues, elects host, relays host invite code to joiners. `src/net/mm_client.gd` + main `-- --queue=casual|competitive --mm=ADDR[:PORT] [--size --rating]`: host role opens a lobby (random port, auto-ready, `expected` players), join role joins by code + auto-readies. Main refactored into `_host_game` / `_join_game` with options; "SEARCHING…" state.
+- Lobby `expected`: queue matches start only when the whole group is in.
+- Tests: 139 unit (+8 queue rules); new `scripts/mm_test.sh` (matchmaker + 2 queued headless clients → 3v3 match started with both humans, ~13 s) wired into smoke.sh.
+- Known gap: snake-draft teams computed but not applied by the host yet → folded into A23.

@@ -10,6 +10,7 @@ var host_id := 1
 var code := ""
 var settings := {"size": 7, "half_minutes": 5}
 var players := {}   # id -> {"name": String, "ready": bool}
+var expected := 0   # queue matches: auto-start only once this many players are present
 
 func add(id: int, name: String = "") -> void:
 	if not players.has(id):
@@ -55,7 +56,7 @@ func set_setting(by: int, key: String, value) -> bool:
 	return true
 
 func all_ready() -> bool:
-	if players.size() < 2:
+	if players.size() < maxi(2, expected):
 		return false
 	for id in players:
 		if not players[id]["ready"]:

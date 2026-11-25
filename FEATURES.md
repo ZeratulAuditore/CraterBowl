@@ -25,12 +25,12 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [x] A15 Match sizes: custom matches 3v3, 5v5 and 7v7 (field scaling + roster rules)
 - [x] A16 Private matches: lobby with host settings, invite code, ready-up
 - [x] A17 Offline practice mode: solo vs bots, drills
-- [ ] A18 Casual + competitive queues: matchmaking (local queue service stand-in first)
+- [x] A18 Casual + competitive queues: matchmaking (local queue service stand-in first)
 - [ ] A19 Chaosball 3v3: low gravity, anyone can throw/catch, catch your own pass, up to 3 bounces off ground/walls
 - [ ] A20 Chaosball scoring: pass streak raises TD value (cap 7), pass clock that explodes the ball
 - [ ] A21 Stats: per-player, per-position stats tracked each match, end-of-match summary
 - [ ] A22 Leaderboards: per-position top 100 (local/file-backed first)
-- [ ] A23 Ranked: skill rating, rank tiers, seasons with season rewards
+- [ ] A23 Ranked: skill rating, rank tiers, seasons with season rewards; competitive hosts apply the matchmaker's snake-draft teams (computed in A18, not yet applied)
 - [ ] A24 Cosmetics: earnable through play, no gameplay effect, character customization
 - [ ] A25 Replays: record + playback of matches/plays
 - [ ] A26 Presentation: original sci-fi lunar stadium, animations, lighting pass
