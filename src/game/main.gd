@@ -36,6 +36,7 @@ const FieldArt := preload("res://src/game/art/field_art.gd")
 const StadiumArt := preload("res://src/game/art/stadium.gd")
 const ArtMats := preload("res://src/game/art/materials.gd")
 const ArtQuality := preload("res://src/game/art/quality.gd")
+const EmotePicker := preload("res://src/game/emote_picker.gd")
 const ARC_DOTS := 24
 
 const TEAM_COLORS := [Color(0.95, 0.75, 0.15), Color(0.3, 0.8, 0.95)]
@@ -52,6 +53,22 @@ var arc_dots: Array = []
 var charging := false
 var charge := 0.0
 var aim_point := Vector2(26, 45)
+## POV passing (Gridiron-style): while you're the passer the mouse is captured and
+## steers your view. Throws go where you look; view pitch = launch angle (height),
+## charge = speed (distance). WASD is relative to the view.
+const POV_SENS := 0.0025            # radians per mouse pixel
+const POV_PITCH_MIN := deg_to_rad(-25.0)
+const POV_PITCH_MAX := deg_to_rad(60.0)
+const POV_PITCH_START := deg_to_rad(10.0)
+const POV_ANGLE_OFFSET := 10.0      # launch angle = view pitch + this (deg): level view = a line drive
+var pov_enabled := true             # tests/bots that aim at a field point turn this off
+var aim_yaw := 0.0                  # 0 = straight downfield (+y), + = right
+var aim_pitch := POV_PITCH_START
+var cam_yaw := 0.0                  # smoothed yaw the camera + WASD use
+var pov_w := 0.0                    # 0 follow cam .. 1 POV cam
+var _last_phase := -1
+var crosshair: Control
+var emote_picker: EmotePicker
 var ai := AI.new()
 var last_whistle := ""
 var banner := ""
@@ -166,6 +183,15 @@ func _ready() -> void:
 	hud.position = Vector2(16, 16)
 	var layer := CanvasLayer.new()
 	layer.add_child(hud)
+	crosshair = Control.new()
+	crosshair.name = "Crosshair"
+	crosshair.set_anchors_preset(Control.PRESET_FULL_RECT)
+	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair.visible = false
+	crosshair.draw.connect(_draw_crosshair)
+	layer.add_child(crosshair)
+	emote_picker = EmotePicker.new()
+	layer.add_child(emote_picker)
 	add_child(layer)
 
 ## (Re)build the whole match for a size: field, roster, sim, views. Used at start,
@@ -288,8 +314,67 @@ func _build_aim_visuals() -> void:
 		add_child(d)
 		arc_dots.append(d)
 
-## Mouse ray onto the turf plane -> field coordinates.
+func _draw_crosshair() -> void:
+	var c := crosshair.size * 0.5
+	var col := Color(1.0, 0.9, 0.35)
+	var shade := Color(0, 0, 0, 0.7)
+	for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+		crosshair.draw_line(c + d * 6.0, c + d * 18.0, shade, 5.0)
+		crosshair.draw_line(c + d * 6.0, c + d * 18.0, col, 2.5)
+	crosshair.draw_circle(c, 3.5, shade)
+	crosshair.draw_circle(c, 2.0, col)
+	var lbl := "LOFT %d°" % int(round(launch_angle()))
+	crosshair.draw_string_outline(ThemeDB.fallback_font, c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, shade)
+	crosshair.draw_string(ThemeDB.fallback_font, c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, col)
+
+## True while the human is the passer: QB before the forward pass (Chaosball: any holder).
+func pov_active() -> bool:
+	if not pov_enabled or replay_active or in_lobby() or world.phase == World.Phase.DEAD:
+		return false
+	var a = world.get_athlete(controlled_id)
+	if a == null:
+		return false
+	if world.is_chaos():
+		return world.ball.is_held_by(controlled_id)
+	if a.role != Athlete.Role.QB or a.team != world.offense_team or world.forward_pass_thrown:
+		return false
+	if world.phase == World.Phase.PRESNAP:
+		return true   # the center holds it; you're lining up the throw
+	var c = world.carrier()
+	return (c == null or c.id == controlled_id) and a.position.y <= world.los_y + 1.0
+
+func aim_dir() -> Vector2:
+	return Vector2(sin(aim_yaw), cos(aim_yaw))
+
+func launch_angle() -> float:
+	return clampf(rad_to_deg(aim_pitch) + POV_ANGLE_OFFSET, T.POV_ANGLE_MIN, T.POV_ANGLE_MAX)
+
+func reset_aim() -> void:
+	aim_yaw = 0.0
+	aim_pitch = POV_PITCH_START
+
+## Sim velocity the ball would leave with right now (POV aim, current charge).
+func _pov_velocity(qb) -> Vector3:
+	return Passing.velocity_for(aim_dir(), launch_angle(), charge) + Vector3(qb.velocity.x, qb.velocity.y, 0) * T.THROW_INHERIT
+
+func _sync_mouse_mode() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var l = get_node_or_null("/root/Launch")
+	var menu_open: bool = l != null and l.has_method("overlay_open") and l.overlay_open()
+	var want := Input.MOUSE_MODE_CAPTURED if pov_active() and not menu_open and get_window().has_focus() else Input.MOUSE_MODE_VISIBLE
+	if Input.mouse_mode != want:
+		Input.mouse_mode = want
+
+## Aim point: POV = predicted landing spot; otherwise the mouse ray onto the turf.
 func _update_aim() -> void:
+	if pov_active():
+		var qb = world.get_athlete(controlled_id)
+		var from := Vector3(qb.position.x, qb.position.y, T.RELEASE_HEIGHT)
+		var v := _pov_velocity(qb)
+		var tf := Passing.time_to_height(v, from.z, T.CATCH_HEIGHT, world.gravity())
+		aim_point = Vector2(from.x + v.x * tf, from.y + v.y * tf)
+		return
 	if camera == null or not is_inside_tree() or DisplayServer.get_name() == "headless":
 		return
 	var mp := get_viewport().get_mouse_position()
@@ -311,8 +396,12 @@ func _update_arc() -> void:
 			d.visible = false
 		return
 	var from := Vector3(qb.position.x, qb.position.y, T.RELEASE_HEIGHT)
-	var v := Passing.solve_velocity(from, aim_point, charge, world.gravity(), lob_held())
-	v += Vector3(qb.velocity.x, qb.velocity.y, 0) * T.THROW_INHERIT
+	var v: Vector3
+	if pov_active():
+		v = _pov_velocity(qb)
+	else:
+		v = Passing.solve_velocity(from, aim_point, charge, world.gravity(), lob_held())
+		v += Vector3(qb.velocity.x, qb.velocity.y, 0) * T.THROW_INHERIT
 	var tf := Passing.time_to_height(v, from.z, 0.0, world.gravity())
 	for i in ARC_DOTS:
 		var t := tf * float(i + 1) / ARC_DOTS
@@ -326,7 +415,10 @@ func _set_charging(on: bool) -> void:
 		charge = 0.0
 	elif not on and charging:
 		charging = false
-		do_action({"a": "throw", "t": aim_point, "p": charge, "lob": lob_held()})
+		if pov_active():
+			do_action({"a": "throw", "d": aim_dir(), "ang": launch_angle(), "p": charge})
+		else:
+			do_action({"a": "throw", "t": aim_point, "p": charge, "lob": lob_held()})
 
 ## Display name of whoever controls athlete `aid` right now ("Bot" for AI).
 func owner_name(aid: int) -> String:
@@ -770,10 +862,29 @@ func _apply_interpolation() -> void:
 		world.ball.position = smp["ball"]
 
 func _unhandled_input(e: InputEvent) -> void:
-	if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
+	if e is InputEventMouseMotion and pov_active() and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		look(e.relative)
+	elif e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
 		_set_charging(e.pressed)
 	elif e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_RIGHT and e.pressed:
 		do_action({"a": "tackle"})
+	elif e is InputEventMouseButton and e.pressed and e.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+		if not in_lobby() and not replay_active:
+			emote_picker.scroll(-1 if e.button_index == MOUSE_BUTTON_WHEEL_UP else 1)
+	elif e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_MIDDLE:
+		taunt()
+
+## POV mouse look (pixels of mouse motion).
+func look(rel: Vector2) -> void:
+	aim_yaw = wrapf(aim_yaw + rel.x * POV_SENS, -PI, PI)
+	aim_pitch = clampf(aim_pitch - rel.y * POV_SENS, POV_PITCH_MIN, POV_PITCH_MAX)
+
+## Perform the taunt selected in the wheel picker.
+func taunt() -> bool:
+	if in_lobby() or replay_active:
+		return false
+	emote_picker.reveal()
+	return do_action({"a": "emote", "e": emote_picker.selected()})
 
 
 func _on_world_event(n: String, d: Dictionary) -> void:
@@ -790,6 +901,10 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 		_apply_looks()
 	if n == "awards" and d.get("xp") is Dictionary:
 		_apply_award(d["xp"], d.get("ctx", {}) if d.get("ctx") is Dictionary else {})
+	if n == "emote":
+		var eid: int = d.get("by", -1)
+		if eid >= 0 and eid < views.size():
+			views[eid].emote(str(d.get("e", "")))
 	if n == "touchdown":
 		var cid: int = d.get("carrier", -1)
 		if cid >= 0 and cid < views.size():
@@ -842,7 +957,15 @@ func read_input() -> Vector2:
 	if Input.is_key_pressed(KEY_S): v.y -= 1
 	if Input.is_key_pressed(KEY_D): v.x += 1
 	if Input.is_key_pressed(KEY_A): v.x -= 1
-	return v
+	return _view_relative(v)
+
+## Rotate stick/WASD input by the camera yaw (identity on the normal follow cam).
+func _view_relative(v: Vector2) -> Vector2:
+	if absf(cam_yaw) < 0.001:
+		return v
+	var c := cos(cam_yaw)
+	var s := sin(cam_yaw)
+	return Vector2(v.x * c + v.y * s, -v.x * s + v.y * c)
 
 func _input(e: InputEvent) -> void:
 	if e is InputEventKey and not e.pressed and e.keycode == KEY_J:
@@ -875,14 +998,20 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			do_action({"a": "try", "n": 1})
 		KEY_2:
 			do_action({"a": "try", "n": 2})
+		KEY_F:
+			do_action({"a": "tackle"})      # dive: tackle on defense, dive for yards with the ball
+		KEY_Q:
+			do_action({"a": "spin", "s": -1})
 		KEY_E:
-			do_action({"a": "tackle"})
+			do_action({"a": "spin", "s": 1})
+		KEY_G:
+			taunt()
 		KEY_J:
 			_set_charging(true)
-		KEY_Q:
+		KEY_Z:
 			var i := (Routes.PLAY_NAMES.find(world.play_name) + 1) % Routes.PLAY_NAMES.size()
 			do_action({"a": "play", "p": Routes.PLAY_NAMES[i]})
-		KEY_F:
+		KEY_X:
 			if world.route_of.has(my_id):
 				var j := (Routes.ROUTE_NAMES.find(world.route_of[my_id]) + 1) % Routes.ROUTE_NAMES.size()
 				do_action({"a": "route", "r": Routes.ROUTE_NAMES[j]})
@@ -1086,10 +1215,34 @@ func _disc(p: Vector2, r: float, c: Color, h: float) -> void:
 		_tri(p, p + Vector2(cos(t0), sin(t0)) * r, p + Vector2(cos(t1), sin(t1)) * r, c, c, c, h)
 
 func _process(delta: float) -> void:
+	if int(world.phase) != _last_phase:
+		if world.phase == World.Phase.PRESNAP:
+			reset_aim()   # every play starts looking downfield
+		_last_phase = int(world.phase)
+	_sync_mouse_mode()
+	var pov := pov_active()
+	if pov and not Input.get_connected_joypads().is_empty():
+		var rs := Vector2(Input.get_joy_axis(0, JOY_AXIS_RIGHT_X), Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y))
+		if rs.length() > 0.2:
+			look(rs * delta * 900.0)   # right stick = POV look
+	pov_w = move_toward(pov_w, 1.0 if pov else 0.0, delta * 3.0)
+	cam_yaw = lerp_angle(cam_yaw, aim_yaw if pov else 0.0, clampf(delta * (20.0 if pov else 3.0), 0.0, 1.0))
+	if crosshair:
+		crosshair.visible = pov and not replay_active
+		if crosshair.visible:
+			crosshair.queue_redraw()
 	var target := player.global_position
-	var desired := target + Vector3(0, 6, 9)
-	camera.global_position = camera.global_position.lerp(desired, clampf(delta * 6.0, 0.0, 1.0))
-	camera.look_at(target + Vector3(0, 1, -4))
+	var fwd := Vector3(sin(cam_yaw), 0, -cos(cam_yaw))       # sim (sin, cos) -> world (x, -y)
+	var right := Vector3(cos(cam_yaw), 0, sin(cam_yaw))
+	# Follow cam: high and behind. POV: over the passer's right shoulder, pitched with the aim.
+	var follow_pos := target + Vector3(0, 6, 0) - fwd * 9.0
+	var follow_look := target + Vector3(0, 1, 0) + fwd * 4.0
+	var cam_pitch := aim_pitch * 0.55 - deg_to_rad(8.0)
+	var pov_pos := target + Vector3(0, 2.6, 0) - fwd * 4.2 + right * 0.9
+	var pov_look := pov_pos + (fwd * cos(cam_pitch) + Vector3.UP * sin(cam_pitch)) * 10.0
+	var desired := follow_pos.lerp(pov_pos, pov_w)
+	camera.global_position = camera.global_position.lerp(desired, clampf(delta * (6.0 + 14.0 * pov_w), 0.0, 1.0))
+	camera.look_at(follow_look.lerp(pov_look, pov_w))
 	var m = player.athlete
 	var my_team: int = world.get_athlete(my_id).team
 	var side := "OFFENSE" if world.offense_team == my_team else "DEFENSE (E/RMB to tackle)"

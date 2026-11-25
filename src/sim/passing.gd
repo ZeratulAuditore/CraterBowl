@@ -6,6 +6,13 @@ const T := preload("res://src/sim/tuning.gd")
 static func speed_for_power(power: float) -> float:
 	return lerpf(T.THROW_SPEED_MIN, T.THROW_SPEED_MAX, clampf(power, 0.0, 1.0))
 
+## Launch velocity for a POV throw: direction on the field plane, angle in degrees.
+static func velocity_for(dir: Vector2, angle_deg: float, power: float) -> Vector3:
+	var a := deg_to_rad(clampf(angle_deg, T.POV_ANGLE_MIN, T.POV_ANGLE_MAX))
+	var s := speed_for_power(power)
+	var d := dir.normalized()
+	return Vector3(d.x * s * cos(a), d.y * s * cos(a), s * sin(a))
+
 ## Horizontal distance at which a ball launched at (speed, angle) from h0
 ## descends through height h1. Returns -1 if it never reaches h1 descending.
 static func range_at(speed: float, angle: float, h0: float, h1: float, g: float = T.GRAVITY) -> float:

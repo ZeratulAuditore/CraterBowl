@@ -11,6 +11,8 @@ extends Node3D
 const Cos := preload("res://src/sim/cosmetics.gd")
 const Mats := preload("res://src/game/art/materials.gd")
 const CharacterArt := preload("res://src/game/art/character_art.gd")
+const Emotes := preload("res://src/sim/emotes.gd")
+const T := preload("res://src/sim/tuning.gd")
 
 const SKIN_TONES := [Color(0.98, 0.80, 0.66), Color(0.87, 0.65, 0.48), Color(0.72, 0.50, 0.34),
 	Color(0.55, 0.36, 0.23), Color(0.40, 0.26, 0.17), Color(0.30, 0.20, 0.13)]
@@ -40,6 +42,11 @@ var trim_color := Color.WHITE
 var look := {}
 var celebrate_kind := "none"
 var celebrate_t := 0.0
+var emote_id := ""
+var emote_t := 0.0
+var spin_vis_t := 0.0      # view-side spin animation (works for net + local)
+var spin_vis_side := 0
+var bubble: Label3D
 
 var model: Node3D
 var mesh_i: MeshInstance3D
@@ -219,6 +226,27 @@ func celebrate(kind: String) -> void:
 		celebrate_kind = kind
 		celebrate_t = 1.5
 
+## Taunt: plays the clip (when not running) and a speech bubble overhead.
+func emote(id: String) -> void:
+	if not Emotes.has(id):
+		return
+	emote_id = id
+	emote_t = Emotes.DURATION
+	if bubble == null:
+		bubble = Label3D.new()
+		bubble.name = "TauntBubble"
+		bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		bubble.no_depth_test = true
+		bubble.fixed_size = false
+		bubble.pixel_size = 0.0032
+		bubble.font_size = 64
+		bubble.outline_size = 16
+		bubble.modulate = Color(1.0, 0.9, 0.35)
+		bubble.position = Vector3(0, 2.4, 0)
+		add_child(bubble)
+	bubble.text = Emotes.bubble(id)
+	bubble.visible = true
+
 func is_celebrating() -> bool:
 	return celebrate_t > 0.0
 
@@ -277,6 +305,14 @@ func _process(delta: float) -> void:
 	if spd > 0.4 and not down:
 		rotation.y = lerp_angle(rotation.y, atan2(-_vel.x, -_vel.z), clampf(delta * 14.0, 0.0, 1.0))
 	_hit_t = maxf(0.0, _hit_t - delta)
+	emote_t = maxf(0.0, emote_t - delta)
+	if bubble:
+		bubble.visible = emote_t > 0.0
+		bubble.modulate.a = clampf(emote_t / 0.3, 0.0, 1.0)
+	if athlete.is_spinning() and spin_vis_t <= 0.0:
+		spin_vis_t = T.SPIN_TIME
+		spin_vis_side = athlete.spin_dir
+	spin_vis_t = maxf(0.0, spin_vis_t - delta)
 	_release_t = maxf(0.0, _release_t - delta)
 	_choose_anim(spd, down)
 	_was_down = down
@@ -291,6 +327,10 @@ func _process(delta: float) -> void:
 			"flip":
 				body.rotation.x = t * TAU / 1.5
 				body.position.y = sin(t / 1.5 * PI) * 1.4
+	elif spin_vis_t > 0.0:
+		# Spin move: one full turn toward the spin side (left = counter-clockwise from above).
+		var k := 1.0 - spin_vis_t / T.SPIN_TIME
+		body.rotation.y = -float(spin_vis_side) * TAU * ease(k, -1.6)
 
 func _choose_anim(spd: float, down: bool) -> void:
 	if celebrate_t > 0.0:
@@ -310,6 +350,9 @@ func _choose_anim(spd: float, down: bool) -> void:
 		_play("u2/Hit_Knockback", 0.08, 1.3)
 		return
 	if _release_t > 0.0:
+		return
+	if emote_t > 0.0 and spd < 1.5:
+		_play(Emotes.clip(emote_id), 0.12)
 		return
 	if throw_pose > 0.0:
 		_play("u2/OverhandThrow", 0.12, 0.0)

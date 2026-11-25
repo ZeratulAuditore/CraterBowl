@@ -13,6 +13,7 @@ extends SceneTree
 ##                         released after HOLD frames (default 1). KEY is a Godot key
 ##                         name: V, Space, Tab, Enter, W, Shift...
 ##   --call=F:METHOD,...   main.call(METHOD) at frame F (e.g. next_play)
+##   --look=F:DX:DY,...    POV mouse look by (DX, DY) pixels at frame F (QB aim)
 ## Every other user arg (--size=5, --practice=..., --replay=...) reaches main.gd unchanged.
 ## Frames are physics frames at --fixed-fps 60 (shot.sh sets it), the same clock game_flow.gd uses.
 
@@ -44,6 +45,11 @@ func _initialize() -> void:
 					var p := item.split(":")
 					var m := p[1]
 					_at(int(p[0]), func(): main.call(m))
+			"look":
+				for item in v.split(",", false):
+					var p := item.split(":")
+					var rel := Vector2(float(p[1]), float(p[2]))
+					_at(int(p[0]), func(): main.look(rel))
 			"press":
 				for item in v.split(",", false):
 					var p := item.split(":")

@@ -205,8 +205,12 @@ static func synth_key(key: int, pressed: bool, echo: bool = false) -> void:
 	k.device = Controls.SYNTH_DEVICE
 	Input.parse_input_event(k)
 
+func overlay_open() -> bool:
+	return _overlay != null
+
 ## In-match menu. The match keeps running (online play can't pause); offline we pause.
 func open_overlay() -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE   # POV aim captures it; the menu needs it back
 	var game := get_tree().current_scene
 	_overlay = CanvasLayer.new()
 	_overlay.layer = 90

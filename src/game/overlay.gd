@@ -363,14 +363,14 @@ func _refresh_card(main) -> void:
 	var me = w.get_athlete(main.my_id)
 	var offense: bool = me != null and w.offense_team == me.team
 	if offense:
-		card_title.text = "PLAY CALL  [Q]"
+		card_title.text = "PLAY CALL  [Z]"
 		var body: String = str(w.play_name).to_upper()
 		if w.route_of.has(main.my_id):
-			body += "\nYOUR ROUTE  %s  [F]" % w.route_of[main.my_id]
+			body += "\nYOUR ROUTE  %s  [X]" % w.route_of[main.my_id]
 		card_body.text = body
 	else:
 		card_title.text = "DEFENSE"
-		card_body.text = "E / RMB  TACKLE\nSHIFT  SPRINT"
+		card_body.text = "F / RMB  DIVE TACKLE\nSHIFT  SPRINT"
 
 func _refresh_me(main) -> void:
 	var pv = main.player
@@ -391,7 +391,9 @@ func _hints(main) -> String:
 	var me = w.get_athlete(main.my_id)
 	var offense: bool = me != null and w.offense_team == me.team
 	if int(w.phase) == 0:
-		return "WASD MOVE · SHIFT SPRINT · TAB POSITION · T TEAM" + (" · Q PLAY · F ROUTE" if offense else "")
+		return "WASD MOVE · SHIFT SPRINT · TAB POSITION · T TEAM" + (" · Z PLAY · X ROUTE" if offense else "") + " · WHEEL/G TAUNT"
+	if int(w.phase) == 1 and main.pov_active() and main.world.ball.is_held_by(main.controlled_id):
+		return "MOUSE LOOK = AIM (UP = LOFT) · HOLD LMB / J CHARGE · RELEASE TO THROW"
 	if int(w.phase) == 1 and main.world.ball.is_held_by(main.controlled_id):
-		return "HOLD J / LMB AIM + CHARGE · RELEASE TO THROW · CTRL LOB"
-	return "WASD MOVE · SHIFT SPRINT · E / RMB TACKLE"
+		return "Q / E SPIN · F DIVE · SHIFT SPRINT" + (" · HOLD LMB THROW" if main.world.can_throw(main.controlled_id) else "")
+	return "WASD MOVE · SHIFT SPRINT · F / RMB DIVE TACKLE · WHEEL/G TAUNT"

@@ -9,6 +9,7 @@ const Athlete := preload("res://src/sim/athlete.gd")
 const Ball := preload("res://src/sim/ball.gd")
 const Passing := preload("res://src/sim/passing.gd")
 const Routes := preload("res://src/sim/routes.gd")
+const Emotes := preload("res://src/sim/emotes.gd")
 
 enum Phase { PRESNAP, LIVE, DEAD }
 
@@ -205,13 +206,31 @@ func snap() -> bool:
 ## Throw from the holder toward target (field plane) with power 0..1.
 func throw(id: int, target: Vector2, power: float, lob: bool = false) -> bool:
 	var a := get_athlete(id)
-	if a == null or phase != Phase.LIVE or not ball.is_held_by(id):
-		return false
-	if not rules["anyone_throws"] and (forward_pass_thrown or a.position.y > los_y):
+	if not can_throw(id):
 		return false
 	var from := Vector3(a.position.x, a.position.y, T.RELEASE_HEIGHT)
-	var v := Passing.solve_velocity(from, target, power, gravity(), lob)
+	return _launch(a, Passing.solve_velocity(from, target, power, gravity(), lob), power, lob)
+
+## POV throw: the passer's view sets direction (field plane) and launch angle
+## (degrees above horizontal); power sets the speed, so it sets the distance.
+func throw_dir(id: int, dir: Vector2, angle_deg: float, power: float) -> bool:
+	if not can_throw(id) or dir.length_squared() < 0.0001:
+		return false
+	return _launch(get_athlete(id), Passing.velocity_for(dir, angle_deg, power), power, false)
+
+## Holder may throw now (forward passes only from behind the LOS, one per play).
+func can_throw(id: int) -> bool:
+	var a := get_athlete(id)
+	if a == null or phase != Phase.LIVE or not ball.is_held_by(id):
+		return false
+	return rules["anyone_throws"] or not (forward_pass_thrown or a.position.y > los_y)
+
+func _launch(a: Athlete, v: Vector3, power: float, lob: bool) -> bool:
+	var from := Vector3(a.position.x, a.position.y, T.RELEASE_HEIGHT)
 	v += Vector3(a.velocity.x, a.velocity.y, 0.0) * T.THROW_INHERIT
+	var id := a.id
+	var t_land := Passing.time_to_height(v, from.z, T.CATCH_HEIGHT, gravity())
+	var target := Vector2(from.x + v.x * t_land, from.y + v.y * t_land)
 	ball.state = Ball.State.IN_FLIGHT
 	ball.holder_id = -1
 	ball.position = from
@@ -224,12 +243,32 @@ func throw(id: int, target: Vector2, power: float, lob: bool = false) -> bool:
 	event.emit("throw", {"by": id, "target": target, "power": power, "lob": lob})
 	return true
 
-## Defender starts a dive tackle in their facing direction.
+## Dive in the facing direction: a tackle attempt for the defense; a ball
+## carrier dives for extra yards and is down where they land.
 func tackle(id: int) -> bool:
 	var a := get_athlete(id)
 	if a == null or phase != Phase.LIVE:
 		return false
 	return a.start_dive()
+
+## Taunt (cosmetic, any phase). Rate-limited per athlete.
+func emote(id: int, e: String) -> bool:
+	var a := get_athlete(id)
+	if a == null or not Emotes.has(e) or a.emote_cd > 0.0:
+		return false
+	a.emote_cd = Emotes.COOLDOWN
+	event.emit("emote", {"by": id, "e": e})
+	return true
+
+## Spin move (side -1 left / +1 right). A dive that lands mid-spin misses.
+func spin(id: int, side: int) -> bool:
+	var a := get_athlete(id)
+	if a == null or phase != Phase.LIVE:
+		return false
+	if a.start_spin(side):
+		event.emit("spin", {"by": id, "side": side})
+		return true
+	return false
 
 ## Team in possession during live play (carrier's team), else the offense.
 func possession_team() -> int:
@@ -355,8 +394,14 @@ func _check_tackles() -> void:
 	if z == Field.Zone.OUT_OF_BOUNDS:
 		_whistle("out_of_bounds", {"carrier": c.id, "team": c.team})
 		return
+	if c.is_grounded():
+		# Carrier dove and hit the turf: down where they landed (by = -1: no tackler).
+		_whistle("tackle", {"by": -1, "carrier": c.id, "team": c.team, "dive": true})
+		return
 	for a in athletes:
 		if a.team != c.team and a.is_diving() and a.position.distance_to(c.position) <= T.TACKLE_REACH:
+			if c.is_spinning():
+				continue   # spun out of it: the diver whiffs and goes to the turf
 			if _is_strip(a, c):
 				_fumble(c, a)
 			else:

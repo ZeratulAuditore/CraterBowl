@@ -29,7 +29,7 @@ func _initialize() -> void:
 	main.auto_next = false
 	# scripted steps drive play changes; auto-advance checked at the end
 	steps = [
-		[2, func(): _connect_listeners(); _isolate_user_files()],  # world/series are (re)built in main._ready -> connect after
+		[2, func(): _connect_listeners(); _isolate_user_files(); main.pov_enabled = false],   # legacy click-aim steps; POV steps re-enable it  # world/series are (re)built in main._ready -> connect after
 		[5, func(): check(main.world.phase == main.World.Phase.PRESNAP, "starts presnap")],
 		[6, func(): check(main.world.snap(), "snap")],
 		[40, func(): check(main.world.ball.is_held_by(main.controlled_id), "QB has ball")],
@@ -96,9 +96,9 @@ func _initialize() -> void:
 		[4503, func(): var qb = main.world.find_role(0, main.Athlete.Role.QB); check(main.world.ball.is_held_by(qb.id), "3v3: QB starts with the ball"); check(main.world.snap(), "3v3 snap")],
 		# Real keyboard path (regression: handler had silently never been updated since iter 002)
 		[4600, func(): main.configure(7)],
-		[4602, func(): var p0: String = main.world.play_name; _key(KEY_Q); check(main.world.play_name != p0, "Q key calls next play (%s)" % main.world.play_name)],
+		[4602, func(): var p0: String = main.world.play_name; _key(KEY_Z); check(main.world.play_name != p0, "Z key calls next play (%s)" % main.world.play_name)],
 		[4603, func(): before_id = main.my_id; _key(KEY_TAB); check(main.my_id != before_id, "TAB key changes position")],
-		[4604, func(): var r0 = main.world.route_of.get(main.my_id, ""); _key(KEY_F); check(main.world.route_of.get(main.my_id, "") != r0 and r0 != "", "F key changes my route")],
+		[4604, func(): var r0 = main.world.route_of.get(main.my_id, ""); _key(KEY_X); check(main.world.route_of.get(main.my_id, "") != r0 and r0 != "", "X key changes my route")],
 		[4605, func(): var t0: int = main.world.get_athlete(main.my_id).team; _key(KEY_T); check(main.world.get_athlete(main.my_id).team == 1 - t0, "T key swaps team")],
 		[4606, func(): _key(KEY_T); check(main.world.get_athlete(main.my_id).team == main.world.offense_team, "T again: back on offense")],
 		[4607, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE, "Space key snaps")],
@@ -161,7 +161,46 @@ func _initialize() -> void:
 		[7630, func(): main.world.carrier().position = Vector2(26, 101.0)],
 		[7632, func(): main.next_play(); main.world.snap(); main.series.last_result = {"type": "touchdown", "team": 0}; main.world.phase = main.World.Phase.DEAD; main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.next_play()],
 		[7634, func(): check(main.series.is_final(), "final"); check(main.profile.achievements.has("first_td") and main.profile.achievements.has("first_win"), "First Touchdown + First Win unlocked (%s)" % str(main.profile.achievements)); check(main.hud.text.find("ACHIEVEMENTS: ") >= 0, "HUD lists achievements"); var saved = main.Cosmetics.new(); saved.load_file(main.profile_path); check(saved.achievements.has("first_win"), "achievements saved"); main.ai.defense_enabled = true; DirAccess.remove_absolute(ProjectSettings.globalize_path(main.profile_path))],
+		# Gridiron controls: POV aim + throw (mouse look), Q/E spin, F dive, wheel/G taunt
+		[7700, func(): main.configure(7); main.ai.defense_enabled = false; main.pov_enabled = true],
+		[7702, func(): check(main.pov_active(), "QB presnap: POV aim active"); check(absf(main.aim_yaw) < 0.001, "aim starts downfield"); _key(KEY_SPACE)],
+		[7705, func(): check(main.pov_active(), "POV stays on while the snap is in the air")],
+		[7730, func(): main.look(Vector2(200, -100)); check(absf(main.aim_yaw - 0.5) < 0.001 and main.aim_pitch > main.POV_PITCH_START, "mouse look turns + raises the aim"); _key(KEY_J)],
+		[7760, func():
+			var ang: float = main.launch_angle()
+			var dir: Vector2 = main.aim_dir()
+			var qb = main.world.get_athlete(main.controlled_id)
+			check(main._view_relative(Vector2(0, 1)).dot(Vector2(sin(main.cam_yaw), cos(main.cam_yaw))) > 0.999 and main.cam_yaw > 0.3, "W moves along the view (cam yaw %.2f)" % main.cam_yaw)
+			_key_up(KEY_J)
+			var v: Vector3 = main.world.ball.velocity - Vector3(qb.velocity.x, qb.velocity.y, 0) * main.T.THROW_INHERIT
+			check(main.world.forward_pass_thrown, "J release throws (POV)")
+			check(Vector2(v.x, v.y).normalized().dot(dir) > 0.999, "ball flies where the QB looked")
+			check(absf(rad_to_deg(atan2(v.z, Vector2(v.x, v.y).length())) - ang) < 0.5, "view pitch = launch angle (%.1f)" % ang)
+			check(not main.pov_active(), "POV ends once the ball is thrown")],
+		[7800, func(): main.configure(7); main.ai.defense_enabled = false],
+		[7801, func(): _key(KEY_SPACE)],
+		[7840, func(): check(main.world.ball.is_held_by(main.controlled_id), "QB has the ball"); _key(KEY_E); check(main.world.get_athlete(main.controlled_id).is_spinning() and main.world.get_athlete(main.controlled_id).spin_dir == 1, "E spins right")],
+		[7843, func(): check(main.views[main.controlled_id].spin_vis_t > 0.0, "spin animates the athlete")],
+		[7940, func(): _key(KEY_Q); check(main.world.get_athlete(main.controlled_id).spin_dir == -1, "Q spins left")],
+		[7980, func(): main.world.get_athlete(main.controlled_id).facing = Vector2(0, 1); _key(KEY_F); check(main.world.get_athlete(main.controlled_id).is_diving(), "F dives with the ball")],
+		[8020, func(): check(main.world.phase == main.World.Phase.DEAD and main.last_whistle == "TACKLE", "carrier dive: down where he lands (%s)" % main.last_whistle)],
+		[8021, func():
+			var ev := InputEventMouseButton.new()
+			ev.button_index = MOUSE_BUTTON_WHEEL_DOWN
+			ev.pressed = true
+			main._unhandled_input(ev)
+			check(main.emote_picker.index == 1 and main.emote_picker.show_t > 0.0, "wheel scrolls the taunt picker")
+			_key(KEY_G)
+			var v = main.views[main.controlled_id]
+			check(v.emote_t > 0.0 and v.emote_id == main.emote_picker.selected() and v.bubble.visible, "G performs the selected taunt (%s)" % v.emote_id)
+			main.ai.defense_enabled = true],
 	]
+
+func _key_up(code: int) -> void:
+	var ev := InputEventKey.new()
+	ev.keycode = code
+	ev.pressed = false
+	main._input(ev)
 
 ## First receiver not controlled by the human (humans don't auto-run routes).
 func _ai_receiver():
@@ -192,14 +231,14 @@ func _chase_tick() -> void:
 		_chasing = false
 		main.input_override = null
 		main.sprint_override = null
-		check(main.drill.successes == 1, "tackled with the real E key (%d/%d)" % [main.drill.successes, main.drill.reps])
+		check(main.drill.successes == 1, "tackled with the real F (dive) key (%d/%d)" % [main.drill.successes, main.drill.reps])
 		return
 	var to: Vector2 = c.position + c.velocity * 0.25 - me.position
 	main.input_override = to.normalized()
 	main.sprint_override = true
 	if to.length() < 1.8 and me.can_act():
 		me.facing = (c.position - me.position).normalized()
-		_key(KEY_E)
+		_key(KEY_F)
 
 ## Inject a real key press through main's key handler.
 func _key(code: int) -> void:

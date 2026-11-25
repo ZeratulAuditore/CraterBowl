@@ -45,6 +45,16 @@ const DIVE_TIME := 0.35
 const TACKLE_REACH := 1.0
 const DIVE_RECOVER := 1.0
 
+# Spin move (Q / E): a short sidestep spin; dive tackles that land during it miss
+const SPIN_TIME := 0.4
+const SPIN_COOLDOWN := 1.2
+const SPIN_SPEED_KEEP := 0.85   # fraction of current speed carried through the spin
+const SPIN_SIDESTEP := 3.0      # yd/s lateral drift toward the spin side
+
+# POV passing: the QB's view pitch sets the launch angle
+const POV_ANGLE_MIN := -10.0    # degrees
+const POV_ANGLE_MAX := 70.0
+
 # Placeholder AI
 const AI_RUSH_DELAY := 2.5
 const AI_DIVE_RANGE := 2.0
