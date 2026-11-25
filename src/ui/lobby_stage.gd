@@ -27,8 +27,10 @@ class StubAthlete:
 	var facing := Vector2(0, -1)
 	var recover_t := 0.0
 	var engaged_with := -1
+	var spin_dir := 0
 	func speed() -> float: return 0.0
 	func is_diving() -> bool: return false
+	func is_spinning() -> bool: return false
 	func is_grounded() -> bool: return false
 
 var viewport: SubViewport
