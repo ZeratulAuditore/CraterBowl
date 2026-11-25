@@ -7,7 +7,7 @@ The daily loop takes the **first unchecked item**, ships it, tests it and checks
 Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (researched 2026-11-24).
 
 ## Phase A: Gridiron parity
-- [ ] A01 Field + player: regulation field with end zones, one third-person player with run/sprint/stamina and camera
+- [x] A01 Field + player: regulation field with end zones, one third-person player with run/sprint/stamina and camera
 - [ ] A02 Ball + snap: ball entity, center snap to QB, ball possession state
 - [ ] A03 Precision physics passing: aim + charge throw, ballistic flight with leading
 - [ ] A04 Catching: catch radius/timing, contested catches, incompletions
