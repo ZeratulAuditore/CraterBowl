@@ -33,6 +33,8 @@ var dead_ball_team := 0
 var play_time := 0.0
 var play_name := "Verticals"
 var defensive_call := ""
+var last_offensive_calls := ["", ""]
+var last_defensive_calls := ["", ""]
 var route_of := {}      # athlete_id -> route name (eligible offense receivers)
 var route_paths := {}   # athlete_id -> Array[Vector2] absolute, set at snap
 var ruleset := "classic"
@@ -158,6 +160,96 @@ func call_defense(id: String) -> bool:
 	defensive_call = id
 	return true
 
+func protection_target(blocker: Athlete) -> Athlete:
+	var best: Athlete = null
+	var best_d := T.PROTECTION_RANGE
+	for d in athletes:
+		if d.team == offense_team or d.is_grounded():
+			continue
+		var dist: float = d.position.distance_to(blocker.position)
+		if dist < best_d:
+			best_d = dist
+			best = d
+	return best
+
+func man_assignments() -> Dictionary:
+	var assignments := {}
+	var taken := {}
+	for r in receivers_in_order():
+		var best = null
+		var best_d := INF
+		for d in athletes:
+			if d.team == offense_team or taken.has(d.id):
+				continue
+			if not (d.role == Athlete.Role.CB or d.role == Athlete.Role.S or d.role == Athlete.Role.LB):
+				continue
+			if d.role == Athlete.Role.LB and r.role != Athlete.Role.RB:
+				continue   # LBs only take backs; they spy the QB otherwise
+			var dist: float = d.position.distance_to(r.position)
+			if dist < best_d:
+				best_d = dist
+				best = d
+		if best:
+			assignments[best.id] = r.id
+			taken[best.id] = true
+	return assignments
+
+## Shared coverage landmarks in offense-frame yards. Man defenders use the AI's
+## receiver matching. Line rushers keep their normal pursuit behavior.
+func defense_assignment(a: Athlete) -> Dictionary:
+	if a.team == offense_team or defensive_call.is_empty():
+		return {}
+	var call: Dictionary = DefensivePlaybook.CALLS[defensive_call]
+	var cx := field.width * 0.5
+	if a.role == Athlete.Role.DL or (call.family == DefensivePlaybook.Family.BLITZ and a.role == Athlete.Role.LB):
+		return {"kind": "rush", "target": Vector2(cx, los_y - 5.0)}
+	if call.family == DefensivePlaybook.Family.MAN and a.role != Athlete.Role.S:
+		return {"kind": "man"}
+	var deep := a.role == Athlete.Role.S or (defensive_call == "deep_zone" and a.role == Athlete.Role.CB)
+	var deep_middle := false
+	if defensive_call == "cover_3":
+		var safety := find_role(a.team, Athlete.Role.S)
+		deep_middle = a == safety if safety != null else a.role == Athlete.Role.LB
+		deep = deep_middle or a.role == Athlete.Role.CB
+	elif defensive_call == "cover_2" and athletes.size() < 14:
+		deep = a.role == Athlete.Role.S or (a.role == Athlete.Role.CB and
+			(a.home_x > cx or find_role(a.team, Athlete.Role.S) == null))
+	var depth := T.DEFENSE_DEEP_DEPTH if deep else T.DEFENSE_UNDER_DEPTH
+	if call.shell == DefensivePlaybook.Shell.GOAL_LINE:
+		depth = T.DEFENSE_GOAL_DEPTH
+	elif call.shell == DefensivePlaybook.Shell.PREVENT:
+		depth = T.DEFENSE_PREVENT_DEPTH if deep else T.DEFENSE_DEEP_DEPTH
+	var x := cx if deep_middle else lerpf(cx, a.home_x, 0.72)
+	var y := minf(los_y + depth, field.length + field.endzone_depth * 0.5)
+	return {"kind": "zone", "target": Vector2(x, y), "deep": deep}
+
+func recall_call(team: int) -> bool:
+	if phase != Phase.PRESNAP:
+		return false
+	if team == offense_team:
+		return call_play(last_offensive_calls[team])
+	return call_defense(last_defensive_calls[team])
+
+## Mirror the receiver assignments across the formation.
+func flip_play() -> bool:
+	if phase != Phase.PRESNAP:
+		return false
+	var receivers := receivers_in_order()
+	if receivers.size() < 2 or receivers[0].role != Athlete.Role.WR or receivers[1].role != Athlete.Role.WR:
+		return false
+	var left: int = receivers[0].id
+	var right: int = receivers[1].id
+	if not route_of.has(left) or not route_of.has(right):
+		return false
+	var route: String = route_of[left]
+	route_of[left] = route_of[right]
+	route_of[right] = route
+	return true
+
+func _record_calls() -> void:
+	last_offensive_calls[offense_team] = play_name
+	last_defensive_calls[1 - offense_team] = defensive_call
+
 func set_route(id: int, route: String) -> bool:
 	var a := get_athlete(id)
 	if a == null or a.team != offense_team or not is_eligible_receiver(a) or a.role == Athlete.Role.QB:
@@ -193,6 +285,7 @@ func snap() -> bool:
 			var ra := get_athlete(id)
 			route_paths[id] = Routes.path_for(route_of[id], ra.position, field.width)
 		phase = Phase.LIVE
+		_record_calls()
 		event.emit("snap", {"qb": qb.id})
 		event.emit("snap_received", {"qb": qb.id})
 		return true
@@ -208,6 +301,7 @@ func snap() -> bool:
 		var a := get_athlete(id)
 		route_paths[id] = Routes.path_for(route_of[id], a.position, field.width)
 	phase = Phase.LIVE
+	_record_calls()
 	event.emit("snap", {"qb": qb.id})
 	return true
 
