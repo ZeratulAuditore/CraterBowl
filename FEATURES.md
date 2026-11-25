@@ -49,6 +49,9 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [ ] B09 Real kickoffs + returns (A08 uses an automatic touchback)
 - [ ] B10 Overtime (sudden death or alternating possessions) for tied games
 
+## Phase C: Gap backlog (docs/gaps/TODO.md)
+After Phase B, take the first unchecked `C##` item in `docs/gaps/TODO.md` (P0 → P1 → P2) and check it off there. The list comes from a gap analysis against Gridiron's patch-note mechanics and the arcade-sports genre (`docs/gaps/GAP_ANALYSIS.md`), and a scheduled job (`tools/gap_review.sh`) re-evaluates it. P0 items C01–C10 (run game, kicking, moves, clock, competitive rules, defense calls) are real Gridiron mechanics that the A-list missed.
+
 ## Discovered (bugs/follow-ups the loop adds here; fixed before new features)
 - [ ] D02 Party queue: friends queue together and land in the same match/team (matchmaker backend + CLI; menu UI belongs to the out-of-game session) — parity G09
 - [ ] D03 Chaosball in matchmaking: queue mode for Chaosball 3v3 — parity G17
