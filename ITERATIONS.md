@@ -122,3 +122,9 @@
 - Host opens a lobby by default (`--no-lobby` for instant start; `--start-when-ready`, `--advertise=IP` for headless/tests); prints the invite code; lobby state broadcast reliably; clients ready via lobby actions; when all ready → configure(size) + half length + roster slots + welcomes; late joiners go straight in. Lobby HUD + keys (Enter ready; host 3/5/7, H).
 - **Found + fixed a latent bug:** the real keyboard handler had never been updated since iter 002 (string-replace patches silently didn't match): Space/E/1/2 bypassed `do_action` (broken online), and TAB/T/Q/F didn't exist. Rewrote it; added real-key-event flow steps; added `tools/patch.py` (strict) + LOOP.md rules.
 - Tests: 125 unit (+7); flow 61 checks (+6 real-key steps); net test joins **by invite code** through lobby ready-up (11 checks), 3/3 passes.
+
+## 018: A17 Offline practice mode (2026-11-24)
+- `src/sim/drills.gd`: Passing (you = QB, WR/WR/RB, no D, cycles playbook), Catching (you = WR vs AI QB + CB in man), Tackling (you = LB vs live AI RB, 6 s timeout), Scrimmage (7v7 bots, no clock). Drills build only their own athletes into a fresh World; reps, successes, streak/best; 1.2 s pause then auto reset. World `start_live_with(id)`.
+- Main: `-- --practice=KIND`, `start_practice()`, practice never runs clocks, HUD shows drill stats; `sprint_override` hook for tests.
+- **Bug found + fixed:** man coverage at the snap sent the CB "behind" an unreleased WR, i.e. through him into the backfield, shoving the receiver backwards (bots hid it by sidestepping). Defenders now hold level/inside until the receiver gets past. Bot game after fix: 10-min 67–72% comp, closer scores.
+- Tests: 131 unit (+6 incl. regression); flow 70 checks (+8: passing drill completion via real game, rep reset, tackling drill via real E key). Route-glue flow step now runs without AI defense (inside leverage legitimately takes slants away).

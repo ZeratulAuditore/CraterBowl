@@ -150,3 +150,18 @@ func test_full_bot_game() -> void:
 	assert_true(ev.get("fumble", 0) <= maxi(1, ev.get("catch", 0) / 5), "fumbles rare (%d)" % ev.get("fumble", 0))
 	assert_true(ev.get("breakup", 0) + ev.get("incomplete", 0) >= 1, "defense makes some plays")
 	print("    bot game: %d plays, longest %.1fs, score %s, %s, comp %.0f%%, %s" % [plays, longest, str(m.score), m.downs.label(), comp, str(ev)])
+
+func test_press_defender_does_not_walk_through_receiver() -> void:
+	# Regression: trail spot put the CB behind an unreleased WR -> CB shoved the WR backwards.
+	var m := _match()
+	var w := m.world
+	w.snap()
+	var ai := AI.new()
+	var qb := w.find_role(0, R.QB)
+	var wr = w.receivers_in_order()[0]
+	var y0: float = wr.position.y
+	for i in 60:
+		var inp := ai.think(w, [qb.id, wr.id])
+		inp[wr.id] = {"dir": Vector2.ZERO, "sprint": false}   # receiver stands still at the line
+		w.step(inp, DT)
+	assert_true(wr.position.y > y0 - 0.3, "WR not shoved backwards (dy %.2f)" % (wr.position.y - y0))

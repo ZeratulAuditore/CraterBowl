@@ -137,6 +137,16 @@ func set_route(id: int, route: String) -> bool:
 	route_of[id] = route
 	return true
 
+## Drills: go LIVE immediately with `id` carrying the ball (no snap).
+func start_live_with(id: int) -> void:
+	var a := get_athlete(id)
+	ball.hold(a.id)
+	last_possession = a.team
+	play_time = 0.0
+	phase = Phase.LIVE
+	_sync_ball()
+	event.emit("snap", {"qb": a.id})
+
 func snap() -> bool:
 	if phase != Phase.PRESNAP:
 		return false

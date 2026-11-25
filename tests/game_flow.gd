@@ -77,8 +77,8 @@ func _initialize() -> void:
 		[3206, func(): _force_dead_if_live(); main.series.start(0, 30.0); if main.world.get_athlete(main.my_id).team != 0: main.do_action({"a": "team"})],
 		[3207, func(): check(main.do_action({"a": "play", "p": "Slants"}), "call Slants"); check(main.world.play_name == "Slants", "play set")],
 		[3209, func(): check(main.route_mesh.get_surface_count() > 0, "route lines drawn presnap"); check(main.hud.text.find("PLAY: Slants") >= 0, "HUD shows play")],
-		[3210, func(): slant_wr = _ai_receiver(); slant_x = slant_wr.position.x; main.world.snap()],
-		[3300, func(): check(absf(slant_wr.position.x - slant_x) > 2.0 and absf(slant_wr.position.x - main.field.width / 2.0) < absf(slant_x - main.field.width / 2.0), "AI WR broke inside on slant (dx %.1f)" % (slant_wr.position.x - slant_x)); check(main.route_mesh.get_surface_count() == 0, "route lines hidden after snap")],
+		[3210, func(): main.ai.defense_enabled = false; slant_wr = _ai_receiver(); slant_x = slant_wr.position.x; main.world.snap()],  # route glue only (CB inside leverage takes slants away)
+		[3300, func(): check(absf(slant_wr.position.x - slant_x) > 2.0 and absf(slant_wr.position.x - main.field.width / 2.0) < absf(slant_x - main.field.width / 2.0), "AI WR broke inside on slant (dx %.1f)" % (slant_wr.position.x - slant_x)); check(main.route_mesh.get_surface_count() == 0, "route lines hidden after snap"); main.ai.defense_enabled = true],
 		# A13: forced interception -> live return -> whistle -> possession flips
 		[3301, func(): _force_dead_if_live(); main.series.start(0, 30.0); main.world.snap()],
 		[3330, func(): main.ai.defense_enabled = false; _setup_pick()],  # CB holds the spot (bots would play man)
@@ -100,6 +100,17 @@ func _initialize() -> void:
 		[4605, func(): var t0: int = main.world.get_athlete(main.my_id).team; _key(KEY_T); check(main.world.get_athlete(main.my_id).team == 1 - t0, "T key swaps team")],
 		[4606, func(): _key(KEY_T); check(main.world.get_athlete(main.my_id).team == main.world.offense_team, "T again: back on offense")],
 		[4607, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE, "Space key snaps")],
+		# A17: practice drills through the real game
+		[4700, func(): main.start_practice("passing"); check(main.drill != null and main.world.athletes.size() == 4, "passing drill: 4 athletes")],
+		[4702, func(): check(main.hud.text.find("PRACTICE: Passing") >= 0, "HUD shows drill"); _key(KEY_SPACE)],
+		[4703, func(): main.world.call_play("Verticals")],
+		[4790, func(): _lead_to_wr(); main._set_charging(true)],
+		[4840, func(): main._set_charging(false)],
+		[5100, func(): check(main.drill.successes == 1 and main.drill.reps == 1, "drill counted the completion (%d/%d)" % [main.drill.successes, main.drill.reps])],
+		[5200, func(): check(main.world.phase == main.World.Phase.PRESNAP and main.controlled_id == main.my_id, "rep reset to presnap, control back to QB")],
+		[5300, func(): main.start_practice("tackling"); check(main.world.phase == main.World.Phase.LIVE, "tackling drill starts live")],
+		[5301, func(): _chase_and_tackle()],
+		[5800, func(): check(not _chasing, "tackling rep finished")],
 	]
 
 ## First receiver not controlled by the human (humans don't auto-run routes).
@@ -116,6 +127,29 @@ func _setup_pick() -> void:
 		if a.id != cb.id and a.position.distance_to(Vector2(50, 60)) < 6.0:
 			a.position.x = 30.0
 	cb.position = Vector2(50, 60)
+
+## Tackling drill: run at the carrier; press the real E key when in range.
+var _chasing := false
+func _chase_and_tackle() -> void:
+	_chasing = true
+
+func _chase_tick() -> void:
+	if not _chasing or main.drill == null:
+		return
+	var me = main.world.get_athlete(main.my_id)
+	var c = main.world.carrier()
+	if c == null or main.drill.rep_over:
+		_chasing = false
+		main.input_override = null
+		main.sprint_override = null
+		check(main.drill.successes == 1, "tackled with the real E key (%d/%d)" % [main.drill.successes, main.drill.reps])
+		return
+	var to: Vector2 = c.position + c.velocity * 0.25 - me.position
+	main.input_override = to.normalized()
+	main.sprint_override = true
+	if to.length() < 1.8 and me.can_act():
+		me.facing = (c.position - me.position).normalized()
+		_key(KEY_E)
 
 ## Inject a real key press through main's key handler.
 func _key(code: int) -> void:
@@ -150,6 +184,7 @@ func _physics_process(_dt: float) -> bool:
 		quit(1)
 		return true
 	frame += 1
+	_chase_tick()
 	for s in steps:
 		if s[0] == frame:
 			s[1].call()

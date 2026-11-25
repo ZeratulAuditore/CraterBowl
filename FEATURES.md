@@ -24,7 +24,7 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [x] A14 Bots: AI fills empty slots for offense and defense
 - [x] A15 Match sizes: custom matches 3v3, 5v5 and 7v7 (field scaling + roster rules)
 - [x] A16 Private matches: lobby with host settings, invite code, ready-up
-- [ ] A17 Offline practice mode: solo vs bots, drills
+- [x] A17 Offline practice mode: solo vs bots, drills
 - [ ] A18 Casual + competitive queues: matchmaking (local queue service stand-in first)
 - [ ] A19 Chaosball 3v3: low gravity, anyone can throw/catch, catch your own pass, up to 3 bounces off ground/walls
 - [ ] A20 Chaosball scoring: pass streak raises TD value (cap 7), pass clock that explodes the ball

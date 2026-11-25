@@ -162,6 +162,11 @@ func _cover(world, a, qb) -> Dictionary:
 		# stays out of the QB's throwing lane.
 		var heading: Vector2 = r.velocity.normalized() if r.velocity.length() > 0.5 else Vector2(0, 1)
 		var spot: Vector2 = r.position - r.velocity * T.AI_COVER_REACTION - heading * T.AI_COVER_TRAIL
+		# Until the receiver gets past him, a defender lined up downfield holds level and
+		# slightly inside; "trailing" would mean walking through the receiver into the backfield.
+		if a.position.y > r.position.y and spot.y < r.position.y:
+			var inside := 1.0 if r.position.x < world.field.width / 2.0 else -1.0
+			spot = Vector2(r.position.x + inside * 1.0, r.position.y + 0.6)
 		var to: Vector2 = spot - a.position
 		return {"dir": to.normalized() if to.length() > 0.3 else Vector2.ZERO, "sprint": to.length() > 2.0}
 	if a.role == Athlete.Role.LB and qb != null:

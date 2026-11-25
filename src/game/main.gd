@@ -20,6 +20,7 @@ const LOCAL_PLAYER := 1      # the local human's player id (= host peer id onlin
 const Routes := preload("res://src/sim/routes.gd")
 const MatchConfig := preload("res://src/sim/match_config.gd")
 const Lobby := preload("res://src/net/lobby.gd")
+const Drills := preload("res://src/sim/drills.gd")
 const InviteCode := preload("res://src/net/invite_code.gd")
 const T := preload("res://src/sim/tuning.gd")
 const ARC_DOTS := 24
@@ -47,6 +48,7 @@ var roster := Roster.new()
 var match_size := 7
 var lobby := Lobby.new()      # server: authoritative; client: mirror
 var debug_playclock := -1.0
+var drill: Drills = null        # offline practice drill (null = normal match)
 var field_root: Node3D
 var athlete_root: Node3D
 var my_id := -1          # the human's athlete (QB on offense, LB on defense)
@@ -57,6 +59,7 @@ var fd_marker: MeshInstance3D
 var route_lines: MeshInstance3D
 var route_mesh := ImmediateMesh.new()
 var input_override = null   # tests/bots: Vector2 replaces keyboard movement
+var sprint_override = null  # tests/bots: bool replaces the Shift key
 var net: NetSession
 var net_tick := 0
 var predictor := Predictor.new()
@@ -73,7 +76,8 @@ func _ready() -> void:
 	_build_environment()
 	_build_ball_view()
 	_build_aim_visuals()
-	configure(MatchConfig.normalize(_cli_args().get("size", 7)))
+	var args := _cli_args()
+	configure(MatchConfig.normalize(args.get("size", 7)), str(args.get("practice", "")) if args.has("practice") else "")
 	_setup_net()
 	route_lines = MeshInstance3D.new()
 	route_lines.name = "RouteLines"
@@ -99,8 +103,12 @@ func _ready() -> void:
 
 ## (Re)build the whole match for a size: field, roster, sim, views. Used at start,
 ## and on clients when the host's size differs.
-func configure(size: int) -> void:
+func configure(size: int, practice: String = "") -> void:
 	match_size = MatchConfig.normalize(size)
+	drill = null
+	if practice != "":
+		drill = Drills.new()
+		match_size = 7
 	for r in [field_root, athlete_root]:
 		if r:
 			remove_child(r)
@@ -121,22 +129,31 @@ func configure(size: int) -> void:
 	_spawn_teams()
 	_build_field()
 	series = Match.new(world)
-	series.start(0)
+	series.start(0, Drills.LOS if drill != null else -1.0)
 	world.event.connect(_on_world_event)
+	if drill != null:
+		world.event.connect(drill.on_event)
+		if drill.kind != "scrimmage":
+			drill.start_rep(world)
 	los_marker = _marker(Color(0.2, 0.5, 1.0), "LOSMarker")
 	fd_marker = _marker(Color(1.0, 0.85, 0.1), "FirstDownMarker")
 	for v in views:
 		v.sync()
 
 func _spawn_teams() -> void:
-	roster.build(world, match_size)
+	var drill_me := -1
+	if drill != null:
+		MatchConfig.apply_field(world.field, 7)
+		drill_me = drill.build(world, _practice_kind())
+	if drill_me < 0:
+		roster.build(world, match_size)
 	for a in world.athletes:
 		var v := PlayerNode.new()
 		v.name = "Athlete%d" % a.id
 		v.setup(a, TEAM_COLORS[a.team])
 		athlete_root.add_child(v)
 		views.append(v)
-	my_id = roster.auto_assign(LOCAL_PLAYER)
+	my_id = drill_me if drill_me >= 0 else roster.auto_assign(LOCAL_PLAYER)
 	controlled_id = my_id
 	player = views[controlled_id]
 
@@ -285,6 +302,20 @@ func _setup_net() -> void:
 		net.lobby_received.connect(func(st): lobby.from_dict(st))
 		net.snapshot_received.connect(_on_snapshot)
 		net.event_received.connect(_on_world_event)
+
+func _practice_kind() -> String:
+	if _pending_practice != "":
+		return _pending_practice
+	var k := str(_cli_args().get("practice", ""))
+	return k if Drills.valid(k) else "passing"
+
+var _pending_practice := ""
+
+## Start an offline practice session (also used by tests).
+func start_practice(kind: String) -> void:
+	_pending_practice = kind
+	configure(7, kind)
+	_pending_practice = ""
 
 func _local_ipv4() -> String:
 	for a in IP.get_local_addresses():
@@ -495,7 +526,7 @@ func _unhandled_key_input(e: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if charging:
 		charge = minf(1.0, charge + delta / T.THROW_CHARGE_TIME)
-	var my_input := {"dir": read_input(), "sprint": Input.is_key_pressed(KEY_SHIFT)}
+	var my_input := {"dir": read_input(), "sprint": sprint_override if sprint_override != null else Input.is_key_pressed(KEY_SHIFT)}
 	if in_lobby():
 		if is_server():
 			_step_lobby()
@@ -516,8 +547,14 @@ func _physics_process(delta: float) -> void:
 	_render()
 
 func _step_authoritative(delta: float, my_input: Dictionary) -> void:
-	series.tick(delta)
-	if world.phase == World.Phase.DEAD and auto_next and not series.is_final():
+	if drill == null:
+		series.tick(delta)          # practice never runs the clocks
+	if drill != null and drill.kind != "scrimmage":
+		if drill.tick(world, delta):
+			drill.start_rep(world)
+			last_whistle = ""
+			set_controlled(my_id)
+	elif world.phase == World.Phase.DEAD and auto_next and not series.is_final():
 		dead_t += delta
 		if dead_t >= NEXT_PLAY_DELAY:
 			next_play()
@@ -598,6 +635,8 @@ func _process(delta: float) -> void:
 		hud.text = "PRIVATE MATCH LOBBY   Invite code: %s\n%s\n[Enter] ready  (%s starts when everyone is ready)" % [lobby.code, lobby.summary(), who]
 		return
 	var clock_txt: String = "%dv%d %s" % [match_size, match_size, series.clock.label()]
+	if drill != null:
+		clock_txt = drill.label()
 	if world.phase == World.Phase.PRESNAP:
 		clock_txt += " | PLAY %d" % int(ceil(series.clock.play_clock))
 	if series.is_final():
