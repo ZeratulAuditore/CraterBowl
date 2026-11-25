@@ -4,7 +4,7 @@ extends RefCounted
 const DIVE_FLAG := 1
 const GROUND_FLAG := 2
 
-static func encode_snapshot(m, tick: int) -> Dictionary:
+static func encode_snapshot(m, tick: int, acks: Dictionary = {}) -> Dictionary:
 	var w = m.world
 	var a := PackedFloat32Array()
 	var r := PackedInt32Array()
@@ -20,7 +20,7 @@ static func encode_snapshot(m, tick: int) -> Dictionary:
 		"d": PackedFloat32Array([m.downs.offense_team, m.downs.down, m.downs.los, m.downs.first_down_y]),
 		"s": PackedInt32Array(m.score),
 		"c": PackedFloat32Array([m.clock.half, m.clock.remaining, m.clock.play_clock, 1.0 if m.clock.final else 0.0]),
-		"ms": m.state, "tp": m.try_points,
+		"ms": m.state, "tp": m.try_points, "ack": acks,
 	}
 
 static func apply_snapshot(m, s: Dictionary) -> void:
@@ -72,7 +72,10 @@ static func sanitize_input(msg) -> Dictionary:
 	var dir = msg.get("dir", Vector2.ZERO)
 	if not _finite_v(dir):
 		dir = Vector2.ZERO
-	return {"dir": (dir as Vector2).limit_length(1.0), "sprint": msg.get("spr", false) == true}
+	var seq = msg.get("seq", 0)
+	if not (seq is int) or seq < 0:
+		seq = 0
+	return {"dir": (dir as Vector2).limit_length(1.0), "sprint": msg.get("spr", false) == true, "seq": seq}
 
 static func sanitize_action(act) -> Dictionary:
 	if not (act is Dictionary):

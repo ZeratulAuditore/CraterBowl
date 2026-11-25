@@ -69,3 +69,10 @@
 - Main: `-- --host [--port] [--playclock]` / `-- --join=ADDR [--port]`; all human actions go through `do_action()`; clients render snapshots + server events; fixed athlete per person online (control switch on catch is offline-only); HUD side label uses your team; `input_override` hook for tests/bots.
 - Tests: 75 unit (+3); new `scripts/net_test.sh` two-process host/client test (6 checks: welcome, team, snapshots, input authority, auto-snap + reliable events, defense snap rejected) — wired into smoke.sh, passed 3/3 runs.
 - Known gaps: no prediction/interpolation yet (A10b) → client sees 30 Hz steps + RTT input lag; no NAT traversal (B07).
+
+## 011: A10b Netcode feel (2026-11-24)
+- `src/net/client_predictor.gd`: seq-tagged inputs, local stepping of own athlete, reconcile = server state + replay of unacked inputs (bounded buffer).
+- `src/net/interpolator.gd`: snapshot buffer by server tick; others + ball render 100 ms in the past, lerped; clamps on underrun; drops out-of-order.
+- Protocol/session: input `seq` (sanitized, never goes backwards on server), snapshots carry per-athlete `ack`.
+- Tests: 80 unit (+5: prediction with simulated 6-tick latency leads then converges <0.01 yd, bounded buffer, interpolation midpoint/clamps/out-of-order, seq sanitizing). Net test now 7 checks incl. "own athlete predicted ahead of server state" — verified it fails (0 frames) with prediction disabled. 3/3 runs pass.
+- Known gaps: prediction ignores collisions/blocks (server corrects on contact); no visual smoothing of corrections yet.

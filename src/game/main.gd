@@ -12,6 +12,9 @@ const NEXT_PLAY_DELAY := 2.0
 const NetSession := preload("res://src/net/net_session.gd")
 const Protocol := preload("res://src/net/protocol.gd")
 const SNAPSHOT_EVERY := 2   # physics ticks (60 Hz -> 30 Hz snapshots)
+const Predictor := preload("res://src/net/client_predictor.gd")
+const Interp := preload("res://src/net/interpolator.gd")
+const INTERP_DELAY := 0.1   # seconds others render in the past
 const T := preload("res://src/sim/tuning.gd")
 const ARC_DOTS := 24
 
@@ -40,6 +43,10 @@ var fd_marker: MeshInstance3D
 var input_override = null   # tests/bots: Vector2 replaces keyboard movement
 var net: NetSession
 var net_tick := 0
+var predictor := Predictor.new()
+var interp := Interp.new()
+var latest_snap_tick := 0
+var latest_snap_at := 0.0
 var camera: Camera3D
 var hud: Label
 
@@ -215,8 +222,32 @@ func _setup_net() -> void:
 		print("NET join %s:%d: %s" % [args["join"], port, error_string(err)])
 		auto_next = false
 		net.welcomed.connect(func(aid): my_id = aid; set_controlled(aid); print("NET welcomed as athlete %d" % aid))
-		net.snapshot_received.connect(func(snap): Protocol.apply_snapshot(series, snap))
+		net.snapshot_received.connect(_on_snapshot)
 		net.event_received.connect(_on_world_event)
+
+## Client: authoritative state in, then re-predict own athlete on top of it.
+func _on_snapshot(snap: Dictionary) -> void:
+	Protocol.apply_snapshot(series, snap)
+	interp.push(int(snap["t"]), Interp.xy_from_snapshot(snap), Interp.ball_from_snapshot(snap))
+	latest_snap_tick = int(snap["t"])
+	latest_snap_at = Time.get_ticks_msec() / 1000.0
+	var me = world.get_athlete(my_id)
+	if me:
+		predictor.reconcile(me, int(snap.get("ack", {}).get(my_id, 0)))
+
+## Client: draw others ~100 ms in the past, interpolated between snapshots.
+func _apply_interpolation() -> void:
+	if interp.buf.is_empty():
+		return
+	var now := Time.get_ticks_msec() / 1000.0
+	var t := latest_snap_tick / Interp.TICK_RATE + (now - latest_snap_at) - INTERP_DELAY
+	var smp := interp.sample(t)
+	var xy: PackedFloat32Array = smp["xy"]
+	for i in mini(world.athletes.size(), xy.size() / 2):
+		if i != my_id:
+			world.athletes[i].position = Vector2(xy[i * 2], xy[i * 2 + 1])
+	if not world.ball.is_held_by(my_id):
+		world.ball.position = smp["ball"]
 
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
@@ -295,7 +326,15 @@ func _physics_process(delta: float) -> void:
 		charge = minf(1.0, charge + delta / T.THROW_CHARGE_TIME)
 	var my_input := {"dir": read_input(), "sprint": Input.is_key_pressed(KEY_SHIFT)}
 	if is_client():
-		net.send_input(my_input["dir"], my_input["sprint"])   # server is authoritative; state arrives via snapshots
+		# Predict own athlete now; server stays authoritative and reconciles via acks.
+		var seq := predictor.record(my_input["dir"], my_input["sprint"], delta)
+		net.send_input(my_input["dir"], my_input["sprint"], seq)
+		var me = world.get_athlete(my_id)
+		if me and net.my_athlete >= 0:
+			me.step(my_input["dir"], my_input["sprint"], delta)
+			if world.ball.is_held_by(my_id):
+				world.ball.position = Vector3(me.position.x, me.position.y, T.BALL_CARRY_HEIGHT)
+		_apply_interpolation()
 	else:
 		_step_authoritative(delta, my_input)
 	_render()
@@ -320,7 +359,7 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 	if is_server():
 		net_tick += 1
 		if net_tick % SNAPSHOT_EVERY == 0:
-			net.broadcast_snapshot(Protocol.encode_snapshot(series, net_tick))
+			net.broadcast_snapshot(Protocol.encode_snapshot(series, net_tick, net.acks()))
 
 func _render() -> void:
 	for v in views:

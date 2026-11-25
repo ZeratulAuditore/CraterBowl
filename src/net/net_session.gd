@@ -89,9 +89,16 @@ func take_actions() -> Array:
 	return out
 
 # ---- client ----
-func send_input(dir: Vector2, sprint: bool) -> void:
+func send_input(dir: Vector2, sprint: bool, seq: int = 0) -> void:
 	if mode == Mode.CLIENT and my_athlete >= 0:
-		_send(1, {"k": "in", "dir": dir, "spr": sprint}, false)
+		_send(1, {"k": "in", "dir": dir, "spr": sprint, "seq": seq}, false)
+
+## Server: athlete_id -> last processed input seq (for client reconciliation).
+func acks() -> Dictionary:
+	var out := {}
+	for aid in inputs:
+		out[aid] = inputs[aid].get("seq", 0)
+	return out
 
 func send_action(action: Dictionary) -> void:
 	if mode == Mode.CLIENT and my_athlete >= 0:
@@ -106,8 +113,10 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 		"in":
 			if mode == Mode.SERVER and peer_athlete.has(from):
 				var inp := P.sanitize_input(msg)
-				if not inp.is_empty():
-					inputs[peer_athlete[from]] = inp
+				var aid: int = peer_athlete[from]
+				# unreliable-ordered, but never go backwards in seq
+				if not inp.is_empty() and inp["seq"] >= inputs.get(aid, {}).get("seq", -1):
+					inputs[aid] = inp
 		"act":
 			if mode == Mode.SERVER and peer_athlete.has(from):
 				actions.append([peer_athlete[from], msg.get("act", {})])
