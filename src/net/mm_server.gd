@@ -3,11 +3,13 @@ extends Node
 ## relays the host's invite code to the others.
 
 const MM := preload("res://src/net/matchmaker.gd")
+const Registry := preload("res://src/net/lobby_registry.gd")
 const DEFAULT_PORT := 24600
 
 var api: SceneMultiplayer
 var peer: ENetMultiplayerPeer
 var mm := MM.new()
+var registry := Registry.new()   # public lobbies for the server browser
 var pending := {}   # host peer id -> {"others": [ids], "match": Dictionary}
 
 func start(port: int) -> Error:
@@ -19,7 +21,7 @@ func start(port: int) -> Error:
 	if err != OK:
 		return err
 	api.multiplayer_peer = peer
-	api.peer_disconnected.connect(func(id): mm.dequeue(id); pending.erase(id))
+	api.peer_disconnected.connect(func(id): mm.dequeue(id); pending.erase(id); registry.remove(id))
 	return OK
 
 func _now() -> float:
@@ -33,6 +35,15 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 	if not (msg is Dictionary):
 		return
 	match msg.get("k", ""):
+		"list":
+			_send(from, {"k": "lobbies", "list": registry.listing(_now()), "queued": mm.queue.size()})
+		"register":
+			var info = msg.get("info", {})
+			_send(from, {"k": "registered", "ok": info is Dictionary and registry.register(from, info, _now())})
+		"unregister":
+			registry.remove(from)
+		"whoami":
+			_send(from, {"k": "you", "ip": peer.get_peer(from).get_remote_address()})
 		"enq":
 			var size = msg.get("size", 7)
 			var rating = msg.get("rating", 1000.0)

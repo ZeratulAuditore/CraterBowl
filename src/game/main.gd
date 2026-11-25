@@ -498,6 +498,9 @@ func _cli_args() -> Dictionary:
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
 		out[kv[0]] = kv[1] if kv.size() > 1 else true
+	var launch := get_node_or_null("/root/Launch")   # main menu choices (src/ui/launch.gd)
+	if launch:
+		out.merge(launch.options, true)
 	return out
 
 func _setup_net() -> void:
@@ -599,7 +602,7 @@ func _queue_up(args: Dictionary) -> void:
 	mm_client.host_match.connect(func(m):
 		ranked_match = m.get("mode", "") == "competitive"
 		pending_teams = m.get("teams", {}) if m.get("teams") is Dictionary else {}
-		var port := 25000 + randi() % 5000
+		var port := int(args.get("host-port", 25000 + randi() % 5000))
 		var code := _host_game(port, {"start_when_ready": true, "expected": int(m.get("expected", 2)),
 			"size": int(m.get("size", 7)), "advertise": advertise, "game": str(m.get("game", "classic"))})
 		lobby.settings["half_minutes"] = 5
