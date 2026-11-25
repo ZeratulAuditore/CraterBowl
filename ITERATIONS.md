@@ -53,5 +53,5 @@
 ## 008: A08 Scoring (2026-11-24)
 - Sim: World detects touchdowns (carrier in opponent end zone, in bounds: runs + end-zone catches). Match tracks score; safety (downed/OOB at y<0, +2 defense); play-based try (1 pt from the 3 or 2 pts from the 10, `choose_try`); simplified kickoff (current defense receives at own 25). Downs clamp no longer needed for TD/safety paths.
 - Game: HUD scoreboard (HOME/AWAY), TRY prompt, 1/2 keys choose try, TOUCHDOWN whistle text.
-- Tests: 66 unit (+6); game flow 30 checks (forced TD → +6 → 2-pt try good → kickoff to away at 25).
+- Tests: 66 unit (+6); game flow 27 checks (forced TD → +6 → 2-pt try good → kickoff to away at 25).
 - Known gaps: real kickoffs/returns logged as B09.
