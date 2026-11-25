@@ -9,3 +9,5 @@
 .mm-a.log
 .mm-b.log
 .parity-*.log
+__pycache__/
+*.pyc

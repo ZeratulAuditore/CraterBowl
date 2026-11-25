@@ -146,10 +146,8 @@ func _ready() -> void:
 	route_lines = MeshInstance3D.new()
 	route_lines.name = "RouteLines"
 	route_lines.mesh = route_mesh
-	var rlm := StandardMaterial3D.new()
-	rlm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	rlm.vertex_color_use_as_albedo = true
-	route_lines.material_override = rlm
+	route_lines.material_override = RC.mat(Color.WHITE, true, true)
+	route_lines.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(route_lines)
 	for v in views:
 		v.sync()

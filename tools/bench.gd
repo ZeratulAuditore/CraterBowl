@@ -4,7 +4,10 @@ extends SceneTree
 ##   2. SCENE: the real main scene; per-frame script cost (process + physics).
 ## Prints one `BENCH <key>=<value>` line per metric so scripts can parse/compare.
 ##
-##   godot --headless --path . -s res://tools/bench.gd [-- --minutes=4 --frames=600 --size=7]
+##   godot --headless --fixed-fps 60 --path . -s res://tools/bench.gd [-- --minutes=4 --frames=600 --size=7]
+## --fixed-fps 60 makes every frame exactly one sim tick, run uncapped, so a frame's wall
+## time = the full per-tick cost (physics + process + scene). Gate on p50: medians shrug off
+## other processes stealing the CPU; means and Performance monitors (1 s averages) do not.
 ##
 ## See docs/optimization/README.md for budgets and how to read the numbers.
 const World := preload("res://src/sim/world.gd")
@@ -18,8 +21,8 @@ var _args := {}
 var _main: Node
 var _frame := 0
 var _frames := 600
-var _proc_us: Array = []
-var _phys_us: Array = []
+var _frame_us: Array = []
+var _last_us := 0
 var _objects0 := 0
 
 func _initialize() -> void:
@@ -81,15 +84,15 @@ func _on_frame() -> void:
 	_frame += 1
 	if _frame == 30:
 		_objects0 = int(Performance.get_monitor(Performance.OBJECT_COUNT))
+	var now := Time.get_ticks_usec()
 	if _frame > 30:  # skip warm-up (scene build, first imports)
-		_proc_us.append(int(Performance.get_monitor(Performance.TIME_PROCESS) * 1e6))
-		_phys_us.append(int(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1e6))
+		_frame_us.append(now - _last_us)
+	_last_us = now
 	# Keep plays flowing so the scene exercises LIVE/DEAD/PRESNAP, not just presnap.
 	if _main.world.phase == World.Phase.PRESNAP and _frame % 90 == 0:
 		_main.world.snap()
 	if _frame >= _frames + 30:
-		_report("scene_process", _proc_us)
-		_report("scene_physics", _phys_us)
+		_report("scene_frame", _frame_us)
 		var objs := int(Performance.get_monitor(Performance.OBJECT_COUNT))
 		print("BENCH scene_nodes=%d" % int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))
 		print("BENCH scene_object_growth=%d" % (objs - _objects0))
@@ -107,5 +110,6 @@ func _report(key: String, samples: Array) -> void:
 	var mean := float(sum) / s.size()
 	var p99: int = s[mini(s.size() - 1, int(s.size() * 0.99))]
 	print("BENCH %s_mean_us=%.1f" % [key, mean])
+	print("BENCH %s_p50_us=%d" % [key, s[s.size() / 2]])
 	print("BENCH %s_p99_us=%d" % [key, p99])
 	print("BENCH %s_max_us=%d" % [key, s[-1]])

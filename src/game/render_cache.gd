@@ -94,6 +94,12 @@ static func material_count() -> int:
 static func triangles(mesh: Mesh) -> int:
 	if mesh == null:
 		return 0
+	if mesh.has_meta("tris"):
+		return int(mesh.get_meta("tris"))
+	if mesh is PrimitiveMesh:
+		var pa: Array = mesh.get_mesh_arrays()
+		var pi = pa[Mesh.ARRAY_INDEX]
+		return pi.size() / 3 if pi != null and pi.size() > 0 else pa[Mesh.ARRAY_VERTEX].size() / 3
 	var n := 0
 	for s in mesh.get_surface_count():
 		var arr := mesh.surface_get_arrays(s)

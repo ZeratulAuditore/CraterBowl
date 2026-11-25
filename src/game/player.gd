@@ -131,3 +131,7 @@ func place(p: Vector3, yaw: float) -> void:
 func interpolate(f: float) -> void:
 	position = _prev_pos.lerp(_cur_pos, f)
 	rotation.y = lerp_angle(_prev_yaw, _cur_yaw, f)
+
+## Latest sim (or replay) pose this view is heading to; `position` may lag it by < 1 tick.
+func target_position() -> Vector3:
+	return _cur_pos
