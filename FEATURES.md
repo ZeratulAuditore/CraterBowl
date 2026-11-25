@@ -29,7 +29,7 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [x] A19 Chaosball 3v3: low gravity, anyone can throw/catch, catch your own pass, up to 3 bounces off ground/walls
 - [x] A20 Chaosball scoring: pass streak raises TD value (cap 7), pass clock that explodes the ball
 - [x] A21 Stats: per-player, per-position stats tracked each match, end-of-match summary
-- [ ] A22 Leaderboards: per-position top 100 (local/file-backed first)
+- [x] A22 Leaderboards: per-position top 100 (local/file-backed first)
 - [ ] A23 Ranked: skill rating, rank tiers, seasons with season rewards; competitive hosts apply the matchmaker's snake-draft teams (computed in A18, not yet applied)
 - [ ] A24 Cosmetics: earnable through play, no gameplay effect, character customization
 - [ ] A25 Replays: record + playback of matches/plays

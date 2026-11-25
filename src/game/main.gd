@@ -22,6 +22,7 @@ const MatchConfig := preload("res://src/sim/match_config.gd")
 const Lobby := preload("res://src/net/lobby.gd")
 const Drills := preload("res://src/sim/drills.gd")
 const Stats := preload("res://src/sim/stats.gd")
+const Leaderboard := preload("res://src/sim/leaderboard.gd")
 const MMServer := preload("res://src/net/mm_server.gd")
 const MMClient := preload("res://src/net/mm_client.gd")
 const InviteCode := preload("res://src/net/invite_code.gd")
@@ -55,6 +56,8 @@ var debug_playclock := -1.0
 var drill: Drills = null        # offline practice drill (null = normal match)
 var stats: Stats
 var summary_lines: Array = []   # end-of-match summary (server computes; clients receive)
+var leaderboard_path := Leaderboard.DEFAULT_PATH
+var my_ranks := ""
 var field_root: Node3D
 var athlete_root: Node3D
 var my_id := -1          # the human's athlete (QB on offense, LB on defense)
@@ -83,6 +86,12 @@ func _ready() -> void:
 	_build_ball_view()
 	_build_aim_visuals()
 	var args := _cli_args()
+	if args.has("leaderboard-file"):
+		leaderboard_path = str(args["leaderboard-file"])
+	if args.has("leaderboard"):
+		_print_leaderboards(str(args["leaderboard"]) if args["leaderboard"] is String else "")
+		get_tree().quit()
+		return
 	configure(MatchConfig.normalize(args.get("size", 7)), str(args.get("practice", "")) if args.has("practice") else "",
 		str(args.get("mode", "classic")))
 	_setup_net()
@@ -259,8 +268,30 @@ func owner_name(aid: int) -> String:
 		return str(lobby.players[owner]["name"])
 	return "You" if owner == LOCAL_PLAYER else "P%d" % owner
 
+func _print_leaderboards(pos: String) -> void:
+	var lb := Leaderboard.new()
+	lb.load_file(leaderboard_path)
+	for p in ([pos] if pos != "" else lb.positions()):
+		print(lb.table_text(p, Leaderboard.MAX_ROWS))
+
+## Host/offline: fold this match into the persistent leaderboard; return your ranks.
+func _record_leaderboard() -> String:
+	var lb := Leaderboard.new()
+	lb.load_file(leaderboard_path)
+	lb.record_match(stats.to_dict())
+	lb.save(leaderboard_path)
+	var me := owner_name(my_id)
+	var ranks := []
+	for k in stats.lines:
+		if k.get_slice("|", 0) == me:
+			var pos: String = k.get_slice("|", 1)
+			ranks.append("%s #%d" % [pos, lb.rank_of(me, pos)])
+	return ", ".join(ranks)
+
 func _on_match_event(n: String, _d: Dictionary) -> void:
 	if n == "final":
+		if not is_client() and drill == null:
+			my_ranks = _record_leaderboard()
 		summary_lines = stats.summary_lines()
 		print("MATCH SUMMARY:\n  " + "\n  ".join(summary_lines))
 		if is_server():
@@ -753,6 +784,8 @@ func _process(delta: float) -> void:
 		var w := series.winner()
 		phase_name = "FINAL: HOME %d - AWAY %d  %s\n%s" % [series.score[0], series.score[1], "TIE" if w < 0 else ("HOME WINS" if w == 0 else "AWAY WINS"),
 			"\n".join(summary_lines) if not summary_lines.is_empty() else "(no stats)"]
+		if my_ranks != "":
+			phase_name += "\nYOUR RANKS: " + my_ranks
 	else:
 		phase_name = "HOME %d - AWAY %d | %s | %s | %s | %s" % [series.score[0], series.score[1], clock_txt, situation, side, phase_name]
 	var charge_txt := ("   THROW %d%%" % int(charge * 100)) if charging else ""

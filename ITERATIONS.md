@@ -155,3 +155,9 @@
 - Main: Stats per match, owner names from roster/lobby ("You", lobby names, "Bot"); at FINAL the summary prints to stdout + shows on the HUD; server broadcasts summary lines to clients.
 - Tests: 165 unit (+6 incl. 3-min bot game consistency: pass yds == rec yds); flow 76 checks (+3: real completion tracked, final summary on HUD).
 - Known gap: return yards after takeaways (add with B-phase stat polish).
+
+## 023: A22 Leaderboards (2026-11-24)
+- `src/sim/leaderboard.gd`: career lines per player|POSITION (games + summed stats, bots excluded), per-position scores (QB/WR/RB/C-OL/defense formulas), top-100 rankings, rank_of, JSON persistence (`user://leaderboard.json`).
+- Stats gains `blk` (block engagements) so linemen rank on something real.
+- Main: host/offline records the match at FINAL (not practice drills); final HUD "YOUR RANKS: QB #1, ..."; `-- --leaderboard[=POS] [--leaderboard-file=PATH]` prints the tables and exits.
+- Tests: 169 unit (+4); flow 78 checks (+2: file recorded with You|QB #1, HUD rank) using a temp leaderboard file (test runs never touch the real one — verified).

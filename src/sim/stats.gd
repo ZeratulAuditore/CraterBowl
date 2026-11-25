@@ -4,7 +4,7 @@ extends RefCounted
 const Athlete := preload("res://src/sim/athlete.gd")
 const ROLE := {0: "QB", 1: "C", 2: "WR", 3: "RB", 4: "LB", 5: "CB", 6: "S", 7: "OL", 8: "DL"}
 const FIELDS := ["att", "comp", "pass_yds", "pass_td", "int_thrown", "rec", "rec_yds", "rec_td",
-	"car", "rush_yds", "rush_td", "tkl", "sack", "int", "pbu", "ff", "fr", "pts"]
+	"car", "rush_yds", "rush_td", "tkl", "sack", "int", "pbu", "ff", "fr", "pts", "blk"]
 
 var world
 var owner_fn: Callable     # athlete_id -> owner name ("Bot" for AI)
@@ -57,6 +57,8 @@ func _on_event(n: String, d: Dictionary) -> void:
 			_add(d["by"], "int")
 		"breakup":
 			_add(d["by"], "pbu")
+		"block":
+			_add(d["blocker"], "blk")
 		"fumble":
 			_add(d["by"], "ff")
 		"recovery":

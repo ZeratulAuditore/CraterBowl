@@ -125,8 +125,11 @@ func _initialize() -> void:
 		[6401, func(): _key(KEY_SPACE)],
 		[6480, func(): _lead_to_wr(); main._set_charging(true)],
 		[6530, func(): main._set_charging(false)],
+		[6799, func(): main.leaderboard_path = "user://test_flow_leaderboard.json"; DirAccess.remove_absolute(ProjectSettings.globalize_path(main.leaderboard_path))],
 		[6800, func(): check(main.stats.total("att") >= 1 and main.stats.total("comp") >= 1, "stats tracked the completion (%d/%d)" % [main.stats.total("comp"), main.stats.total("att")]); _force_dead_if_live(); main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.next_play(); main.ai.defense_enabled = true],
 		[6802, func(): check(main.series.is_final(), "final"); check(main.hud.text.find("You QB: 1/1") >= 0, "HUD summary shows your QB line")],
+		# A22: match recorded to the leaderboard file; HUD shows your rank
+		[6803, func(): var lb = main.Leaderboard.new(); lb.load_file(main.leaderboard_path); check(lb.rank_of("You", "QB") == 1, "leaderboard file has You|QB at #1"); check(main.hud.text.find("YOUR RANKS: QB #1") >= 0, "HUD shows your rank"); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.leaderboard_path))],
 	]
 
 ## First receiver not controlled by the human (humans don't auto-run routes).
