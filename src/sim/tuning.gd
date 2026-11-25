@@ -71,6 +71,10 @@ const RECOVER_RADIUS := 0.8
 const RECOVER_MAX_HEIGHT := 1.0
 
 # Bots
+const NEUTRAL_ZONE_HALF := 0.5     # pre-snap: each side stops this far from the LOS
+const BARRIER_HEIGHT := 2.4        # LOS barrier wall height (m)
+const BARRIER_REVEAL_DIST := 3.0   # barrier brightens near athletes within this (yd)
+const BARRIER_DROP_TIME := 0.3     # barrier dissolve after the snap (s)
 const AI_SNAP_DELAY := 2.5         # AI-only offense snaps after this long presnap
 const AI_COVER_REACTION := 0.25   # defender reacts to where the receiver was
 const AI_COVER_TRAIL := 0.8       # yards behind along the receiver's path
@@ -97,6 +101,12 @@ const AI_PASS_CLOCK_MARGIN := 1.2
 const DEFENSE_GOAL_LINE_RANGE := 5.0
 const DEFENSE_PREVENT_DISTANCE := 15.0
 const DEFENSE_PREVENT_TIME := 60.0
+const DEFENSE_UNDER_DEPTH := 8.0
+const DEFENSE_DEEP_DEPTH := 18.0
+const DEFENSE_PREVENT_DEPTH := 25.0
+const DEFENSE_GOAL_DEPTH := 4.0
+const HUDDLE_SECONDS := 5.0
+const PROTECTION_RANGE := 8.0
 
 # Kicking (B09/C02). Kicks are deterministic: aim + power meter, no random wobble.
 const KICK_SPEED_MIN := 14.0       # yd/s at 0 power

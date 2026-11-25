@@ -61,7 +61,10 @@ func test_apply_action_authority() -> void:
 	var m := _match()
 	var w := m.world
 	var their_qb := w.find_role(1, R.LB)  # defender
-	assert_true(not P.apply_action(m, their_qb.id, {"a": "snap"}), "defense can't snap")
+	assert_true(P.apply_action(m, their_qb.id, {"a": "snap"}), "defense snap key breaks stance")
+	assert_eq(w.phase, w.Phase.PRESNAP, "defense can't snap the ball")
+	assert_true(not their_qb.set_lock, "defender unlocked")
+	assert_true(not P.apply_action(m, their_qb.id, {"a": "snap"}), "second press is a no-op")
 	var my_wr := w.find_role(0, R.WR)
 	assert_true(P.apply_action(m, my_wr.id, {"a": "snap"}), "offense snaps")
 	for i in 30: w.step({}, DT)

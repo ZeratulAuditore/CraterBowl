@@ -126,7 +126,11 @@ func test_kickoff_alignment() -> void:
 			assert_true(a.position.y < w.los_y, "coverage behind the ball")
 		else:
 			assert_true(a.position.y >= w.los_y + 10.0, "return team 10+ yd off (%s at %.1f)" % [a.id, a.position.y])
-	assert_near(w.returner().position.y, 90.0, 0.01, "returner at his own 10")
+	var deep := 0
+	for a in w.athletes:
+		if a.team == 1 and absf(a.position.y - 90.0) < 0.01:
+			deep += 1
+	assert_eq(deep, 2, "two deep returners at their own 10")
 
 func test_kickoff_caught_returned_and_tackled() -> void:
 	var m := _kickoff_match(0)
@@ -194,6 +198,23 @@ func test_kickoff_out_of_bounds() -> void:
 	assert_eq(w.offense_team, 1)
 	assert_near(w.los_y, 40.0, 0.01, "kickoff OOB: ball at the receiving 40 (%s)" % out["outcome"])
 
+func test_kicking_team_recovery_is_downed_without_onside_mutator() -> void:
+	var m := _kickoff_match(0)
+	var w := m.world
+	assert_true(not w.onside, "onside off by default")
+	w.kick(w.kicker().id, Vector2(w.field.width / 2.0, 100.0), 0.0)
+	var gunner := w.find_role(0, R.WR)
+	_park_all_but(w, [gunner.id])
+	for i in 400:
+		w.step({}, DT)
+		if events.has("kick_land") and w.ball.state == w.ball.State.LOOSE:
+			gunner.position = Vector2(w.ball.position.x, w.ball.position.y) + Vector2(0.3, 0)
+		if w.phase == World.Phase.DEAD:
+			break
+	assert_true(events.has("kick_downed") and not events.has("recovery"), "downed, not recovered (%s)" % str(events))
+	m.next_play()
+	assert_eq(w.offense_team, 1, "receiving team's ball")
+
 func test_unfielded_kickoff_downed_by_kicking_team_short_of_onside() -> void:
 	var m := _kickoff_match(0)
 	var w := m.world
@@ -207,6 +228,7 @@ func test_unfielded_kickoff_downed_by_kicking_team_short_of_onside() -> void:
 func test_onside_recovery() -> void:
 	var m := _kickoff_match(0)
 	var w := m.world
+	w.onside = true   # C27 mutator; off by default
 	var k := w.kicker()
 	w.kick(k.id, Vector2(w.field.width / 2.0, 100.0), 0.0)
 	var gunner := w.find_role(0, R.WR)

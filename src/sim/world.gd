@@ -33,6 +33,8 @@ var dead_ball_team := 0
 var play_time := 0.0
 var play_name := "Verticals"
 var defensive_call := ""
+var last_offensive_calls := ["", ""]
+var last_defensive_calls := ["", ""]
 var route_of := {}      # athlete_id -> route name (eligible offense receivers)
 var route_paths := {}   # athlete_id -> Array[Vector2] absolute, set at snap
 var ruleset := "classic"
@@ -44,6 +46,7 @@ var hold_t := 0.0        # Chaosball: how long the current holder has had the ba
 const KICK_CALLS := ["", "punt", "fg"]
 var kick_play := ""      # "", "punt", "fg" (field goal or PAT), "kickoff"
 var kick_locked := false # kickoff can't go yet (coin-toss choice pending)
+var onside := false      # C27 mutator: kicking team keeps a kickoff it recovers past 10 yd (off by default)
 var kicked := false      # the ball was kicked this play
 var kick_live := false   # a kick is in the air
 var kick_free := false   # kicked ball not yet possessed by anyone (and not blocked)
@@ -110,6 +113,7 @@ func setup_formation(los: float) -> void:
 	var cx := field.width / 2.0
 	for a in athletes:
 		a.reset_state()
+		a.set_lock = a.team != offense_team   # defense lines up set; Space breaks stance
 		var depth: float = FORMATION_DEPTH.get(a.role, 1.0)
 		var y := los - depth if a.team == offense_team else los + depth
 		a.position = Vector2(a.home_x, y)
@@ -194,14 +198,22 @@ func setup_kickoff(los: float) -> void:
 			cover.append(a)
 		elif a.team != offense_team and a != ret:
 			front.append(a)
+	# Front row + two deep returners (one deep man in 3v3).
+	var ret2: Athlete = null
+	if front.size() >= 3:
+		front.sort_custom(func(p, q): return _return_rank(p.role) > _return_rank(q.role) or (_return_rank(p.role) == _return_rank(q.role) and p.id < q.id))
+		ret2 = front.pop_front()
 	cover.sort_custom(func(p, q): return p.home_x < q.home_x)
 	front.sort_custom(func(p, q): return p.home_x < q.home_x)
 	for i in cover.size():
 		cover[i].position = Vector2(_spread(i, cover.size()), los - 1.0)
 	for i in front.size():
 		front[i].position = Vector2(_spread(i, front.size()), los + 12.0 + 6.0 * (i % 2))
+	var deep := field.length * (1.0 - T.KICKOFF_RETURNER_DEPTH)
 	if ret:
-		ret.position = Vector2(cx, field.length * (1.0 - T.KICKOFF_RETURNER_DEPTH))
+		ret.position = Vector2(cx if ret2 == null else cx - field.width * 0.15, deep)
+	if ret2:
+		ret2.position = Vector2(cx + field.width * 0.15, deep)
 	if k:
 		k.position = Vector2(cx, los - 3.0)
 		ball.hold(k.id)
@@ -220,7 +232,7 @@ func kick(id: int, target: Vector2, power: float) -> bool:
 	if kick_play == "kickoff":
 		if phase != Phase.PRESNAP or kick_locked:
 			return false
-		phase = Phase.LIVE
+		_go_live()
 		play_time = 0.0
 		event.emit("snap", {"qb": id})
 	elif phase != Phase.LIVE or forward_pass_thrown or a.position.y > los_y:
@@ -292,6 +304,96 @@ func call_defense(id: String) -> bool:
 	defensive_call = id
 	return true
 
+func protection_target(blocker: Athlete) -> Athlete:
+	var best: Athlete = null
+	var best_d := T.PROTECTION_RANGE
+	for d in athletes:
+		if d.team == offense_team or d.is_grounded():
+			continue
+		var dist: float = d.position.distance_to(blocker.position)
+		if dist < best_d:
+			best_d = dist
+			best = d
+	return best
+
+func man_assignments() -> Dictionary:
+	var assignments := {}
+	var taken := {}
+	for r in receivers_in_order():
+		var best = null
+		var best_d := INF
+		for d in athletes:
+			if d.team == offense_team or taken.has(d.id):
+				continue
+			if not (d.role == Athlete.Role.CB or d.role == Athlete.Role.S or d.role == Athlete.Role.LB):
+				continue
+			if d.role == Athlete.Role.LB and r.role != Athlete.Role.RB:
+				continue   # LBs only take backs; they spy the QB otherwise
+			var dist: float = d.position.distance_to(r.position)
+			if dist < best_d:
+				best_d = dist
+				best = d
+		if best:
+			assignments[best.id] = r.id
+			taken[best.id] = true
+	return assignments
+
+## Shared coverage landmarks in offense-frame yards. Man defenders use the AI's
+## receiver matching. Line rushers keep their normal pursuit behavior.
+func defense_assignment(a: Athlete) -> Dictionary:
+	if a.team == offense_team or defensive_call.is_empty():
+		return {}
+	var call: Dictionary = DefensivePlaybook.CALLS[defensive_call]
+	var cx := field.width * 0.5
+	if a.role == Athlete.Role.DL or (call.family == DefensivePlaybook.Family.BLITZ and a.role == Athlete.Role.LB):
+		return {"kind": "rush", "target": Vector2(cx, los_y - 5.0)}
+	if call.family == DefensivePlaybook.Family.MAN and a.role != Athlete.Role.S:
+		return {"kind": "man"}
+	var deep := a.role == Athlete.Role.S or (defensive_call == "deep_zone" and a.role == Athlete.Role.CB)
+	var deep_middle := false
+	if defensive_call == "cover_3":
+		var safety := find_role(a.team, Athlete.Role.S)
+		deep_middle = a == safety if safety != null else a.role == Athlete.Role.LB
+		deep = deep_middle or a.role == Athlete.Role.CB
+	elif defensive_call == "cover_2" and athletes.size() < 14:
+		deep = a.role == Athlete.Role.S or (a.role == Athlete.Role.CB and
+			(a.home_x > cx or find_role(a.team, Athlete.Role.S) == null))
+	var depth := T.DEFENSE_DEEP_DEPTH if deep else T.DEFENSE_UNDER_DEPTH
+	if call.shell == DefensivePlaybook.Shell.GOAL_LINE:
+		depth = T.DEFENSE_GOAL_DEPTH
+	elif call.shell == DefensivePlaybook.Shell.PREVENT:
+		depth = T.DEFENSE_PREVENT_DEPTH if deep else T.DEFENSE_DEEP_DEPTH
+	var x := cx if deep_middle else lerpf(cx, a.home_x, 0.72)
+	var y := minf(los_y + depth, field.length + field.endzone_depth * 0.5)
+	return {"kind": "zone", "target": Vector2(x, y), "deep": deep}
+
+func recall_call(team: int) -> bool:
+	if phase != Phase.PRESNAP:
+		return false
+	if team == offense_team:
+		return call_play(last_offensive_calls[team])
+	return call_defense(last_defensive_calls[team])
+
+## Mirror the receiver assignments across the formation.
+func flip_play() -> bool:
+	if phase != Phase.PRESNAP:
+		return false
+	var receivers := receivers_in_order()
+	if receivers.size() < 2 or receivers[0].role != Athlete.Role.WR or receivers[1].role != Athlete.Role.WR:
+		return false
+	var left: int = receivers[0].id
+	var right: int = receivers[1].id
+	if not route_of.has(left) or not route_of.has(right):
+		return false
+	var route: String = route_of[left]
+	route_of[left] = route_of[right]
+	route_of[right] = route
+	return true
+
+func _record_calls() -> void:
+	last_offensive_calls[offense_team] = play_name
+	last_defensive_calls[1 - offense_team] = defensive_call
+
 func set_route(id: int, route: String) -> bool:
 	var a := get_athlete(id)
 	if a == null or a.team != offense_team or not is_eligible_receiver(a) or a.role == Athlete.Role.QB:
@@ -301,13 +403,44 @@ func set_route(id: int, route: String) -> bool:
 	route_of[id] = route
 	return true
 
+## Defense pre-snap: stand up out of stance and roam (non-DL only, one-way per play).
+func break_stance(id: int) -> bool:
+	var a := get_athlete(id)
+	if a == null or phase != Phase.PRESNAP or a.team == offense_team or a.role == Athlete.Role.DL or not a.set_lock:
+		return false
+	a.set_lock = false
+	event.emit("break_stance", {"id": id})
+	return true
+
+func is_stance_locked(a: Athlete) -> bool:
+	return phase == Phase.PRESNAP and a.set_lock
+
+## Pre-snap rules for one athlete's input + resulting position. Shared by the
+## authoritative step and client prediction so both clamp identically.
+func step_athlete(a: Athlete, dir: Vector2, sprint: bool, dt: float) -> void:
+	if is_stance_locked(a):
+		a.face(dir)
+	else:
+		a.step(dir, sprint, dt)
+
+func _go_live() -> void:
+	phase = Phase.LIVE
+	for a in athletes:
+		a.set_lock = false
+
+## Client prediction: one athlete's step with the same pre-snap rules as step().
+func predict_step(a: Athlete, dir: Vector2, sprint: bool, dt: float) -> void:
+	step_athlete(a, dir, sprint, dt)
+	if phase == Phase.PRESNAP:
+		enforce_neutral_zone(a)
+
 ## Drills: go LIVE immediately with `id` carrying the ball (no snap).
 func start_live_with(id: int) -> void:
 	var a := get_athlete(id)
 	ball.hold(a.id)
 	last_possession = a.team
 	play_time = 0.0
-	phase = Phase.LIVE
+	_go_live()
 	_sync_ball()
 	event.emit("snap", {"qb": a.id})
 
@@ -329,7 +462,8 @@ func snap() -> bool:
 		for id in route_of:
 			var ra := get_athlete(id)
 			route_paths[id] = Routes.path_for(route_of[id], ra.position, field.width)
-		phase = Phase.LIVE
+		_go_live()
+		_record_calls()
 		event.emit("snap", {"qb": qb.id})
 		event.emit("snap_received", {"qb": qb.id})
 		return true
@@ -344,7 +478,8 @@ func snap() -> bool:
 	for id in route_of:
 		var a := get_athlete(id)
 		route_paths[id] = Routes.path_for(route_of[id], a.position, field.width)
-	phase = Phase.LIVE
+	_go_live()
+	_record_calls()
 	event.emit("snap", {"qb": qb.id})
 	return true
 
@@ -396,13 +531,13 @@ func step(inputs: Dictionary, dt: float) -> void:
 	for a in athletes:
 		prev.append(a.position)
 		var inp: Dictionary = inputs.get(a.id, {})
-		a.step(inp.get("dir", Vector2.ZERO), inp.get("sprint", false), dt)
+		step_athlete(a, inp.get("dir", Vector2.ZERO), inp.get("sprint", false), dt)
 	if phase == Phase.LIVE:
 		_step_blocks(prev, dt)
 	_resolve_collisions()
 	if phase == Phase.PRESNAP:
 		for a in athletes:
-			_enforce_neutral_zone(a)
+			enforce_neutral_zone(a)
 	_step_snap(dt)
 	_step_flight(dt)
 	if phase == Phase.LIVE:
@@ -752,15 +887,21 @@ func _end_incomplete(reason: String, data: Dictionary) -> void:
 	data["reason"] = reason
 	event.emit("incomplete", data)
 
-func _enforce_neutral_zone(a: Athlete) -> void:
+## Pre-snap: keep each side behind its edge of the neutral zone. Returns true
+## when it actually stopped the athlete (presentation ripples the barrier).
+func enforce_neutral_zone(a: Athlete) -> bool:
 	if a.team == offense_team:
-		if a.position.y > los_y - 0.5:
-			a.position.y = los_y - 0.5
+		if a.position.y > los_y - T.NEUTRAL_ZONE_HALF:
+			var pushing := a.velocity.y > 0.05
+			a.position.y = los_y - T.NEUTRAL_ZONE_HALF
 			a.velocity.y = minf(a.velocity.y, 0.0)
-	else:
-		if a.position.y < los_y + 0.5:
-			a.position.y = los_y + 0.5
-			a.velocity.y = maxf(a.velocity.y, 0.0)
+			return pushing
+	elif a.position.y < los_y + T.NEUTRAL_ZONE_HALF:
+		var pushing := a.velocity.y < -0.05
+		a.position.y = los_y + T.NEUTRAL_ZONE_HALF
+		a.velocity.y = maxf(a.velocity.y, 0.0)
+		return pushing
+	return false
 
 func _step_snap(dt: float) -> void:
 	if _snap_to_id < 0 or ball.state != Ball.State.IN_FLIGHT:
@@ -884,7 +1025,7 @@ func _step_free_kick(bp: Vector2, dt: float) -> void:
 		return
 	if best.team != offense_team:
 		_field_kick(best, bp)
-	elif kick_play == "kickoff" and bp.y - kick_spot.y >= T.ONSIDE_MIN_TRAVEL:
+	elif onside and kick_play == "kickoff" and bp.y - kick_spot.y >= T.ONSIDE_MIN_TRAVEL:
 		kick_free = false
 		ball.hold(best.id)
 		last_possession = best.team

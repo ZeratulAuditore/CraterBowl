@@ -361,7 +361,7 @@ func _status_text(main) -> String:
 				return "KICKOFF  ·  " + ("SPACE / HOLD J TO KICK" if mine else "RETURN TEAM")
 			if w.kick_play != "" and mine:
 				t += ("PUNT" if w.kick_play == "punt" else "FIELD GOAL") + "  ·  "
-			return t + ("SPACE TO SNAP" if mine else "DEFENSE  ·  SPACE TO LET THEM SNAP")
+			return t + ("SPACE TO SNAP" if mine else "DEFENSE  ·  Q CHANGE CALL" if not w.defensive_call.is_empty() else "DEFENSE")
 		1:
 			if main.world.is_chaos():
 				return "PASS CLOCK %.1f" % maxf(0.0, main.T.PASS_CLOCK - w.hold_t)
@@ -373,12 +373,28 @@ func _refresh_card(main) -> void:
 	var w = main.world
 	var me = w.get_athlete(main.my_id)
 	var offense: bool = me != null and w.offense_team == me.team
-	if offense:
-		card_title.text = "PLAY CALL  [Q]"
+	var remaining: int = main.huddle_remaining()
+	if w.kick_play != "" and not w.kicked and me != null and (w.kick_play == "kickoff" or offense):
+		card_title.text = {"kickoff": "KICKOFF", "punt": "PUNT  [K]", "fg": "FIELD GOAL  [K]"}.get(w.kick_play, "KICK")
+		if not offense:
+			card_body.text = "RETURN TEAM\nFIELD IT · RUN IT BACK"
+		elif w.ball.is_held_by(main.controlled_id) or main.controlled_id == w.kicker().id:
+			card_body.text = "HOLD J / LMB  AIM + CHARGE\nRELEASE TO KICK"
+		else:
+			card_body.text = "PROTECT · COVER THE KICK"
+		return
+	if remaining > 0 and me != null:
+		card_title.text = "%s HUDDLE  ·  %ds  ·  Q NEXT" % ["OFFENSE" if offense else "DEFENSE", remaining]
+		card_body.text = main.huddle_calls(me.team) + ("\nL Last   ·   X Flip   ·   Y Auto" if offense else "\nL Last   ·   Y Auto")
+	elif offense:
+		card_title.text = "AUTO CALL  [Y]" if main.auto_call else "PLAY CALL  [Q]"
 		var body: String = str(w.play_name).to_upper()
 		if w.route_of.has(main.my_id):
 			body += "\nYOUR ROUTE  %s  [F]" % w.route_of[main.my_id]
 		card_body.text = body
+	elif int(w.phase) == 0 and not w.defensive_call.is_empty():
+		card_title.text = "AUTO CALL  [Y]" if main.auto_call else "DEFENSIVE CALL  [Q]"
+		card_body.text = w.DefensivePlaybook.CALLS[w.defensive_call].name
 	else:
 		card_title.text = "DEFENSE"
 		card_body.text = "E / RMB  TACKLE\nSHIFT  SPRINT"
@@ -408,5 +424,7 @@ func _hints(main) -> String:
 	if int(w.phase) == 1 and main.world.ball.is_held_by(main.controlled_id):
 		if main.kicking():
 			return "HOLD J / LMB AIM + CHARGE · RELEASE TO KICK"
-		return "HOLD J / LMB AIM + CHARGE · RELEASE TO THROW · CTRL LOB"
+		if w.is_chaos() or (offense and not w.forward_pass_thrown and w.get_athlete(main.controlled_id).team == w.offense_team):
+			return "HOLD J / LMB AIM + CHARGE · RELEASE TO THROW · CTRL LOB"
+		return "WASD MOVE · SHIFT SPRINT · RUN IT BACK"
 	return "WASD MOVE · SHIFT SPRINT · E / RMB TACKLE"

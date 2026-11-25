@@ -26,7 +26,7 @@ After that, follow the list order below. B01/B02 (line play, press) come after t
 
 ## P0: core football a player notices in match one
 
-### [ ] C01 Run game: handoffs, run plays, RB carries
+### [~] C01 Run game: handoffs, run plays, RB carries (claimed: codex 2026-11-25)
 - **Why:** Gridiron had animated handoffs with a re-handoff cooldown and 2 s of stamina immunity (O 1.0.3.52/53). Ours is pass-only, so RBs and OL have nothing to do on most plays. This is the single biggest feel gap.
 - **Accept:**
   - QB can hand the ball to an adjacent back with an action key. Possession transfers in the sim, and a second handoff is blocked by a cooldown.
@@ -106,7 +106,12 @@ After that, follow the list order below. B01/B02 (line play, press) come after t
 - **Accept:** Each classic snap starts with the suggested defensive call. The defending team can select any catalog call during presnap, and the selection is synchronized to clients.
 - The huddle control, on-field assignments and bot behavior follow in C08c.
 
-### [~] C08c Defense and B03 huddle (claimed: codex 2026-11-25)
+### [x] C08c Defensive assignments, coverage, blitzes and play art
+
+### [x] C08d Pre-snap defensive roam + LOS barrier (plan: docs/iterations/032-presnap-defense-roam.md)
+- **Why:** In the reference, defenders spawn in stance and press Space to break it and roam pre-snap. DL stay set. A see-through animated hex wall at the LOS marks the limit. Ours: everyone (DL too) can already move pre-snap, they hit an invisible clamp, and Space on defense does nothing.
+- **Accept:** Defense lines up locked. Space breaks stance for LB/CB/S only. The neutral-zone clamp is shared by host and client prediction. The barrier is visible pre-snap with proximity reveal and contact ripples, and dissolves at the snap.
+- Splits the "non-DL defenders can move freely" bullet out of C08b, so it can ship independently of the playbook work (C08a).
 - **Why:** Gridiron draws every player's assignment on the field: routes, blocks, man or zone, and blitz lane (O 1.0.4.47). Defense has pre-snap free roam (except DL). We have man coverage only, no defensive calls, and play art only for offense. That violates pillar 2 ("everyone matters").
 - **Remaster screenshots (R-ss, 2026-11-25):**
   - Every defensive snap starts with a play call.

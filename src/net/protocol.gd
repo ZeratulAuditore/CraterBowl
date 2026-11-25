@@ -5,6 +5,7 @@ const Routes := preload("res://src/sim/routes.gd")
 const DefensivePlaybook := preload("res://src/sim/defensive_playbook.gd")
 const DIVE_FLAG := 1
 const GROUND_FLAG := 2
+const LOCK_FLAG := 4
 
 static func encode_snapshot(m, tick: int, acks: Dictionary = {}) -> Dictionary:
 	var w = m.world
@@ -12,7 +13,7 @@ static func encode_snapshot(m, tick: int, acks: Dictionary = {}) -> Dictionary:
 	var r := PackedInt32Array()
 	for ath in w.athletes:
 		a.append_array([ath.position.x, ath.position.y, ath.velocity.x, ath.velocity.y, ath.facing.x, ath.facing.y, ath.stamina])
-		var flags := (DIVE_FLAG if ath.is_diving() else 0) | (GROUND_FLAG if ath.is_grounded() else 0)
+		var flags := (DIVE_FLAG if ath.is_diving() else 0) | (GROUND_FLAG if ath.is_grounded() else 0) | (LOCK_FLAG if ath.set_lock else 0)
 		r.append_array([ath.role, flags, ath.team])
 	var b = w.ball
 	return {
@@ -54,6 +55,7 @@ static func apply_snapshot(m, s: Dictionary) -> void:
 		var flags := r[i * 3 + 1]
 		ath.dive_t = 0.01 if flags & DIVE_FLAG else 0.0
 		ath.recover_t = 0.01 if flags & GROUND_FLAG else 0.0
+		ath.set_lock = (flags & LOCK_FLAG) != 0
 	var b: PackedFloat32Array = s["b"]
 	w.ball.state = int(b[0])
 	w.ball.holder_id = int(b[1])
@@ -106,7 +108,7 @@ static func sanitize_action(act) -> Dictionary:
 	if not (act is Dictionary):
 		return {}
 	match act.get("a", ""):
-		"snap", "tackle":
+		"snap", "tackle", "recall_call", "flip_play":
 			return {"a": act["a"]}
 		"throw":
 			var t = act.get("t", Vector2.ZERO)
@@ -151,7 +153,10 @@ static func apply_action(m, athlete_id: int, action: Dictionary) -> bool:
 		return false
 	match act["a"]:
 		"snap":
-			return ath.team == w.offense_team and w.snap()
+			# One key, routed by side: offense hikes, defense breaks stance.
+			if ath.team == w.offense_team:
+				return w.snap()
+			return w.break_stance(athlete_id)
 		"tackle":
 			return w.tackle(athlete_id)
 		"throw":
@@ -166,6 +171,10 @@ static func apply_action(m, athlete_id: int, action: Dictionary) -> bool:
 			return m.choose_toss(ath.team, act["c"])
 		"play":
 			return ath.team == w.offense_team and w.phase == w.Phase.PRESNAP and w.call_play(act["p"])
+		"recall_call":
+			return w.recall_call(ath.team)
+		"flip_play":
+			return ath.team == w.offense_team and w.flip_play()
 		"defense":
 			return ath.team != w.offense_team and w.call_defense(act["p"])
 		"route":

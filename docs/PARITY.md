@@ -28,13 +28,13 @@ Source of truth for "does our game match Gridiron's features" (Steam 708720 / Gr
 | G20 | Public per-position leaderboards (top 100) | leaderboard.gd | auto |
 | G21 | Cosmetics earnable through play, no gameplay effect; customization | cosmetics.gd | auto |
 | G22 | Replays | replay.gd | auto |
-| G23 | Achievements (Steam feature list) | — | GAP (D04) |
+| G23 | Achievements (Steam feature list) | achievements.gd + profile | auto |
 | G24 | Online co-op (humans together vs bots) | roster team swap + bots | auto |
-| G25 | Easy-to-understand controls / menus / settings | A27 | PENDING (out-of-game session) |
-| G26 | Sci-fi lunar stadium presentation | A26 | PENDING (graphics session) |
+| G25 | Easy-to-understand controls / menus / settings | src/ui/* (menu, settings, rebinding, gamepad, overlay hints) | auto |
+| G26 | Sci-fi lunar stadium presentation | src/game/art/*, presentation.gd, overlay.gd, rigged player.gd | auto |
 
 ## Evidence
-Format: `EVIDENCE <id> <unit|flow|net|mm> <pattern>`
+Format: `EVIDENCE <id> <unit|flow|net|mm|menu|shot> <pattern>` (shot = real-renderer screenshot rendered offscreen during the audit)
 ```
 EVIDENCE G01 unit test_roster.gd::test_builds_7v7
 EVIDENCE G01 net joined by code into the private lobby
@@ -93,6 +93,18 @@ EVIDENCE G21 net my equipped #88 round-tripped through the host
 EVIDENCE G22 unit test_replay.gd::test_save_load_and_size
 EVIDENCE G22 flow V starts instant replay
 EVIDENCE G22 flow viewer opens the saved replay
+EVIDENCE G23 unit test_achievements.gd::test_thresholds
+EVIDENCE G23 unit test_achievements.gd::test_evaluate_only_new
+EVIDENCE G23 flow First Touchdown + First Win unlocked
 EVIDENCE G24 unit test_roster.gd::test_swap_team_keeps_pairing
 EVIDENCE G24 unit test_bots.gd::test_full_bot_game
+EVIDENCE G25 unit test_out_of_game.gd::test_controls_rebind_moves_and_swaps
+EVIDENCE G25 unit test_out_of_game.gd::test_gamepad_mapping
+EVIDENCE G25 menu first run asks for a name
+EVIDENCE G25 menu quick match -> casual queue
+EVIDENCE G25 menu rebound K snaps the ball (real input path)
+EVIDENCE G25 menu gamepad stick moves the player
+EVIDENCE G25 menu Esc opens pause overlay (offline pauses)
+EVIDENCE G26 shot shot_0090.png (OK)
+EVIDENCE G26 shot shot_0240.png (OK)
 ```
