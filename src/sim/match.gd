@@ -57,7 +57,9 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 			last_result = {"type": "incomplete", "team": d.get("team", world.offense_team),
 				"spot": (d.get("at", Vector2(0, downs.los)) as Vector2).y}
 		"touchdown":
-			last_result = {"type": "touchdown", "team": d.get("team", world.offense_team)}
+			last_result = {"type": "touchdown", "team": d.get("team", world.offense_team), "points": d.get("points", TD_POINTS)}
+		"explode":
+			last_result = {"type": "explode", "spot": d["spot"].y, "team": d.get("team", world.offense_team)}
 
 ## During try presnap: choose 1 (from the 3) or 2 (from the 10).
 func choose_try(points: int) -> bool:
@@ -95,7 +97,7 @@ func winner() -> int:
 ## ball to the team that didn't end the play with it, at the spot.
 func _chaos_next(r: Dictionary, holder_team: int, off: int) -> Dictionary:
 	if r["type"] == "touchdown":
-		_award(holder_team, TD_POINTS, "touchdown")
+		_award(holder_team, int(r.get("points", TD_POINTS)), "touchdown")
 		return _kickoff(1 - holder_team)
 	var new_off := 1 - holder_team
 	var spot: float = r.get("spot", downs.los)

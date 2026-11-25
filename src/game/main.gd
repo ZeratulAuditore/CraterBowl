@@ -516,7 +516,7 @@ func _unhandled_input(e: InputEvent) -> void:
 func _on_world_event(n: String, d: Dictionary) -> void:
 	if n == "incomplete" and last_whistle == "":
 		last_whistle = "INCOMPLETE"
-	if n in ["tackle", "out_of_bounds", "breakup", "touchdown"]:
+	if n in ["tackle", "out_of_bounds", "breakup", "touchdown", "explode"]:
 		last_whistle = n.replace("_", " ").to_upper()
 	if n == "snap":
 		last_whistle = ""
@@ -717,6 +717,8 @@ func _process(delta: float) -> void:
 		hud.text = "PRIVATE MATCH LOBBY   Invite code: %s\n%s\n[Enter] ready  (%s starts when everyone is ready)" % [lobby.code, lobby.summary(), who]
 		return
 	var clock_txt: String = "%s%dv%d %s" % ["CHAOSBALL " if match_mode == "chaosball" else "", match_size, match_size, series.clock.label()]
+	if world.is_chaos():
+		clock_txt += " | STREAK %d -> TD %d | BALL %.1fs" % [world.streak, world.streak_points(), maxf(0.0, T.PASS_CLOCK - world.hold_t)]
 	if drill != null:
 		clock_txt = drill.label()
 	if world.phase == World.Phase.PRESNAP:

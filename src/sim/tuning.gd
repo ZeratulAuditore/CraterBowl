@@ -88,3 +88,7 @@ const BOUNCE_RESTITUTION := 0.55
 const BOUNCE_FRICTION := 0.8
 const AI_CHAOS_PRESSURE := 3.5
 const LOB_ANGLE := 65.0           # degrees, touch-pass arc
+const PASS_CLOCK := 5.0              # Chaosball: ball explodes if held this long
+const STREAK_BASE_POINTS := 2
+const STREAK_MAX_POINTS := 7
+const AI_PASS_CLOCK_MARGIN := 1.2

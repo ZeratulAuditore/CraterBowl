@@ -22,6 +22,7 @@ static func encode_snapshot(m, tick: int, acks: Dictionary = {}) -> Dictionary:
 		"s": PackedInt32Array(m.score),
 		"c": PackedFloat32Array([m.clock.half, m.clock.remaining, m.clock.play_clock, 1.0 if m.clock.final else 0.0]),
 		"ms": m.state, "tp": m.try_points, "ack": acks, "pl": w.play_name, "rt": _routes_array(w),
+		"cs": PackedFloat32Array([w.streak, w.hold_t]),
 	}
 
 static func _routes_array(w) -> PackedInt32Array:
@@ -70,6 +71,9 @@ static func apply_snapshot(m, s: Dictionary) -> void:
 	m.state = s["ms"]
 	m.try_points = s["tp"]
 	w.play_name = str(s.get("pl", w.play_name))
+	var cs: PackedFloat32Array = s.get("cs", PackedFloat32Array([0, 0]))
+	w.streak = int(cs[0])
+	w.hold_t = cs[1]
 	var rt: PackedInt32Array = s.get("rt", PackedInt32Array())
 	w.route_of = {}
 	for i in rt.size():

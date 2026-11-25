@@ -222,7 +222,8 @@ func _chaos_pass(world, c) -> void:
 	for o in world.athletes:
 		if o.team != c.team and not o.is_grounded():
 			pressure = minf(pressure, o.position.distance_to(c.position))
-	if pressure > T.AI_CHAOS_PRESSURE:
+	var clock_low: bool = world.hold_t >= T.PASS_CLOCK - T.AI_PASS_CLOCK_MARGIN
+	if pressure > T.AI_CHAOS_PRESSURE and not clock_low:
 		return
 	var best = null
 	var best_sep := 0.0
@@ -236,7 +237,7 @@ func _chaos_pass(world, c) -> void:
 		if sep > best_sep:
 			best_sep = sep
 			best = r
-	if best == null or best_sep < 2.0:
+	if best == null or (best_sep < 2.0 and not clock_low):
 		return
 	var from := Vector3(c.position.x, c.position.y, T.RELEASE_HEIGHT)
 	world.throw(c.id, Passing.lead_target(from, best.position, best.velocity, 0.7, world.gravity()), 0.7)

@@ -143,3 +143,9 @@
 - AI: pressured carriers in Chaosball pass to their most open teammate; AI aiming/landing uses world gravity.
 - Mode: `-- --mode=chaosball` (forces 3v3), lobby setting (host M), welcome carries mode; HUD "CHAOSBALL 3v3".
 - Tests: 151 unit (+12: low gravity, past-LOS + second pass, self-catch via lob, bounces, catch off a bounce, walls, swings, chaos turnovers, lob solver, mode setting, 2-min chaos bot game); flow +3 (mode, HUD, real lob throw past LOS).
+
+## 021: A20 Chaosball scoring (2026-11-24)
+- Pass streak: +1 per completed **teammate** catch (self-catches don't count — anti-farm), reset on interception/possession; TD value = min(2 + streak, 7).
+- Pass clock: holding the ball 5 s explodes it (carrier knocked down, DEAD, Match turnover at the spot); every catch resets the clock.
+- Snapshot carries streak + hold time; HUD "STREAK n -> TD v | BALL t s"; EXPLODE whistle text. AI passes when pressured **or** with < 1.2 s on the pass clock.
+- Tests: 159 unit (+8); flow 73 checks (+2: streak HUD, real-game explosion).

@@ -36,6 +36,8 @@ var route_paths := {}   # athlete_id -> Array[Vector2] absolute, set at snap
 var ruleset := "classic"
 var rules := {"gravity": 1.0, "anyone_throws": false, "self_catch": false, "max_bounces": 0, "walls": false}
 var bounces := 0
+var streak := 0          # Chaosball: completed teammate passes this possession
+var hold_t := 0.0        # Chaosball: how long the current holder has had the ball
 
 ## role/pos are for the athlete's current side. Optional two-way setup:
 ## off/def roles + x via set_two_way().
@@ -114,6 +116,8 @@ func setup_formation(los: float) -> void:
 	_snap_to_id = -1
 	route_paths = {}
 	last_possession = offense_team
+	streak = 0
+	hold_t = 0.0
 	call_play("Verticals")
 	phase = Phase.PRESNAP
 	_sync_ball()
@@ -260,6 +264,8 @@ func step(inputs: Dictionary, dt: float) -> void:
 	_sync_ball()
 	if phase == Phase.LIVE:
 		_check_tackles()
+	if phase == Phase.LIVE and is_chaos():
+		_step_pass_clock(dt)
 
 ## Linemen block any time; skill players only block downfield (after a catch
 ## or once the carrier is past the LOS), so receivers run routes instead.
@@ -344,7 +350,7 @@ func _check_tackles() -> void:
 	var z := field.zone_of(c.position)
 	var scoring_zone := Field.Zone.ENDZONE_B if c.team == offense_team else Field.Zone.ENDZONE_A
 	if z == scoring_zone:
-		_whistle("touchdown", {"carrier": c.id, "team": c.team})
+		_whistle("touchdown", {"carrier": c.id, "team": c.team, "points": streak_points() if is_chaos() else 6})
 		return
 	if z == Field.Zone.OUT_OF_BOUNDS:
 		_whistle("out_of_bounds", {"carrier": c.id, "team": c.team})
@@ -553,10 +559,38 @@ func _try_catch_chaos() -> bool:
 	if best == null:
 		return false
 	var swing: bool = best.team != last_possession
+	var thrower := last_thrower_id
 	ball.hold(best.id)
 	last_possession = best.team
+	hold_t = 0.0
+	if swing:
+		streak = 0
+	elif best.id != thrower:
+		streak += 1                     # self-catches don't farm the streak
+		event.emit("streak", {"n": streak, "team": best.team})
 	event.emit("interception" if swing else "catch", {"by": best.id, "at": bp, "team": best.team})
 	return true
+
+## Chaosball touchdown value for the current streak.
+func streak_points() -> int:
+	return mini(T.STREAK_BASE_POINTS + streak, T.STREAK_MAX_POINTS)
+
+## Chaosball pass clock: the ball explodes in a hogger's hands.
+func _step_pass_clock(dt: float) -> void:
+	var c := carrier()
+	if c == null:
+		return
+	hold_t += dt
+	if hold_t >= T.PASS_CLOCK:
+		var spot := c.position
+		dead_ball_spot = spot
+		dead_ball_team = c.team
+		c.recover_t = T.FUMBLE_KNOCKDOWN
+		ball.state = Ball.State.DEAD
+		phase = Phase.DEAD
+		var data := {"carrier": c.id, "spot": spot, "team": c.team}
+		event.emit("explode", data)
+		event.emit("whistle", data)
 
 func _end_incomplete(reason: String, data: Dictionary) -> void:
 	ball.velocity = Vector3.ZERO
