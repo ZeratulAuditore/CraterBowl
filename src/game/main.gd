@@ -9,6 +9,9 @@ const Passing := preload("res://src/sim/passing.gd")
 const AI := preload("res://src/sim/ai.gd")
 const Match := preload("res://src/sim/match.gd")
 const NEXT_PLAY_DELAY := 2.0
+const NetSession := preload("res://src/net/net_session.gd")
+const Protocol := preload("res://src/net/protocol.gd")
+const SNAPSHOT_EVERY := 2   # physics ticks (60 Hz -> 30 Hz snapshots)
 const T := preload("res://src/sim/tuning.gd")
 const ARC_DOTS := 24
 
@@ -34,6 +37,9 @@ var dead_t := 0.0
 var auto_next := true
 var los_marker: MeshInstance3D
 var fd_marker: MeshInstance3D
+var input_override = null   # tests/bots: Vector2 replaces keyboard movement
+var net: NetSession
+var net_tick := 0
 var camera: Camera3D
 var hud: Label
 
@@ -48,6 +54,7 @@ func _ready() -> void:
 	series = Match.new(world)
 	series.start(0, 25.0)
 	world.event.connect(_on_world_event)
+	_setup_net()
 	los_marker = _marker(Color(0.2, 0.5, 1.0), "LOSMarker")
 	fd_marker = _marker(Color(1.0, 0.85, 0.1), "FirstDownMarker")
 	for v in views:
@@ -157,13 +164,65 @@ func _set_charging(on: bool) -> void:
 		charge = 0.0
 	elif not on and charging:
 		charging = false
-		world.throw(controlled_id, aim_point, charge)
+		do_action({"a": "throw", "t": aim_point, "p": charge})
+
+## All human actions go through here: local authority offline/host, sent to server as client.
+func do_action(action: Dictionary) -> bool:
+	if is_client():
+		net.send_action(action)
+		return true
+	return Protocol.apply_action(series, controlled_id, action)
+
+func is_client() -> bool:
+	return net != null and net.mode == NetSession.Mode.CLIENT
+
+func is_server() -> bool:
+	return net != null and net.mode == NetSession.Mode.SERVER
+
+func _cli_args() -> Dictionary:
+	var out := {}
+	for a in OS.get_cmdline_user_args():
+		var kv := a.trim_prefix("--").split("=", true, 1)
+		out[kv[0]] = kv[1] if kv.size() > 1 else true
+	return out
+
+func _setup_net() -> void:
+	var args := _cli_args()
+	if not (args.has("host") or args.has("join")):
+		return
+	net = NetSession.new()
+	net.name = "Net"
+	add_child(net)
+	var port := int(args.get("port", NetSession.DEFAULT_PORT))
+	if args.has("host"):
+		# First joiner gets the opponent's QB/LB pair, then alternate teams.
+		var pool: Array = [world.find_role(1, Athlete.Role.LB).id]
+		var t0 := []
+		var t1 := []
+		for a in world.athletes:
+			if a.id == my_id or pool.has(a.id):
+				continue
+			(t0 if a.team == 0 else t1).append(a.id)
+		for i in maxi(t0.size(), t1.size()):
+			if i < t1.size(): pool.append(t1[i])
+			if i < t0.size(): pool.append(t0[i])
+		if args.has("playclock"):  # test/debug: shorten the first play clock
+			series.clock.play_clock = float(args["playclock"])
+		var err := net.host(port, pool)
+		print("NET host on %d: %s" % [port, error_string(err)])
+	else:
+		var err := net.join(str(args["join"]), port)
+		print("NET join %s:%d: %s" % [args["join"], port, error_string(err)])
+		auto_next = false
+		net.welcomed.connect(func(aid): my_id = aid; set_controlled(aid); print("NET welcomed as athlete %d" % aid))
+		net.snapshot_received.connect(func(snap): Protocol.apply_snapshot(series, snap))
+		net.event_received.connect(_on_world_event)
 
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
 		_set_charging(e.pressed)
 	elif e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_RIGHT and e.pressed:
-		world.tackle(controlled_id)
+		do_action({"a": "tackle"})
 
 
 func _on_world_event(n: String, d: Dictionary) -> void:
@@ -173,7 +232,10 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 		last_whistle = n.replace("_", " ").to_upper()
 	if n == "snap":
 		last_whistle = ""
-	if n == "catch" and world.get_athlete(d["by"]).team == world.offense_team:
+	if is_server():
+		net.broadcast_event(n, d)
+	# Offline convenience: follow the ball to the receiver. Online: fixed athlete (Gridiron parity).
+	if net == null and n == "catch" and world.get_athlete(d["by"]).team == world.offense_team:
 		set_controlled(d["by"])
 
 func _marker(c: Color, n: String) -> MeshInstance3D:
@@ -200,6 +262,8 @@ func set_controlled(id: int) -> void:
 	player = views[id]
 
 func read_input() -> Vector2:
+	if input_override != null:
+		return input_override
 	var v := Vector2.ZERO
 	if Input.is_key_pressed(KEY_W): v.y += 1
 	if Input.is_key_pressed(KEY_S): v.y -= 1
@@ -229,14 +293,36 @@ func _unhandled_key_input(e: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if charging:
 		charge = minf(1.0, charge + delta / T.THROW_CHARGE_TIME)
+	var my_input := {"dir": read_input(), "sprint": Input.is_key_pressed(KEY_SHIFT)}
+	if is_client():
+		net.send_input(my_input["dir"], my_input["sprint"])   # server is authoritative; state arrives via snapshots
+	else:
+		_step_authoritative(delta, my_input)
+	_render()
+
+func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 	series.tick(delta)
 	if world.phase == World.Phase.DEAD and auto_next and not series.is_final():
 		dead_t += delta
 		if dead_t >= NEXT_PLAY_DELAY:
 			next_play()
-	var inputs := ai.think(world, [controlled_id])
-	inputs[controlled_id] = {"dir": read_input(), "sprint": Input.is_key_pressed(KEY_SHIFT)}
+	var humans: Array = [controlled_id]
+	if is_server():
+		humans += net.human_athletes()
+		for pa in net.take_actions():
+			Protocol.apply_action(series, pa[0], pa[1])
+	var inputs := ai.think(world, humans)
+	inputs[controlled_id] = my_input
+	if is_server():
+		for aid in net.inputs:
+			inputs[aid] = net.inputs[aid]
 	world.step(inputs, delta)
+	if is_server():
+		net_tick += 1
+		if net_tick % SNAPSHOT_EVERY == 0:
+			net.broadcast_snapshot(Protocol.encode_snapshot(series, net_tick))
+
+func _render() -> void:
 	for v in views:
 		v.sync()
 	var b = world.ball.position
@@ -253,9 +339,10 @@ func _process(delta: float) -> void:
 	camera.global_position = camera.global_position.lerp(desired, clampf(delta * 6.0, 0.0, 1.0))
 	camera.look_at(target + Vector3(0, 1, -4))
 	var m = player.athlete
-	var side := "OFFENSE" if world.offense_team == 0 else "DEFENSE (E/RMB to tackle)"
+	var my_team: int = world.get_athlete(my_id).team
+	var side := "OFFENSE" if world.offense_team == my_team else "DEFENSE (E/RMB to tackle)"
 	var phase_name: String = ["PRE-SNAP (Space to snap)", "LIVE", "DEAD"][world.phase]
-	if world.offense_team != 0 and world.phase == World.Phase.PRESNAP:
+	if world.offense_team != my_team and world.phase == World.Phase.PRESNAP:
 		phase_name = "PRE-SNAP (Space: let them snap)"
 	if world.phase == World.Phase.DEAD and last_whistle != "":
 		phase_name = "%s at %.1f" % [last_whistle, world.dead_ball_spot.y]

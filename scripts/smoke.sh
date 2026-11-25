@@ -21,3 +21,5 @@ grep -E "FLOW|GAME FLOW" .flow-output.log
 if [ $flow -ne 0 ] || grep -E "SCRIPT ERROR|Parse Error" .flow-output.log | grep -q .; then
   grep -E "SCRIPT ERROR|Parse Error|at: " .flow-output.log | head; echo "GAME FLOW FAIL"; exit 1
 fi
+# Two-process online test (host + client over localhost)
+./scripts/net_test.sh || exit 1

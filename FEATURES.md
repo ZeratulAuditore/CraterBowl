@@ -16,7 +16,8 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [x] A07 Downs: line of scrimmage, 4 downs, first-down line, turnover on downs
 - [x] A08 Scoring: touchdown, extra point/2pt, safety, kickoff/possession reset
 - [x] A09 Match flow: game clock, halves, play clock, halftime, end of game
-- [ ] A10 Networking core: host/join over ENet, server-authoritative sim, client input + prediction
+- [x] A10a Networking core: protocol, host/join over ENet, server-authoritative sim, client input → snapshots
+- [ ] A10b Netcode feel: client-side prediction for own athlete + snapshot interpolation for others
 - [ ] A11 Teams + positions: 7v7 rosters, position select (QB, C, WR, RB, LB, CB, S), team swap
 - [ ] A12 Routes + play calling: pre-snap route selection, real-time route coordination for receivers
 - [ ] A13 Interceptions + fumbles: turnovers during live play

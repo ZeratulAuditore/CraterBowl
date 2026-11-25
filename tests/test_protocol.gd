@@ -1,0 +1,74 @@
+extends "res://tests/test_case.gd"
+
+const World := preload("res://src/sim/world.gd")
+const Match := preload("res://src/sim/match.gd")
+const Athlete := preload("res://src/sim/athlete.gd")
+const P := preload("res://src/net/protocol.gd")
+const DT := 1.0 / 60.0
+const R := Athlete.Role
+
+func _match() -> Match:
+	var w := World.new()
+	var cx := w.field.width / 2.0
+	var pairs := [[R.C, 0.0, R.DL, -1.5], [R.QB, 0.0, R.LB, 0.0], [R.WR, -18.0, R.CB, -18.0], [R.WR, 18.0, R.CB, 18.0], [R.RB, 4.0, R.S, -8.0], [R.OL, -2.5, R.DL, 1.5], [R.OL, 2.5, R.S, 8.0]]
+	for t in 2:
+		for p in pairs:
+			w.add_two_way(t, p[0], cx + p[1], p[2], cx + p[3])
+	var m := Match.new(w)
+	m.start(0, 25.0)
+	return m
+
+func test_snapshot_round_trip() -> void:
+	var a := _match()
+	a.world.snap()
+	for i in 40:
+		a.world.step({a.world.find_role(0, R.QB).id: {"dir": Vector2(1, 0.3), "sprint": true}}, DT)
+	a.world.athletes[9].recover_t = 0.5
+	a.score = [7, 3]
+	a.clock.remaining = 123.5
+	a.downs.down = 3
+	var snap := P.encode_snapshot(a, 42)
+	var bytes := var_to_bytes(snap)
+	var decoded = bytes_to_var(bytes)
+	var b := _match()
+	P.apply_snapshot(b, decoded)
+	for i in a.world.athletes.size():
+		assert_true(a.world.athletes[i].position.distance_to(b.world.athletes[i].position) < 0.001, "pos %d" % i)
+		assert_true(a.world.athletes[i].velocity.distance_to(b.world.athletes[i].velocity) < 0.001, "vel %d" % i)
+		assert_eq(a.world.athletes[i].role, b.world.athletes[i].role, "role %d" % i)
+	assert_true(b.world.athletes[9].is_grounded(), "grounded flag")
+	assert_eq(b.world.phase, a.world.phase, "phase")
+	assert_eq(b.world.ball.state, a.world.ball.state, "ball state")
+	assert_eq(b.world.ball.holder_id, a.world.ball.holder_id, "holder")
+	assert_true(b.world.ball.position.distance_to(a.world.ball.position) < 0.001, "ball pos")
+	assert_eq(b.score, [7, 3], "score")
+	assert_near(b.clock.remaining, 123.5, 0.01, "clock")
+	assert_eq(b.downs.down, 3, "down")
+	assert_true(bytes.size() < 1400, "fits one MTU-ish packet (%d bytes)" % bytes.size())
+
+func test_sanitize_input() -> void:
+	assert_eq(P.sanitize_input("garbage"), {}, "non-dict rejected")
+	var i := P.sanitize_input({"dir": Vector2(10, 0), "spr": true})
+	assert_near(i["dir"].length(), 1.0, 0.0001, "clamped")
+	assert_true(i["sprint"], "sprint")
+	var bad := P.sanitize_input({"dir": Vector2(INF, NAN)})
+	assert_eq(bad["dir"], Vector2.ZERO, "non-finite zeroed")
+	assert_eq(P.sanitize_action({"a": "teleport"}), {}, "unknown action dropped")
+	assert_near(P.sanitize_action({"a": "throw", "t": Vector2(1, 2), "p": 9.0})["p"], 1.0, 0.0001, "power clamped")
+	assert_eq(P.sanitize_action({"a": "try", "n": 5}), {}, "bad try value")
+
+func test_apply_action_authority() -> void:
+	var m := _match()
+	var w := m.world
+	var their_qb := w.find_role(1, R.LB)  # defender
+	assert_true(not P.apply_action(m, their_qb.id, {"a": "snap"}), "defense can't snap")
+	var my_wr := w.find_role(0, R.WR)
+	assert_true(P.apply_action(m, my_wr.id, {"a": "snap"}), "offense snaps")
+	for i in 30: w.step({}, DT)
+	assert_true(not P.apply_action(m, my_wr.id, {"a": "throw", "t": Vector2(26, 50), "p": 0.8}), "non-holder can't throw")
+	var qb := w.find_role(0, R.QB)
+	assert_true(P.apply_action(m, qb.id, {"a": "throw", "t": Vector2(26, 50), "p": 0.8}), "holder throws")
+	var lb := w.find_role(1, R.LB)
+	assert_true(P.apply_action(m, lb.id, {"a": "tackle"}), "tackle")
+	assert_true(lb.is_diving(), "sender's athlete dives")
+	assert_true(not w.find_role(1, R.CB).is_diving(), "others don't")

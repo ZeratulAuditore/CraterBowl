@@ -61,3 +61,11 @@
 - Game: HUD "H1 4:32 | PLAY 17", FINAL banner with winner; auto-advance stops at final.
 - Tests: 72 unit (+6); game flow 32 checks. Flow now runs with `--fixed-fps 60` (uncapped, deterministic): ~53 s → 0.65 s.
 - Known gaps: overtime logged as B10.
+
+## 010: A10a Networking core (2026-11-24)
+- A10 split into A10a (this) + A10b (prediction/interpolation).
+- `src/net/protocol.gd`: compact snapshot codec (~1 packet for 14 athletes), input/action sanitizing, `apply_action()` = single authoritative entry point for human actions (reuses World/Match rule validation).
+- `src/net/net_session.gd`: ENet + SceneMultiplayer `send_bytes` (`bytes_to_var` without objects). Inputs/snapshots unreliable-ordered @30 Hz; actions/welcome/events reliable. Athlete assignment: host = team 0 QB/LB, first joiner = team 1 QB/LB, then alternate; empty slots stay AI; disconnect returns athlete to pool.
+- Main: `-- --host [--port] [--playclock]` / `-- --join=ADDR [--port]`; all human actions go through `do_action()`; clients render snapshots + server events; fixed athlete per person online (control switch on catch is offline-only); HUD side label uses your team; `input_override` hook for tests/bots.
+- Tests: 75 unit (+3); new `scripts/net_test.sh` two-process host/client test (6 checks: welcome, team, snapshots, input authority, auto-snap + reliable events, defense snap rejected) — wired into smoke.sh, passed 3/3 runs.
+- Known gaps: no prediction/interpolation yet (A10b) → client sees 30 Hz steps + RTT input lag; no NAT traversal (B07).

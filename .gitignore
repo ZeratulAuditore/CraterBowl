@@ -3,3 +3,5 @@
 .smoke-output.log
 *.import
 .flow-output.log
+.net-host.log
+.net-client.log
