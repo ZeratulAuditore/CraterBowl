@@ -99,6 +99,7 @@ func setup_formation(los: float) -> void:
 	var cx := field.width / 2.0
 	for a in athletes:
 		a.reset_state()
+		a.set_lock = a.team != offense_team   # defense lines up set; Space breaks stance
 		var depth: float = FORMATION_DEPTH.get(a.role, 1.0)
 		var y := los - depth if a.team == offense_team else los + depth
 		a.position = Vector2(a.home_x, y)
@@ -159,13 +160,44 @@ func set_route(id: int, route: String) -> bool:
 	route_of[id] = route
 	return true
 
+## Defense pre-snap: stand up out of stance and roam (non-DL only, one-way per play).
+func break_stance(id: int) -> bool:
+	var a := get_athlete(id)
+	if a == null or phase != Phase.PRESNAP or a.team == offense_team or a.role == Athlete.Role.DL or not a.set_lock:
+		return false
+	a.set_lock = false
+	event.emit("break_stance", {"id": id})
+	return true
+
+func is_stance_locked(a: Athlete) -> bool:
+	return phase == Phase.PRESNAP and a.set_lock
+
+## Pre-snap rules for one athlete's input + resulting position. Shared by the
+## authoritative step and client prediction so both clamp identically.
+func step_athlete(a: Athlete, dir: Vector2, sprint: bool, dt: float) -> void:
+	if is_stance_locked(a):
+		a.face(dir)
+	else:
+		a.step(dir, sprint, dt)
+
+func _go_live() -> void:
+	phase = Phase.LIVE
+	for a in athletes:
+		a.set_lock = false
+
+## Client prediction: one athlete's step with the same pre-snap rules as step().
+func predict_step(a: Athlete, dir: Vector2, sprint: bool, dt: float) -> void:
+	step_athlete(a, dir, sprint, dt)
+	if phase == Phase.PRESNAP:
+		enforce_neutral_zone(a)
+
 ## Drills: go LIVE immediately with `id` carrying the ball (no snap).
 func start_live_with(id: int) -> void:
 	var a := get_athlete(id)
 	ball.hold(a.id)
 	last_possession = a.team
 	play_time = 0.0
-	phase = Phase.LIVE
+	_go_live()
 	_sync_ball()
 	event.emit("snap", {"qb": a.id})
 
@@ -184,7 +216,7 @@ func snap() -> bool:
 		for id in route_of:
 			var ra := get_athlete(id)
 			route_paths[id] = Routes.path_for(route_of[id], ra.position, field.width)
-		phase = Phase.LIVE
+		_go_live()
 		event.emit("snap", {"qb": qb.id})
 		event.emit("snap_received", {"qb": qb.id})
 		return true
@@ -199,7 +231,7 @@ func snap() -> bool:
 	for id in route_of:
 		var a := get_athlete(id)
 		route_paths[id] = Routes.path_for(route_of[id], a.position, field.width)
-	phase = Phase.LIVE
+	_go_live()
 	event.emit("snap", {"qb": qb.id})
 	return true
 
@@ -289,13 +321,13 @@ func step(inputs: Dictionary, dt: float) -> void:
 	for a in athletes:
 		prev.append(a.position)
 		var inp: Dictionary = inputs.get(a.id, {})
-		a.step(inp.get("dir", Vector2.ZERO), inp.get("sprint", false), dt)
+		step_athlete(a, inp.get("dir", Vector2.ZERO), inp.get("sprint", false), dt)
 	if phase == Phase.LIVE:
 		_step_blocks(prev, dt)
 	_resolve_collisions()
 	if phase == Phase.PRESNAP:
 		for a in athletes:
-			_enforce_neutral_zone(a)
+			enforce_neutral_zone(a)
 	_step_snap(dt)
 	_step_flight(dt)
 	if phase == Phase.LIVE:
@@ -645,15 +677,21 @@ func _end_incomplete(reason: String, data: Dictionary) -> void:
 	data["reason"] = reason
 	event.emit("incomplete", data)
 
-func _enforce_neutral_zone(a: Athlete) -> void:
+## Pre-snap: keep each side behind its edge of the neutral zone. Returns true
+## when it actually stopped the athlete (presentation ripples the barrier).
+func enforce_neutral_zone(a: Athlete) -> bool:
 	if a.team == offense_team:
-		if a.position.y > los_y - 0.5:
-			a.position.y = los_y - 0.5
+		if a.position.y > los_y - T.NEUTRAL_ZONE_HALF:
+			var pushing := a.velocity.y > 0.05
+			a.position.y = los_y - T.NEUTRAL_ZONE_HALF
 			a.velocity.y = minf(a.velocity.y, 0.0)
-	else:
-		if a.position.y < los_y + 0.5:
-			a.position.y = los_y + 0.5
-			a.velocity.y = maxf(a.velocity.y, 0.0)
+			return pushing
+	elif a.position.y < los_y + T.NEUTRAL_ZONE_HALF:
+		var pushing := a.velocity.y < -0.05
+		a.position.y = los_y + T.NEUTRAL_ZONE_HALF
+		a.velocity.y = maxf(a.velocity.y, 0.0)
+		return pushing
+	return false
 
 func _step_snap(dt: float) -> void:
 	if _snap_to_id < 0 or ball.state != Ball.State.IN_FLIGHT:

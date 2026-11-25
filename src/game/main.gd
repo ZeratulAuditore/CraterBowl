@@ -845,7 +845,7 @@ func _on_snapshot(snap: Dictionary) -> void:
 	latest_snap_at = Time.get_ticks_msec() / 1000.0
 	var me = world.get_athlete(my_id)
 	if me:
-		predictor.reconcile(me, int(snap.get("ack", {}).get(my_id, 0)))
+		predictor.reconcile(me, int(snap.get("ack", {}).get(my_id, 0)), world)
 
 ## Client: draw others ~100 ms in the past, interpolated between snapshots.
 func _apply_interpolation() -> void:
@@ -938,6 +938,14 @@ func _marker(c: Color, n: String) -> MeshInstance3D:
 	mi.name = n
 	field_root.add_child(mi)
 	return mi
+
+## Defense pre-snap HUD: stance state for the local athlete.
+func presnap_defense_prompt(a) -> String:
+	if a == null:
+		return "PRE-SNAP"
+	if a.role == Athlete.Role.DL:
+		return "PRE-SNAP (hold your stance)"
+	return "PRE-SNAP (Space: break stance)" if a.set_lock else "PRE-SNAP: ROAMING"
 
 func next_play() -> void:
 	series.next_play()
@@ -1046,7 +1054,7 @@ func _physics_process(delta: float) -> void:
 		net.send_input(my_input["dir"], my_input["sprint"], seq)
 		var me = world.get_athlete(my_id)
 		if me and net.my_athlete >= 0:
-			me.step(my_input["dir"], my_input["sprint"], delta)
+			world.predict_step(me, my_input["dir"], my_input["sprint"], delta)
 			if world.ball.is_held_by(my_id):
 				world.ball.position = Vector3(me.position.x, me.position.y, T.BALL_CARRY_HEIGHT)
 		_apply_interpolation()
@@ -1251,7 +1259,7 @@ func _process(delta: float) -> void:
 		side += " | PLAY: %s [Q]%s" % [world.play_name, (" | ROUTE: %s [F]" % world.route_of[my_id]) if world.route_of.has(my_id) else ""]
 	var phase_name: String = ["PRE-SNAP (Space to snap)", "LIVE", "DEAD"][world.phase]
 	if world.offense_team != my_team and world.phase == World.Phase.PRESNAP:
-		phase_name = "PRE-SNAP (Space: let them snap)"
+		phase_name = presnap_defense_prompt(world.get_athlete(my_id))
 	if world.phase == World.Phase.DEAD and last_whistle != "":
 		phase_name = "%s at %.1f" % [last_whistle, world.dead_ball_spot.y]
 	var situation: String = series.downs.label()

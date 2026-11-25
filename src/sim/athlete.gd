@@ -21,6 +21,7 @@ var spin_dir := 0          # -1 left, +1 right (relative to facing)
 var spin_cd := 0.0
 var spin_speed := 0.0      # forward speed carried through the spin
 var emote_cd := 0.0        # taunt rate limit (cosmetic)
+var set_lock := false    # pre-snap: held in stance until break_stance (defense)
 
 func _init(p_id: int = 0, p_team: int = 0, p_role: Role = Role.WR, start: Vector2 = Vector2.ZERO, f = null) -> void:
 	super(start, f)
@@ -59,6 +60,12 @@ func start_spin(side: int) -> bool:
 	spin_speed = maxf(velocity.dot(facing), 0.0) * T.SPIN_SPEED_KEEP
 	spin_cd = T.SPIN_TIME + T.SPIN_COOLDOWN
 	return true
+
+## Turn toward dir without moving (stance-locked athletes can still look around).
+func face(dir: Vector2) -> void:
+	velocity = Vector2.ZERO
+	if dir.length_squared() > 0.0001:
+		facing = dir.normalized()
 
 func start_dive() -> bool:
 	if not can_act():

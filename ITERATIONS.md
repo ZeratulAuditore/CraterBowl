@@ -200,3 +200,10 @@
 - FINAL: host computes ranked first, then per-human contexts, broadcasts `awards` {xp, ctx}; each machine evaluates/saves only its own player; HUD "ACHIEVEMENTS: …". Parity G23 automated → all 3 pre-audit gaps closed.
 - Found: flow steps placed out of frame order silently never ran (harness quits after the last listed step) → game_flow.gd now sorts steps by frame.
 - Tests: 196 unit (+5); flow +3 (real TD + win unlocks + HUD + saved).
+
+## 031: A28 Parity audit — PASS (2026-11-25)
+- Pulled and verified the parallel merges on main: out-of-game (A27 menus/settings/rebinding/gamepad, B07 UPnP/public matchmaker, Crater Bowl identity, exports) and graphics (A26 rigged CC0 characters, stadium, overlay/scorebug, presentation). Combined tree: 205 unit, game/menu/net flows, 4 matchmaking scenarios, user data untouched.
+- Data-safety fixes while merging: flow test now isolates replays from frame 2 (earlier finals had written test replays into the real replays/ folder in both old and new user dirs — 36 test-only files, deleted); smoke guard now covers replays/ and cleans test_flow_replays. Real settings.cfg was not written by our tests (left untouched).
+- Parity: G25 evidence = menu_flow (name, matchmaking, rebinding via real keys, gamepad, Esc overlay) + unit tests; G26 evidence = offscreen real-renderer screenshots (viewed: stadium, rigged players, scorebug, live play).
+- `./scripts/parity_audit.sh` full run: **26/26 PASS, 0 gaps, 0 pending** (7m11s). Built game: `./scripts/export.sh Linux` → CraterBowl-0.1.0-linux.zip, EXPORT BOOT CHECK PASS.
+- Phase A complete. Open follow-ups: D05 return yards; Phase B items (B07 owned by out-of-game session); Phase C TODOs from docs/gaps.

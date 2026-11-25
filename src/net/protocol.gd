@@ -5,8 +5,9 @@ const Routes := preload("res://src/sim/routes.gd")
 const T := preload("res://src/sim/tuning.gd")
 const DIVE_FLAG := 1
 const GROUND_FLAG := 2
-const SPIN_L_FLAG := 4
-const SPIN_R_FLAG := 8
+const LOCK_FLAG := 4
+const SPIN_L_FLAG := 8
+const SPIN_R_FLAG := 16
 const Emotes := preload("res://src/sim/emotes.gd")
 
 static func encode_snapshot(m, tick: int, acks: Dictionary = {}) -> Dictionary:
@@ -15,7 +16,7 @@ static func encode_snapshot(m, tick: int, acks: Dictionary = {}) -> Dictionary:
 	var r := PackedInt32Array()
 	for ath in w.athletes:
 		a.append_array([ath.position.x, ath.position.y, ath.velocity.x, ath.velocity.y, ath.facing.x, ath.facing.y, ath.stamina])
-		var flags := (DIVE_FLAG if ath.is_diving() else 0) | (GROUND_FLAG if ath.is_grounded() else 0)
+		var flags := (DIVE_FLAG if ath.is_diving() else 0) | (GROUND_FLAG if ath.is_grounded() else 0) | (LOCK_FLAG if ath.set_lock else 0)
 		if ath.is_spinning():
 			flags |= SPIN_L_FLAG if ath.spin_dir < 0 else SPIN_R_FLAG
 		r.append_array([ath.role, flags, ath.team])
@@ -57,6 +58,7 @@ static func apply_snapshot(m, s: Dictionary) -> void:
 		var flags := r[i * 3 + 1]
 		ath.dive_t = 0.01 if flags & DIVE_FLAG else 0.0
 		ath.recover_t = 0.01 if flags & GROUND_FLAG else 0.0
+		ath.set_lock = (flags & LOCK_FLAG) != 0
 		ath.spin_t = 0.01 if flags & (SPIN_L_FLAG | SPIN_R_FLAG) else 0.0
 		if ath.spin_t > 0.0:
 			ath.spin_dir = -1 if flags & SPIN_L_FLAG else 1
@@ -153,7 +155,10 @@ static func apply_action(m, athlete_id: int, action: Dictionary) -> bool:
 		return false
 	match act["a"]:
 		"snap":
-			return ath.team == w.offense_team and w.snap()
+			# One key, routed by side: offense hikes, defense breaks stance.
+			if ath.team == w.offense_team:
+				return w.snap()
+			return w.break_stance(athlete_id)
 		"tackle":
 			return w.tackle(athlete_id)
 		"throw":

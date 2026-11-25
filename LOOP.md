@@ -24,7 +24,7 @@ Each run is one iteration. Each iteration builds on the last. **Tackle exactly o
    - `./scripts/shot.sh` for any visual change (art, HUD, camera, effects): renders the real scene offscreen (Xvfb + software GL) to PNGs. **View the PNGs before calling it done.** See `docs/TESTING.md`.
    Iterate until both pass. Do not weaken or delete older tests to go green. **Never launch a windowed game** (`godot --path .`) to check your work; it opens on the user's desktop. Everything in `docs/TESTING.md` runs offscreen.
 6. **Record.** Check off the item in `FEATURES.md` and add any follow-ups under "Discovered". Append to `ITERATIONS.md`: number, item, what was built, test counts, known gaps.
-7. **Commit** locally on `main`: `iter NNN: <item>`. Never push or publish. **Stage explicit paths only** (`git add <files you changed>`), never `git add -A`: parallel sessions share this worktree, and `-A` once swept another session's uncommitted files into iter 027. Check `git show --stat` before moving on.
+7. **Commit** locally on `main`: `iter NNN: <item>`. Never push or publish. Commit **everything** (`git add -A`), including other sessions' in-progress files, and list them in the message body. See "Committing" in `AGENTS.md`. Check `git show --stat` before moving on.
 8. **Report.** Summarize what shipped, the test results, and what's next, ending with a `result:` line.
 
 ## Guardrails
