@@ -7,6 +7,7 @@ const T := preload("res://src/sim/tuning.gd")
 const Field := preload("res://src/sim/field.gd")
 const Athlete := preload("res://src/sim/athlete.gd")
 const Ball := preload("res://src/sim/ball.gd")
+const Passing := preload("res://src/sim/passing.gd")
 
 enum Phase { PRESNAP, LIVE, DEAD }
 
@@ -21,6 +22,8 @@ var los_y := 25.0
 var _snap_t := 0.0
 var _snap_from := Vector3.ZERO
 var _snap_to_id := -1
+var forward_pass_thrown := false
+var last_thrower_id := -1
 
 func add_athlete(team: int, role: int, pos: Vector2) -> Athlete:
 	var a := Athlete.new(athletes.size(), team, role, pos, field)
@@ -55,6 +58,9 @@ func setup_formation(los: float) -> void:
 		qb.position = Vector2(cx, los - 5.0)
 	if c:
 		ball.hold(c.id)
+	forward_pass_thrown = false
+	last_thrower_id = -1
+	_snap_to_id = -1
 	phase = Phase.PRESNAP
 	_sync_ball()
 
@@ -74,6 +80,25 @@ func snap() -> bool:
 	event.emit("snap", {"qb": qb.id})
 	return true
 
+## Throw from the holder toward target (field plane) with power 0..1.
+func throw(id: int, target: Vector2, power: float) -> bool:
+	var a := get_athlete(id)
+	if a == null or phase != Phase.LIVE or not ball.is_held_by(id):
+		return false
+	if forward_pass_thrown or a.position.y > los_y:
+		return false
+	var from := Vector3(a.position.x, a.position.y, T.RELEASE_HEIGHT)
+	var v := Passing.solve_velocity(from, target, power)
+	v += Vector3(a.velocity.x, a.velocity.y, 0.0) * T.THROW_INHERIT
+	ball.state = Ball.State.IN_FLIGHT
+	ball.holder_id = -1
+	ball.position = from
+	ball.velocity = v
+	forward_pass_thrown = true
+	last_thrower_id = id
+	event.emit("throw", {"by": id, "target": target, "power": power})
+	return true
+
 func step(inputs: Dictionary, dt: float) -> void:
 	for a in athletes:
 		var inp: Dictionary = inputs.get(a.id, {})
@@ -81,7 +106,20 @@ func step(inputs: Dictionary, dt: float) -> void:
 		if phase == Phase.PRESNAP:
 			_enforce_neutral_zone(a)
 	_step_snap(dt)
+	_step_flight(dt)
 	_sync_ball()
+
+func _step_flight(dt: float) -> void:
+	if ball.state != Ball.State.IN_FLIGHT or _snap_to_id >= 0:
+		return
+	ball.velocity.z -= T.GRAVITY * dt
+	ball.position += ball.velocity * dt
+	if ball.position.z <= 0.0:
+		ball.position.z = 0.0
+		ball.velocity = Vector3.ZERO
+		ball.state = Ball.State.DEAD
+		phase = Phase.DEAD
+		event.emit("incomplete", {"at": Vector2(ball.position.x, ball.position.y)})
 
 func _enforce_neutral_zone(a: Athlete) -> void:
 	if a.team == offense_team:

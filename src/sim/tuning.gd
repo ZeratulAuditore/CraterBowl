@@ -21,3 +21,12 @@ const OOB_MARGIN := 2.0
 # Ball
 const SNAP_TIME := 0.35        # seconds for snap flight C -> QB
 const BALL_CARRY_HEIGHT := 1.1 # yards above turf when held
+
+# Passing
+const GRAVITY := 10.73          # yd/s^2
+const RELEASE_HEIGHT := 2.0
+const CATCH_HEIGHT := 1.1
+const THROW_SPEED_MIN := 12.0
+const THROW_SPEED_MAX := 30.0
+const THROW_INHERIT := 0.3      # fraction of thrower velocity added to ball
+const THROW_CHARGE_TIME := 0.9  # seconds to full power

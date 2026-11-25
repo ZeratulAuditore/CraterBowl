@@ -5,6 +5,9 @@ extends Node3D
 const World := preload("res://src/sim/world.gd")
 const Athlete := preload("res://src/sim/athlete.gd")
 const PlayerNode := preload("res://src/game/player.gd")
+const Passing := preload("res://src/sim/passing.gd")
+const T := preload("res://src/sim/tuning.gd")
+const ARC_DOTS := 24
 
 const TEAM_COLORS := [Color(0.95, 0.75, 0.15), Color(0.3, 0.8, 0.95)]
 
@@ -15,6 +18,11 @@ var controlled_id := -1
 var views: Array = []
 var player: Node3D  # view of the controlled athlete
 var ball_view: MeshInstance3D
+var reticle: MeshInstance3D
+var arc_dots: Array = []
+var charging := false
+var charge := 0.0
+var aim_point := Vector2(26, 45)
 var camera: Camera3D
 var hud: Label
 
@@ -25,6 +33,7 @@ func _ready() -> void:
 	_build_environment()
 	_build_field()
 	_spawn_teams()
+	_build_aim_visuals()
 	world.setup_formation(25.0)
 	for v in views:
 		v.sync()
@@ -67,6 +76,76 @@ func _spawn_teams() -> void:
 	ball_view.scale = Vector3(1, 1, 1.7)
 	add_child(ball_view)
 
+func _build_aim_visuals() -> void:
+	reticle = MeshInstance3D.new()
+	reticle.name = "Reticle"
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.6
+	tm.outer_radius = 0.8
+	var rm := StandardMaterial3D.new()
+	rm.albedo_color = Color(1, 1, 1, 0.8)
+	rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	tm.material = rm
+	reticle.mesh = tm
+	add_child(reticle)
+	var dm := StandardMaterial3D.new()
+	dm.albedo_color = Color(1, 0.9, 0.3)
+	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	for i in ARC_DOTS:
+		var d := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.08
+		sm.height = 0.16
+		sm.material = dm
+		d.mesh = sm
+		d.visible = false
+		add_child(d)
+		arc_dots.append(d)
+
+## Mouse ray onto the turf plane -> field coordinates.
+func _update_aim() -> void:
+	if camera == null or not is_inside_tree() or DisplayServer.get_name() == "headless":
+		return
+	var mp := get_viewport().get_mouse_position()
+	var origin := camera.project_ray_origin(mp)
+	var dir := camera.project_ray_normal(mp)
+	if absf(dir.y) < 0.0001:
+		return
+	var t := -origin.y / dir.y
+	if t > 0.0:
+		var hit := origin + dir * t
+		aim_point = Vector2(hit.x, -hit.z)
+
+func _update_arc() -> void:
+	var qb = world.get_athlete(controlled_id)
+	var show := charging and world.ball.is_held_by(controlled_id)
+	reticle.position = Vector3(aim_point.x, 0.05, -aim_point.y)
+	if not show:
+		for d in arc_dots:
+			d.visible = false
+		return
+	var from := Vector3(qb.position.x, qb.position.y, T.RELEASE_HEIGHT)
+	var v := Passing.solve_velocity(from, aim_point, charge)
+	v += Vector3(qb.velocity.x, qb.velocity.y, 0) * T.THROW_INHERIT
+	var tf := Passing.time_to_height(v, from.z, 0.0)
+	for i in ARC_DOTS:
+		var t := tf * float(i + 1) / ARC_DOTS
+		var p := from + v * t + Vector3(0, 0, -0.5 * T.GRAVITY * t * t)
+		arc_dots[i].position = Vector3(p.x, p.z, -p.y)
+		arc_dots[i].visible = true
+
+func _set_charging(on: bool) -> void:
+	if on and world.ball.is_held_by(controlled_id) and not charging:
+		charging = true
+		charge = 0.0
+	elif not on and charging:
+		charging = false
+		world.throw(controlled_id, aim_point, charge)
+
+func _unhandled_input(e: InputEvent) -> void:
+	if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
+		_set_charging(e.pressed)
+
 func read_input() -> Vector2:
 	var v := Vector2.ZERO
 	if Input.is_key_pressed(KEY_W): v.y += 1
@@ -75,19 +154,29 @@ func read_input() -> Vector2:
 	if Input.is_key_pressed(KEY_A): v.x -= 1
 	return v
 
+func _input(e: InputEvent) -> void:
+	if e is InputEventKey and not e.pressed and e.keycode == KEY_J:
+		_set_charging(false)
+
 func _unhandled_key_input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and not e.echo:
 		if e.keycode == KEY_SPACE:
 			world.snap()
+		elif e.keycode == KEY_J:
+			_set_charging(true)
 		elif e.keycode == KEY_R:
 			world.setup_formation(world.los_y)
 
 func _physics_process(delta: float) -> void:
+	if charging:
+		charge = minf(1.0, charge + delta / T.THROW_CHARGE_TIME)
 	world.step({controlled_id: {"dir": read_input(), "sprint": Input.is_key_pressed(KEY_SHIFT)}}, delta)
 	for v in views:
 		v.sync()
 	var b = world.ball.position
 	ball_view.position = Vector3(b.x, b.z, -b.y)
+	_update_aim()
+	_update_arc()
 
 func _process(delta: float) -> void:
 	var target := player.global_position
@@ -96,7 +185,8 @@ func _process(delta: float) -> void:
 	camera.look_at(target + Vector3(0, 1, -4))
 	var m = player.athlete
 	var phase_name: String = ["PRE-SNAP (Space to snap)", "LIVE", "DEAD (R to reset)"][world.phase]
-	hud.text = "%s   Yard: %.1f  Speed: %.1f yd/s  Stamina: %d%%%s" % [
+	var charge_txt := ("   THROW %d%%" % int(charge * 100)) if charging else ""
+	hud.text = charge_txt + "\n" + "%s   Yard: %.1f  Speed: %.1f yd/s  Stamina: %d%%%s" % [
 		phase_name, m.position.y, m.speed(), int(m.stamina * 100), "  (WINDED)" if m.sprint_locked else ""]
 
 func _build_environment() -> void:

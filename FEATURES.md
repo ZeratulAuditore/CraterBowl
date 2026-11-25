@@ -9,7 +9,7 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 ## Phase A: Gridiron parity
 - [x] A01 Field + player: regulation field with end zones, one third-person player with run/sprint/stamina and camera
 - [x] A02 Ball + snap: ball entity, center snap to QB, ball possession state
-- [ ] A03 Precision physics passing: aim + charge throw, ballistic flight with leading
+- [x] A03 Precision physics passing: aim + charge throw, ballistic flight with leading
 - [ ] A04 Catching: catch radius/timing, contested catches, incompletions
 - [ ] A05 Tackling: tackle input, carrier down, whistle/dead ball
 - [ ] A06 Blocking: body collision, push/engage blocks at the line
@@ -47,3 +47,4 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [ ] B08 Tuning data file (TUNING) editable by designers without code
 
 ## Discovered (bugs/follow-ups the loop adds here; fixed before new features)
+- [ ] D01 Controls: gamepad support + InputMap actions (currently raw keys/mouse) — fold into A27 unless a playtest needs it earlier

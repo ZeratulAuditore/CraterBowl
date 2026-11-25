@@ -16,7 +16,7 @@ Each run is one iteration. Each iteration builds on the last. **Tackle exactly o
    - Use only original or CC0 assets. Never use Gridiron's name, art, UI or audio.
 5. **Test.** Add `tests/test_<area>.gd` covering every acceptance criterion. Then run:
    - `./scripts/test.sh`: all unit tests must pass (previous iterations' tests included).
-   - `./scripts/smoke.sh`: main scene boots headless for ~300 frames with zero script errors.
+   - `./scripts/smoke.sh`: main scene boots headless for ~300 frames with zero script errors, then `tests/game_flow.gd` drives the real scene through a scripted play. **Extend game_flow.gd with a step for each new player-facing feature.**
    Iterate until both pass. Do not weaken or delete older tests to go green.
 6. **Record.** Check off the item in `FEATURES.md` and add any follow-ups under "Discovered". Append to `ITERATIONS.md`: number, item, what was built, test counts, known gaps.
 7. **Commit** locally on `main`: `iter NNN: <item>`. Never push or publish.

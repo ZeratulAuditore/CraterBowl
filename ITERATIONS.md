@@ -16,3 +16,9 @@
 - Game: 7v7 athletes rendered in team colors; you control the QB; Space snaps, R resets; ball mesh follows sim; HUD shows phase.
 - Tests: 19 unit passing (+6); smoke clean.
 - Known gaps: non-controlled athletes stand still (bots in A14); no play end yet (A05).
+
+## 003: A03 Precision physics passing (2026-11-24)
+- Sim: `passing.gd` ballistic solver (bisection on launch angle to cross aim point at catch height; out of range → 45° falls short), `lead_target()` receiver prediction; World.throw (holder, LIVE, behind LOS, one forward pass), ball flight with gravity, ground = incomplete → DEAD. Throw-on-the-run inherits 30% of QB velocity.
+- Game: mouse-aimed ground reticle, hold LMB/J to charge (0.9 s to full), release to throw, trajectory preview arc (better than Gridiron).
+- Tests: 27 unit (+8). New `tests/game_flow.gd` scripted e2e through the real scene, wired into smoke.sh (7 checks).
+- Known gaps: no catching yet (A04); D01 logged for gamepad/InputMap.

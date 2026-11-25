@@ -2,3 +2,4 @@
 .test-output.log
 .smoke-output.log
 *.import
+.flow-output.log
