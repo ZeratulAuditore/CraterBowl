@@ -10,6 +10,7 @@ var caught_by := -1
 var tackled := false
 var spot := 0.0
 var series_events := 0
+var before_id := -1
 var wr_id := -1
 
 func check(cond: bool, msg: String) -> void:
@@ -65,6 +66,12 @@ func _initialize() -> void:
 		[2500, func(): check(main.world.phase == main.World.Phase.LIVE, "play clock auto-snapped"); main.series.clock.remaining = 0.2],
 		[2530, func(): check(main.series.clock.expired(), "clock hit 0:00")],
 		[3200, func(): _force_dead_if_live(); main.next_play(); check(main.series.clock.half == 2, "halftime -> 2nd half"); check(main.world.offense_team == 1 - main.series.opening_receiver, "other team receives 2nd half")],
+		# A11: position change + team swap between plays, rejected while live
+		[3201, func(): before_id = main.my_id; check(main.do_action({"a": "cycle"}), "TAB position change"); check(main.my_id != before_id and main.controlled_id == main.my_id, "now controlling new position")],
+		[3202, func(): var t0: int = main.world.get_athlete(main.my_id).team; check(main.do_action({"a": "team"}), "team swap"); check(main.world.get_athlete(main.my_id).team == 1 - t0, "on the other team")],
+		[3203, func(): check(main.hud.text.find("[TAB pos") >= 0, "HUD shows position")],
+		[3204, func(): main.world.snap()],
+		[3205, func(): check(not main.do_action({"a": "team"}), "no team swap during live play")],
 	]
 
 func _force_dead_if_live() -> void:

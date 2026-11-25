@@ -76,3 +76,10 @@
 - Protocol/session: input `seq` (sanitized, never goes backwards on server), snapshots carry per-athlete `ack`.
 - Tests: 80 unit (+5: prediction with simulated 6-tick latency leads then converges <0.01 yd, bounded buffer, interpolation midpoint/clamps/out-of-order, seq sanitizing). Net test now 7 checks incl. "own athlete predicted ahead of server state" — verified it fails (0 frames) with prediction disabled. 3/3 runs pass.
 - Known gaps: prediction ignores collisions/blocks (server corrects on contact); no visual smoothing of corrections yet.
+
+## 012: A11 Teams + positions (2026-11-24)
+- `src/sim/roster.gd`: 7 two-way slots per team (QB/LB, WR/CB ×2, RB/S, C/DL, OL/DL, OL/S) owned by humans or bots; auto-assign balances teams + prefers QB/LB; claim/release; swap team keeps pairing; cycle position skips taken slots.
+- Main builds teams from the roster; offline TAB = next position, T = swap team (only when not LIVE); HUD shows "QB/LB ... [TAB pos, T team]".
+- Online: server's Roster replaces A10a's fixed pool (NetSession `assign_fn`/`release_fn`, `set_assignment` re-welcomes); clients request cycle/team/pick as reliable actions; client resets prediction on reassignment.
+- Tests: 86 unit (+6); flow 38 checks (+6 incl. no swap while live); net 9 checks (+2: team-swap reassignment, occupied-slot pick rejected). Fixed a test-ordering bug (initial-team check ran after the deliberate swap).
+- Known gaps: no lobby UI to see who's where (A16).

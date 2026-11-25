@@ -17,10 +17,11 @@ enum Mode { OFFLINE, SERVER, CLIENT }
 var mode: Mode = Mode.OFFLINE
 var peer: ENetMultiplayerPeer
 var api: SceneMultiplayer
-var athlete_pool: Array = []   # server: athletes available to assign, in order
+var assign_fn: Callable       # server: func(peer_id) -> athlete_id or -1
+var release_fn: Callable      # server: func(peer_id)
 var peer_athlete := {}         # server: peer_id -> athlete_id
 var inputs := {}               # server: athlete_id -> sanitized input
-var actions: Array = []        # server: [[athlete_id, action], ...] pending
+var actions: Array = []        # server: [[peer_id, athlete_id, action], ...] pending
 var my_athlete := -1           # client
 var last_snapshot_tick := -1
 
@@ -29,13 +30,14 @@ func _ready() -> void:
 	get_tree().set_multiplayer(api, get_path())
 	api.peer_packet.connect(_on_packet)
 
-func host(port: int, pool: Array) -> Error:
+func host(port: int, assign: Callable, release: Callable) -> Error:
 	peer = ENetMultiplayerPeer.new()
 	var err := peer.create_server(port, MAX_PEERS)
 	if err != OK:
 		return err
 	api.multiplayer_peer = peer
-	athlete_pool = pool.duplicate()
+	assign_fn = assign
+	release_fn = release
 	api.peer_connected.connect(_on_peer_connected)
 	api.peer_disconnected.connect(_on_peer_disconnected)
 	mode = Mode.SERVER
@@ -59,20 +61,26 @@ func _send(target: int, msg: Dictionary, reliable: bool) -> void:
 
 # ---- server ----
 func _on_peer_connected(id: int) -> void:
-	if athlete_pool.is_empty():
+	var aid: int = assign_fn.call(id)
+	if aid < 0:
 		peer.disconnect_peer(id)
 		return
-	var aid: int = athlete_pool.pop_front()
+	set_assignment(id, aid)
+	peer_joined.emit(id, aid)
+
+## Server: (re)assign a peer to an athlete and tell them.
+func set_assignment(id: int, aid: int) -> void:
+	if peer_athlete.has(id):
+		inputs.erase(peer_athlete[id])
 	peer_athlete[id] = aid
 	_send(id, {"k": "welcome", "aid": aid}, true)
-	peer_joined.emit(id, aid)
 
 func _on_peer_disconnected(id: int) -> void:
 	if peer_athlete.has(id):
 		var aid: int = peer_athlete[id]
 		peer_athlete.erase(id)
 		inputs.erase(aid)
-		athlete_pool.push_front(aid)
+		release_fn.call(id)
 		peer_left.emit(id, aid)
 
 func broadcast_snapshot(snap: Dictionary) -> void:
@@ -119,7 +127,7 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 					inputs[aid] = inp
 		"act":
 			if mode == Mode.SERVER and peer_athlete.has(from):
-				actions.append([peer_athlete[from], msg.get("act", {})])
+				actions.append([from, peer_athlete[from], msg.get("act", {})])
 		"welcome":
 			if mode == Mode.CLIENT and from == 1:
 				my_athlete = int(msg.get("aid", -1))

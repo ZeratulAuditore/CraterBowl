@@ -15,6 +15,8 @@ const SNAPSHOT_EVERY := 2   # physics ticks (60 Hz -> 30 Hz snapshots)
 const Predictor := preload("res://src/net/client_predictor.gd")
 const Interp := preload("res://src/net/interpolator.gd")
 const INTERP_DELAY := 0.1   # seconds others render in the past
+const Roster := preload("res://src/sim/roster.gd")
+const LOCAL_PLAYER := 1      # the local human's player id (= host peer id online)
 const T := preload("res://src/sim/tuning.gd")
 const ARC_DOTS := 24
 
@@ -35,6 +37,7 @@ var aim_point := Vector2(26, 45)
 var ai := AI.new()
 var last_whistle := ""
 var series: Match
+var roster := Roster.new()
 var my_id := -1          # the human's athlete (QB on offense, LB on defense)
 var dead_t := 0.0
 var auto_next := true
@@ -79,20 +82,14 @@ func _ready() -> void:
 	add_child(layer)
 
 func _spawn_teams() -> void:
-	var cx: float = field.width / 2.0
-	var R := Athlete.Role
-	# Two-way athletes: [offense role, x offset, defense role, x offset]
-	var pairs := [[R.C, 0.0, R.DL, -1.5], [R.QB, 0.0, R.LB, 0.0], [R.WR, -18.0, R.CB, -18.0], [R.WR, 18.0, R.CB, 18.0],
-		[R.RB, 4.0, R.S, -8.0], [R.OL, -2.5, R.DL, 1.5], [R.OL, 2.5, R.S, 8.0]]
-	for t in 2:
-		for p in pairs:
-			var a := world.add_two_way(t, p[0], cx + p[1], p[2], cx + p[3])
-			var v := PlayerNode.new()
-			v.name = "Athlete%d" % a.id
-			v.setup(a, TEAM_COLORS[t])
-			add_child(v)
-			views.append(v)
-	my_id = world.find_role(0, R.QB).id
+	roster.build(world)
+	for a in world.athletes:
+		var v := PlayerNode.new()
+		v.name = "Athlete%d" % a.id
+		v.setup(a, TEAM_COLORS[a.team])
+		add_child(v)
+		views.append(v)
+	my_id = roster.auto_assign(LOCAL_PLAYER)
 	controlled_id = my_id
 	player = views[controlled_id]
 	ball_view = MeshInstance3D.new()
@@ -178,6 +175,12 @@ func do_action(action: Dictionary) -> bool:
 	if is_client():
 		net.send_action(action)
 		return true
+	if action.get("a", "") in ["cycle", "team", "pick"]:
+		var aid := roster_action(LOCAL_PLAYER, action)
+		if aid >= 0:
+			my_id = aid
+			set_controlled(aid)
+		return aid >= 0
 	return Protocol.apply_action(series, controlled_id, action)
 
 func is_client() -> bool:
@@ -202,28 +205,40 @@ func _setup_net() -> void:
 	add_child(net)
 	var port := int(args.get("port", NetSession.DEFAULT_PORT))
 	if args.has("host"):
-		# First joiner gets the opponent's QB/LB pair, then alternate teams.
-		var pool: Array = [world.find_role(1, Athlete.Role.LB).id]
-		var t0 := []
-		var t1 := []
-		for a in world.athletes:
-			if a.id == my_id or pool.has(a.id):
-				continue
-			(t0 if a.team == 0 else t1).append(a.id)
-		for i in maxi(t0.size(), t1.size()):
-			if i < t1.size(): pool.append(t1[i])
-			if i < t0.size(): pool.append(t0[i])
 		if args.has("playclock"):  # test/debug: shorten the first play clock
 			series.clock.play_clock = float(args["playclock"])
-		var err := net.host(port, pool)
+		var err := net.host(port, func(peer): return roster.auto_assign(peer), func(peer): roster.release(peer))
 		print("NET host on %d: %s" % [port, error_string(err)])
 	else:
 		var err := net.join(str(args["join"]), port)
 		print("NET join %s:%d: %s" % [args["join"], port, error_string(err)])
 		auto_next = false
-		net.welcomed.connect(func(aid): my_id = aid; set_controlled(aid); print("NET welcomed as athlete %d" % aid))
+		net.welcomed.connect(_on_assigned)
 		net.snapshot_received.connect(_on_snapshot)
 		net.event_received.connect(_on_world_event)
+
+## Client: server (re)assigned our athlete (join, position change, team swap).
+func _on_assigned(aid: int) -> void:
+	my_id = aid
+	predictor = Predictor.new()
+	set_controlled(aid)
+	print("NET assigned athlete %d" % aid)
+
+## Roster changes (position/team). Authoritative on server/offline; only outside live play.
+## Returns the player's (possibly new) athlete id, or -1 if rejected.
+func roster_action(player: int, action: Dictionary) -> int:
+	if world.phase == World.Phase.LIVE:
+		return -1
+	match action.get("a", ""):
+		"cycle":
+			return roster.cycle_position(player)
+		"team":
+			return roster.swap_team(player)
+		"pick":
+			var slot = action.get("slot", -1)
+			if slot is int and roster.claim(player, slot):
+				return roster.athlete_of(player)
+	return -1
 
 ## Client: authoritative state in, then re-predict own athlete on top of it.
 func _on_snapshot(snap: Dictionary) -> void:
@@ -345,11 +360,16 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 		dead_t += delta
 		if dead_t >= NEXT_PLAY_DELAY:
 			next_play()
-	var humans: Array = [controlled_id]
+	var humans: Array = [controlled_id] + roster.humans()
 	if is_server():
-		humans += net.human_athletes()
 		for pa in net.take_actions():
-			Protocol.apply_action(series, pa[0], pa[1])
+			var act = pa[2]
+			if act is Dictionary and act.get("a", "") in ["cycle", "team", "pick"]:
+				var aid := roster_action(pa[0], act)
+				if aid >= 0:
+					net.set_assignment(pa[0], aid)
+			else:
+				Protocol.apply_action(series, pa[1], act)
 	var inputs := ai.think(world, humans)
 	inputs[controlled_id] = my_input
 	if is_server():
@@ -380,6 +400,7 @@ func _process(delta: float) -> void:
 	var m = player.athlete
 	var my_team: int = world.get_athlete(my_id).team
 	var side := "OFFENSE" if world.offense_team == my_team else "DEFENSE (E/RMB to tackle)"
+	side = "%s %s [TAB pos, T team]" % [roster.label(roster.slot_of_athlete(my_id)), side]
 	var phase_name: String = ["PRE-SNAP (Space to snap)", "LIVE", "DEAD"][world.phase]
 	if world.offense_team != my_team and world.phase == World.Phase.PRESNAP:
 		phase_name = "PRE-SNAP (Space: let them snap)"
