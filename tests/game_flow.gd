@@ -110,8 +110,11 @@ func _initialize() -> void:
 		[4603, func(): before_id = main.my_id; _key(KEY_TAB); check(main.my_id != before_id, "TAB key changes position")],
 		[4604, func(): var r0 = main.world.route_of.get(main.my_id, ""); _key(KEY_F); check(main.world.route_of.get(main.my_id, "") != r0 and r0 != "", "F key changes my route")],
 		[4605, func(): var t0: int = main.world.get_athlete(main.my_id).team; _key(KEY_T); check(main.world.get_athlete(main.my_id).team == 1 - t0, "T key swaps team")],
-		[4606, func(): _key(KEY_T); check(main.world.get_athlete(main.my_id).team == main.world.offense_team, "T again: back on offense")],
-		[4607, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE, "Space key snaps")],
+		# C08d: on defense pre-snap, real Space breaks stance (no snap) and the barrier shows
+		[4606, func(): var me = main.world.get_athlete(main.my_id); check(me.team != main.world.offense_team and main.world.phase == main.World.Phase.PRESNAP, "on defense presnap"); check(me.role == main.Athlete.Role.DL or me.set_lock, "defender starts in stance"); check(main.pres.barrier.visible, "LOS barrier visible presnap")],
+		[4607, func(): var me = main.world.get_athlete(main.my_id); if me.role != main.Athlete.Role.DL: check(main.hud.text.find("break stance") >= 0, "HUD: Space to break stance"); _key(KEY_SPACE); check(main.world.phase == main.World.Phase.PRESNAP, "defense Space doesn't snap"); check(me.role == main.Athlete.Role.DL or not me.set_lock, "Space broke stance")],
+		[4608, func(): _key(KEY_T); check(main.world.get_athlete(main.my_id).team == main.world.offense_team, "T again: back on offense")],
+		[4609, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE, "Space key snaps")],
 		# A17: practice drills through the real game
 		[4700, func(): main.start_practice("passing"); check(main.drill != null and main.world.athletes.size() == 4, "passing drill: 4 athletes")],
 		[4702, func(): check(main.hud.text.find("PRACTICE: Passing") >= 0, "HUD shows drill"); _key(KEY_SPACE)],
@@ -142,6 +145,10 @@ func _initialize() -> void:
 		[6802, func(): check(main.series.is_final(), "final"); check(main.hud.text.find("You QB: 1/1") >= 0, "HUD summary shows your QB line")],
 		# A22: match recorded to the leaderboard file; HUD shows your rank
 		[6803, func(): var lb = main.Leaderboard.new(); lb.load_file(main.leaderboard_path); check(lb.rank_of("You", "QB") == 1, "leaderboard file has You|QB at #1"); check(main.hud.text.find("YOUR RANKS: QB #1") >= 0, "HUD shows your rank"); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.leaderboard_path))],
+		# Post-game: players of the game picked at final -> presentation beats -> overview data
+		[6804, func(): check(main.potg.size() >= 2 and main.potg.size() <= 4, "2-4 players of the game (%d)" % main.potg.size()); check(main.potg[0]["title"] == "PLAYER OF THE GAME" and main.potg.any(func(e): return e["name"] == "You"), "your QB line made the cut"); check(main.postgame_t >= 0.0 and main.postgame == null, "presentation queued after the FINAL hold"); main.start_postgame()],
+		[6806, func(): var st = main.postgame; check(st != null and st.views.size() == main.potg.size() and st.step == -1, "presentation intro with one athlete per pick"); st.advance(); check(st.step == 0 and st.cards[0].visible, "first spotlight card")],
+		[6810, func(): var st = main.postgame; st.skip(); check(st.is_done() and main.postgame_done and main.postgame == null, "skip ends the presentation"); var ov = main.match_overview(); check(ov["potg"].size() == main.potg.size() and ov["teams"].size() == 2 and ov["my_lines"].size() >= 1, "overview carries picks, team stats, your line %s" % str(ov["my_lines"]))],
 		# A23: ranked match vs a human rival -> rating change saved + on HUD
 		[6900, func(): main.configure(7); _setup_ranked_rival()],
 		[6902, func(): main.series.score = [7, 0]; main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.world.phase = main.World.Phase.DEAD; main.series.last_result = {"type": "incomplete"}; main.next_play()],
@@ -165,6 +172,12 @@ func _initialize() -> void:
 		[7502, func(): check(main.saved_replay != "" and FileAccess.file_exists(main.saved_replay), "replay saved at final (%s)" % main.saved_replay)],
 		[7503, func(): check(main.open_replay(main.saved_replay) and main.replay_viewer and main.replay.plays.size() >= 1, "viewer opens the saved replay"); _key(KEY_BRACKETRIGHT); check(main.replay.speed == 2.0, "] speeds up")],
 		[7504, func(): _key(KEY_V); check(not main.replay_active, "V exits viewer"); for f in DirAccess.get_files_at(ProjectSettings.globalize_path("user://test_flow_replays")): DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_flow_replays/" + f))],
+		# D04: achievements unlocked by a real TD + win, saved to the (temp) profile
+		[7600, func(): main.profile.achievements = []; main.profile.games = 0; main.configure(7); main.ai.defense_enabled = false],
+		[7601, func(): _key(KEY_SPACE)],
+		[7630, func(): main.world.carrier().position = Vector2(26, 101.0)],
+		[7632, func(): main.next_play(); main.world.snap(); main.series.last_result = {"type": "touchdown", "team": 0}; main.world.phase = main.World.Phase.DEAD; main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.next_play()],
+		[7634, func(): check(main.series.is_final(), "final"); check(main.profile.achievements.has("first_td") and main.profile.achievements.has("first_win"), "First Touchdown + First Win unlocked (%s)" % str(main.profile.achievements)); check(main.hud.text.find("ACHIEVEMENTS: ") >= 0, "HUD lists achievements"); var saved = main.Cosmetics.new(); saved.load_file(main.profile_path); check(saved.achievements.has("first_win"), "achievements saved"); main.ai.defense_enabled = true; DirAccess.remove_absolute(ProjectSettings.globalize_path(main.profile_path))],
 	]
 
 ## First receiver not controlled by the human (humans don't auto-run routes).
@@ -217,6 +230,7 @@ func _isolate_user_files() -> void:
 	main.profile_path = "user://test_flow_profile.json"
 	main.leaderboard_path = "user://test_flow_leaderboard.json"
 	main.ranked_path = "user://test_flow_ranked.json"
+	main.replay_dir = "user://test_flow_replays"   # every final saves a replay; never into the real replays/
 	for p in [main.profile_path, main.leaderboard_path, main.ranked_path]:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
 	main.profile.load_file(main.profile_path)
@@ -249,7 +263,11 @@ func _lead_to_wr() -> void:
 	var t_extra := 50.0 / 60.0  # WR keeps running while QB charges
 	main.aim_point = main.Passing.lead_target(from, wr.position + wr.velocity * t_extra, wr.velocity, p)
 
+var _sorted := false
 func _physics_process(_dt: float) -> bool:
+	if not _sorted and not steps.is_empty():
+		steps.sort_custom(func(a, b): return a[0] < b[0])   # out-of-order steps once silently never ran
+		_sorted = true
 	if steps.is_empty():  # _initialize failed: never hang
 		print("GAME FLOW FAIL (setup error)")
 		quit(1)

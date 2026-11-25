@@ -16,6 +16,7 @@ var def_x := 0.0
 var engaged_with := -1   # id of blocker (on defender) or defender (on blocker)
 var engage_t := 0.0
 var immune_t := 0.0
+var set_lock := false    # pre-snap: held in stance until break_stance (defense)
 
 func _init(p_id: int = 0, p_team: int = 0, p_role: Role = Role.WR, start: Vector2 = Vector2.ZERO, f = null) -> void:
 	super(start, f)
@@ -41,6 +42,12 @@ func is_grounded() -> bool:
 
 func can_act() -> bool:
 	return not is_diving() and not is_grounded()
+
+## Turn toward dir without moving (stance-locked athletes can still look around).
+func face(dir: Vector2) -> void:
+	velocity = Vector2.ZERO
+	if dir.length_squared() > 0.0001:
+		facing = dir.normalized()
 
 func start_dive() -> bool:
 	if not can_act():

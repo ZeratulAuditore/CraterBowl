@@ -23,6 +23,9 @@ var saw_lobby := false
 var lobby_size := 0
 var lobby_code := ""
 var lead_samples := 0
+var was_locked := false     # C08d: joiner (defense) started in stance per host snapshot
+var broke_stance := false   # host snapshot shows the lock cleared after our Space
+var crossed_line := false   # predicted defender ever past the neutral zone
 var defense_call_seen := false
 var defense_recall_seen := false
 
@@ -72,7 +75,15 @@ func _physics_process(_dt: float) -> bool:
 		if start_x == INF:
 			start_x = x
 			main.do_action({"a": "defense", "p": "edge_blitz"})
-			main.input_override = Vector2(1, 0)  # strafe right (legal presnap for defense)
+			var me = main.world.get_athlete(aid)
+			was_locked = me.set_lock or me.role == main.Athlete.Role.DL
+			main.do_action({"a": "snap"})          # defense Space: break stance over the wire
+			main.input_override = Vector2(1, 0)  # strafe right (legal presnap once roaming)
+		if not broke_stance and main.world.phase == 0 and not main.world.get_athlete(aid).set_lock:
+			broke_stance = true
+		var a = main.world.get_athlete(aid)
+		if main.world.phase == 0 and a.team != main.world.offense_team and a.position.y < main.world.los_y + 0.5 - 0.001:
+			crossed_line = true
 
 		max_dx = maxf(max_dx, x - start_x)
 	# With prediction, the locally shown position leads the last raw server state while moving.
@@ -103,6 +114,9 @@ func _physics_process(_dt: float) -> bool:
 		check(main.match_size == 5 and main.world.athletes.size() == 10, "client adopted host's 5v5 (%d athletes)" % main.world.athletes.size())
 		check(snaps > 20, "receiving snapshots (%d)" % snaps)
 		check(max_dx > 2.0, "own input moved own athlete on server (dx %.1f)" % max_dx)
+		check(was_locked, "joiner on defense starts in stance")
+		check(broke_stance, "defense Space broke stance via the host (snapshot lock cleared)")
+		check(not crossed_line, "predicted defender never past the neutral zone")
 		check(lead_samples > 10, "own athlete predicted ahead of server state (%d frames)" % lead_samples)
 		check(saw_live and got_snap_event, "host auto-snap reached client (snapshot LIVE + reliable event)")
 		check(defense_recall_seen, "remote defender recalled the previous snap's call")

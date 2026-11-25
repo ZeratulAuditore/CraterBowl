@@ -35,6 +35,8 @@ const DEFAULT_LOOK := {"trim": "white", "helmet": "plain", "number": 1, "celebra
 var xp := 0
 var equipped := DEFAULT_LOOK.duplicate()
 var season_rewards: Array = []   # e.g. ["S8100-Gold"] from ranked
+var achievements: Array = []     # unlocked achievement ids
+var games := 0                   # matches finished
 
 func level() -> int:
 	return xp / XP_PER_LEVEL
@@ -103,19 +105,24 @@ func save(path: String = DEFAULT_PATH) -> bool:
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
 		return false
-	f.store_string(JSON.stringify({"version": 1, "xp": xp, "equipped": equipped, "season_rewards": season_rewards}))
+	f.store_string(JSON.stringify({"version": 1, "xp": xp, "equipped": equipped, "season_rewards": season_rewards,
+		"achievements": achievements, "games": games}))
 	return true
 
 func load_file(path: String = DEFAULT_PATH) -> void:
 	xp = 0
 	equipped = DEFAULT_LOOK.duplicate()
 	season_rewards = []
+	achievements = []
+	games = 0
 	if not FileAccess.file_exists(path):
 		return
 	var d = JSON.parse_string(FileAccess.get_file_as_string(path))
 	if d is Dictionary:
 		xp = int(d.get("xp", 0))
 		season_rewards = d.get("season_rewards", []) if d.get("season_rewards") is Array else []
+		achievements = d.get("achievements", []) if d.get("achievements") is Array else []
+		games = int(d.get("games", 0))
 		var eq = sanitize_look(d.get("equipped", {}))
 		eq["number"] = int(eq["number"])
 		equipped = eq

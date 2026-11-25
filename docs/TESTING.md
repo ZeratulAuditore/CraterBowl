@@ -31,9 +31,11 @@ for every test process is throwaway. Tests can't touch the player's saves or set
 (or another session) changing settings mid-run can't fail the guard. Running `smoke.sh` alone still
 uses the real dir plus its before/after guard, so prefer `check.sh`.
 
-**Pre-commit hook.** `./scripts/install-hooks.sh` once per clone (it sets `core.hooksPath=scripts/githooks`,
-shared by all worktrees). Commits touching `.gd/.tscn/.tres/.sh/.godot` run `check.sh --fast`;
-docs-only commits skip it. Bypass with `--no-verify` only in an emergency, and say why in the message.
+**Pre-commit hook (optional, off by default).** `./scripts/install-hooks.sh` sets `core.hooksPath=scripts/githooks`
+(shared by all worktrees): commits touching `.gd/.tscn/.tres/.sh/.godot` then run `check.sh --fast`.
+It's off because of the commit-everything rule (`AGENTS.md`): another session's half-finished files
+ride along in your commit and would block it. Turn it on for a solo clone or CI-like use. Either way,
+**run `./scripts/check.sh` yourself before committing your change.**
 
 **Writing tests that catch real bugs:**
 - Test through the real entry point the player uses (`_key()` / `--press`), not internals.

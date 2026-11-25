@@ -195,6 +195,19 @@
 - Matchmaker `game` dimension (classic/chaosball, Chaosball forced 3v3) through server/client/main; host lobby opens in the queued game mode. Parity G17 automated.
 - Tests: 191 unit (+1); `MODE=chaos mm_test.sh` in smoke.sh + parity audit.
 
+## 030: D04 Achievements (2026-11-25)
+- `src/sim/achievements.gd`: 12 original milestones (First Touchdown, First Win, Gunslinger, Sure Hands, Workhorse, Sack Artist, Lockdown, Pick Six, Perfect Chaos, Comeback Kids, Going for Gold, Iron Man) as predicates over a per-player match context; bonus XP each. Stats `def_td` + `max_td_pts`; Match `max_deficit`; profile `achievements` + `games`.
+- FINAL: host computes ranked first, then per-human contexts, broadcasts `awards` {xp, ctx}; each machine evaluates/saves only its own player; HUD "ACHIEVEMENTS: …". Parity G23 automated → all 3 pre-audit gaps closed.
+- Found: flow steps placed out of frame order silently never ran (harness quits after the last listed step) → game_flow.gd now sorts steps by frame.
+- Tests: 196 unit (+5); flow +3 (real TD + win unlocks + HUD + saved).
+
+## 031: A28 Parity audit — PASS (2026-11-25)
+- Pulled and verified the parallel merges on main: out-of-game (A27 menus/settings/rebinding/gamepad, B07 UPnP/public matchmaker, Crater Bowl identity, exports) and graphics (A26 rigged CC0 characters, stadium, overlay/scorebug, presentation). Combined tree: 205 unit, game/menu/net flows, 4 matchmaking scenarios, user data untouched.
+- Data-safety fixes while merging: flow test now isolates replays from frame 2 (earlier finals had written test replays into the real replays/ folder in both old and new user dirs — 36 test-only files, deleted); smoke guard now covers replays/ and cleans test_flow_replays. Real settings.cfg was not written by our tests (left untouched).
+- Parity: G25 evidence = menu_flow (name, matchmaking, rebinding via real keys, gamepad, Esc overlay) + unit tests; G26 evidence = offscreen real-renderer screenshots (viewed: stadium, rigged players, scorebug, live play).
+- `./scripts/parity_audit.sh` full run: **26/26 PASS, 0 gaps, 0 pending** (7m11s). Built game: `./scripts/export.sh Linux` → CraterBowl-0.1.0-linux.zip, EXPORT BOOT CHECK PASS.
+- Phase A complete. Open follow-ups: D05 return yards; Phase B items (B07 owned by out-of-game session); Phase C TODOs from docs/gaps.
+
 ## 030: C08a Defensive playbook (2026-11-25)
 - Added nine named defensive calls across man, zone and blitz families and base, goal-line and prevent shells. Suggestions use down, yards to gain, yards to goal and time remaining.
 - C08b still owns on-field assignments and play art. B03 still owns the huddle.

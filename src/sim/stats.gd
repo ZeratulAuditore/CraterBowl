@@ -4,11 +4,12 @@ extends RefCounted
 const Athlete := preload("res://src/sim/athlete.gd")
 const ROLE := {0: "QB", 1: "C", 2: "WR", 3: "RB", 4: "LB", 5: "CB", 6: "S", 7: "OL", 8: "DL"}
 const FIELDS := ["att", "comp", "pass_yds", "pass_td", "int_thrown", "rec", "rec_yds", "rec_td",
-	"car", "rush_yds", "rush_td", "tkl", "sack", "int", "pbu", "ff", "fr", "pts", "blk"]
+	"car", "rush_yds", "rush_td", "tkl", "sack", "int", "pbu", "ff", "fr", "pts", "blk", "def_td", "max_td_pts"]
 
 var world
 var owner_fn: Callable     # athlete_id -> owner name ("Bot" for AI)
 var lines := {}            # "owner|POS" -> {field: value}
+var athletes := {}         # athlete_id -> {"team", "pos", "owner", field: value} (players of the game)
 var _los := 0.0
 var _passer := -1
 var _receiver := -1
@@ -33,6 +34,23 @@ func _add(aid: int, field: String, v: float = 1.0) -> void:
 		for f in FIELDS:
 			lines[k][f] = 0.0
 	lines[k][field] += v
+	_add_athlete(aid, field, v)
+
+## Same stat, keyed by the athlete itself. The owner is the last human who
+## controlled it (a bot that a human took over is credited to the human).
+func _add_athlete(aid: int, field: String, v: float) -> void:
+	var a = world.get_athlete(aid)
+	if not athletes.has(aid):
+		athletes[aid] = {"team": a.team, "pos": ROLE.get(a.role, "?"), "owner": "Bot"}
+		for f in FIELDS:
+			athletes[aid][f] = 0.0
+	var owner: String = owner_fn.call(aid) if owner_fn.is_valid() else "Bot"
+	if owner != "Bot":
+		athletes[aid]["owner"] = owner
+	if field == "max_td_pts":
+		athletes[aid][field] = maxf(athletes[aid][field], v)
+	else:
+		athletes[aid][field] += v
 
 func _on_event(n: String, d: Dictionary) -> void:
 	match n:
@@ -83,6 +101,8 @@ func _end_play(n: String, d: Dictionary) -> void:
 	if not on_offense:
 		if n == "touchdown":
 			_add(carrier, "pts", d.get("points", 6))
+			_add(carrier, "def_td")
+			_note_td_points(carrier, d.get("points", 6))
 		return   # return yards not tracked yet
 	if _receiver >= 0 and carrier == _receiver:
 		_add(_passer, "pass_yds", gain)
@@ -97,6 +117,13 @@ func _end_play(n: String, d: Dictionary) -> void:
 			_add(carrier, "rush_td")
 	if n == "touchdown":
 		_add(carrier, "pts", d.get("points", 6))
+		_note_td_points(carrier, d.get("points", 6))
+
+func _note_td_points(aid: int, pts) -> void:
+	_add(aid, "max_td_pts", 0.0)
+	var k := _key(aid)
+	lines[k]["max_td_pts"] = maxf(lines[k]["max_td_pts"], float(pts))
+	athletes[aid]["max_td_pts"] = maxf(athletes[aid]["max_td_pts"], float(pts))
 
 func get_line(owner: String, pos: String) -> Dictionary:
 	return lines.get("%s|%s" % [owner, pos], {})

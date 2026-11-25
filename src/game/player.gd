@@ -330,7 +330,7 @@ func _choose_anim(spd: float, down: bool) -> void:
 	if spd < 0.5:
 		if presnap and _role in LINEMEN:
 			_play("Crouch_Idle")
-		elif presnap and _role in ["LB", "CB", "S"]:
+		elif presnap and _role in ["LB", "CB", "S"] and athlete.set_lock:
 			_play("u2/Idle_Shield")
 		else:
 			_play("Idle")

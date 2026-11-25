@@ -12,6 +12,8 @@ var vsync := true
 var render_scale := 1.0          # 3D resolution scale (0.5..1.0)
 var max_fps := 0                 # 0 = unlimited
 var master_volume := 0.8         # 0..1 linear
+var music_volume := 0.7          # 0..1 linear, menu soundtrack
+var home_mode := ""              # last mode picked on the home screen's PLAY selector
 var matchmaker := DEFAULT_MM     # host[:port]
 var upnp := true                 # try to open the port on the router when hosting
 var bindings := {}               # action -> keycode overrides (see controls.gd)
@@ -28,6 +30,8 @@ func load_file(path: String = DEFAULT_PATH) -> void:
 	if not FPS_CAPS.has(max_fps):
 		max_fps = 0
 	master_volume = clampf(float(cf.get_value("audio", "master", master_volume)), 0.0, 1.0)
+	music_volume = clampf(float(cf.get_value("audio", "music", music_volume)), 0.0, 1.0)
+	home_mode = str(cf.get_value("player", "home_mode", home_mode))
 	matchmaker = str(cf.get_value("online", "matchmaker", matchmaker)).strip_edges()
 	if matchmaker == "":
 		matchmaker = DEFAULT_MM
@@ -43,6 +47,8 @@ func save(path: String = DEFAULT_PATH) -> bool:
 	cf.set_value("video", "render_scale", render_scale)
 	cf.set_value("video", "max_fps", max_fps)
 	cf.set_value("audio", "master", master_volume)
+	cf.set_value("audio", "music", music_volume)
+	cf.set_value("player", "home_mode", home_mode)
 	cf.set_value("online", "matchmaker", matchmaker)
 	cf.set_value("online", "upnp", upnp)
 	cf.set_value("controls", "bindings", bindings)

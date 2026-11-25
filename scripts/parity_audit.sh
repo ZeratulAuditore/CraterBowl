@@ -10,6 +10,8 @@ if [ -z "${SKIP_RUN:-}" ]; then   # SKIP_RUN=1 re-checks the last run's logs
   MODE=competitive ./scripts/mm_test.sh > .parity-mm-competitive.log 2>&1
   MODE=party ./scripts/mm_test.sh > .parity-mm-party.log 2>&1
   MODE=chaos ./scripts/mm_test.sh > .parity-mm-chaos.log 2>&1
+  # Presentation: real renderer, offscreen (never a desktop window). Inspect the PNGs too.
+  ./scripts/shot.sh --out="$PWD/.parity-shots/shot" --frames=90,240 --snap=60 > .parity-shots.log 2>&1
 fi
 
 check() { # kind pattern
@@ -17,6 +19,8 @@ check() { # kind pattern
     unit) grep -qF "PASS $2" .test-output.log ;;
     flow) grep -qF "FLOW OK   $2" .flow-output.log ;;
     net)  grep -qF "NET OK   $2" .net-client.log ;;
+    menu) grep -qF "MENU OK   $2" .menu-flow.log ;;
+    shot) grep -qF "$2" .parity-shots.log ;;
     mm)   grep -qhF "$2" .parity-mm-casual.log .parity-mm-competitive.log .parity-mm-party.log .parity-mm-chaos.log 2>/dev/null ;;
     *) return 1 ;;
   esac

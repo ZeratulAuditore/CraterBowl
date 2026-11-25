@@ -79,7 +79,21 @@ func _setup() -> void:
 		[5, func():
 			menu.content.find_child("NameEdit", true, false).text = "Ace"
 			_btn(menu.content, "Continue").pressed.emit()
-			check(menu.current == "online", "name accepted -> online screen")
+			check(menu.current == "home" and not menu.panel.visible, "name accepted -> home lobby")
+			check(menu.lobby.hero != null, "lobby shows the player's athlete")
+			menu.launch = rec
+			menu.cycle_mode()
+			check(menu.mode_id == "bots3" and launch.settings.home_mode == "bots3", "TAB cycles + remembers mode")
+			menu._set_mode("chaos")
+			menu.play_button.pressed.emit()
+			check(rec.opts == {"size": "3", "mode": "chaosball"}, "PLAY launches selected mode %s" % str(rec.opts))
+			menu._set_mode("scrimmage")
+			menu.play_selected()
+			check(rec.opts == {"practice": "scrimmage"}, "PLAY practice mode")
+			menu._set_mode("bots5")
+			menu.launch = launch
+			menu.show_screen("online")
+			check(menu.panel.visible and menu.current == "online", "online tab opens the side panel")
 			check(launch.settings.player_name == "Ace" and FileAccess.file_exists("user://test_menu_settings.cfg"), "name saved")],
 		[6, func():
 			fake_host = MMClient.new()
@@ -160,7 +174,22 @@ func _setup() -> void:
 			check(mine.size() == 1 and mine[0]["code"] == current_scene.lobby.code and mine[0]["size"] == 3, "public lobby registered %s" % str(mine))
 			launch.go_to_menu("Left match")],
 		[830, func():
-			check(current_scene != null and current_scene.scene_file_path == launch.MENU_SCENE, "leave -> back at menu")],
+			check(current_scene != null and current_scene.scene_file_path == launch.MENU_SCENE, "leave -> back at menu")
+			check(current_scene.current == "home" and launch.last_match.is_empty(), "leaving mid-match shows no overview")
+			launch.go_to_menu("", {"score": [21, 14], "winner": 0, "my_team": 0, "team_names": ["HELIOS", "NEBULA"],
+				"mode": "classic", "size": 5, "me": "Ace", "my_lines": ["QB: 12/18 160yd 2TD 0INT"], "xp": "XP +120 (Level 2)",
+				"teams": [{"pass_yds": 160, "rush_yds": 40, "td": 3}, {"pass_yds": 90, "rush_yds": 70, "td": 2}],
+				"potg": [{"id": 1, "team": 0, "pos": "QB", "name": "Ace", "number": 12, "title": "PLAYER OF THE GAME", "lines": ["12/18  160 YDS  2 TD"]},
+					{"id": 9, "team": 1, "pos": "LB", "name": "CPU", "number": 44, "title": "DEFENSIVE STANDOUT", "lines": ["7 TKL  1 SACK"]}]})],
+		[860, func():
+			var m = current_scene
+			check(m.current == "overview" and m.panel.visible, "post-game return opens the game overview")
+			var ov = m.content.find_child("GameOverview", true, false)
+			check(ov != null and ov.find_child("Potg1", true, false) != null and ov.find_child("BoxScore", true, false) != null, "overview lists players of the game + team stats")
+			check((ov.find_child("Result", true, false) as Label).text == "VICTORY", "overview headline from your side")
+			check(_btn(m, "Last game") != null, "footer can reopen the last game")
+			_btn(m.content, "Close").pressed.emit()
+			check(m.current == "home", "close overview -> lobby home")],
 		[900, func():
 			check(mms.registry.listing(mms._now()).filter(func(e): return e["name"] == "Ace's match").is_empty(), "lobby unlisted after leaving")
 			launch.start_game({"practice": "passing"})],

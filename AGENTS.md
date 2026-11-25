@@ -11,6 +11,17 @@ looped. It's short on purpose: each section links to the doc that owns the detai
 | Performance rules, budgets, measuring | `docs/optimization/README.md`, `docs/optimization/LOG.md` |
 | Menus, brand, distribution | `OUT_OF_GAME.md` |
 
+### Committing: commit everything, by default
+When you finish a task (or a loop iteration), commit **everything** in the working tree without
+asking: `git add -A && git commit`. That includes files other parallel sessions changed. The owner
+wants the tree clean and every change in history rather than work-in-progress left lying around.
+- Commit to the current branch (normally `main`). Don't push or publish unless asked.
+- Never `git stash`, reset or checkout files to isolate your changes. Other sessions share this
+  worktree and that discards or tangles their work.
+- Write the message about your change, and add a line listing other sessions' files that rode
+  along (`Also includes in-progress work: src/net/..., ...`). Check `git show --stat` afterwards.
+- Never commit secrets (`.env`, keys, credentials). `.gitignore` covers build output and `user://` data.
+
 Code map: `src/sim/` = rules (pure, deterministic, unit-tested), `src/game/` = presentation (views,
 camera, HUD, art in `src/game/art/`), `src/net/` = netcode, `src/ui/` = menus/settings,
 `tests/` = tests and harnesses, `tools/` = dev/diagnosis scripts, `scripts/` = the commands below.
@@ -25,7 +36,7 @@ Every unit of work, whether a loop iteration, a bug fix or a perf pass, has the 
 4. **Gate.** `./scripts/check.sh` must print `CHECK PASS`. Add tests for every criterion *before* calling it done.
 5. **Look** at visual changes with `./scripts/shot.sh` and actually view the PNGs.
 6. **Record.** Docs that own what you changed (below), `ITERATIONS.md`, and the backlog.
-7. **Commit** explicit paths only (`git add <files>`, never `-A`), then check `git show --stat`.
+7. **Commit everything** (`git add -A`, see Committing below), then check `git show --stat`.
 
 A loop that can't measure its own success isn't done. If an item has no test, perf number or
 screenshot proving it, add one.
@@ -49,7 +60,8 @@ Full guide: `docs/TESTING.md`.
 - A new check must go red when you plant the bug it's meant to catch. Try it once.
 - Don't weaken or delete older tests to go green. `check.sh` isolates `user://` (temp
   `XDG_DATA_HOME`), so tests can't touch real saves.
-- Enable the hook once per clone: `./scripts/install-hooks.sh`.
+- Run `./scripts/check.sh` before you commit. (A pre-commit hook exists, `scripts/install-hooks.sh`, but it's off by default
+  because commit-everything would let other sessions' WIP block your commit. See `docs/TESTING.md`.)
 
 ### Optimization
 
@@ -91,11 +103,11 @@ Several Claude sessions work on this repo at once (game loop, graphics, out-of-g
 - The `main` checkout at `~/Coding/football-game` belongs to the loop session. Other work uses
   its own worktree (`~/Coding/football-game-<topic>`) on a branch, merges `origin/main` often,
   and lands on `main` only after `check.sh` passes.
-- Stage explicit paths. Uncommitted files from other sessions live in shared checkouts.
+- Shared checkouts hold other sessions' uncommitted files; per the Committing rule they ride along in your commit (list them in the message).
 - Never `git stash` / `stash pop` bare: the stash is shared across worktrees.
 - Claim backlog items in `FEATURES.md` / `docs/gaps/TODO.md` (`[~] owned by ...`) before starting.
 
 ### Definition of done
 `CHECK PASS`; acceptance criteria covered by tests; visual changes viewed via `shot.sh`;
-perf budgets green (ratcheted if you improved them); owning docs updated; committed with
-explicit paths; report ends with a `result:` line.
+perf budgets green (ratcheted if you improved them); owning docs updated; everything committed
+(Committing rule); report ends with a `result:` line.

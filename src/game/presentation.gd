@@ -7,6 +7,7 @@ extends Node3D
 const Mats := preload("res://src/game/art/materials.gd")
 const Stadium := preload("res://src/game/art/stadium.gd")
 const Overlay := preload("res://src/game/overlay.gd")
+const LosBarrier := preload("res://src/game/art/los_barrier.gd")
 const TRAIL_LEN := 22
 
 var main: Node3D
@@ -27,6 +28,7 @@ var excite := 0.0
 var shake := 0.0
 var spin := 0.0
 var _last_score := [0, 0]
+var barrier: LosBarrier
 
 func _ready() -> void:
 	main = get_parent()
@@ -64,6 +66,11 @@ func _ready() -> void:
 func rebuild(field_root: Node3D) -> void:
 	stadium = Stadium.build(field_root, main.field, main.TEAM_COLORS)
 	chains = _build_chains(field_root)
+	if barrier and is_instance_valid(barrier):
+		barrier.queue_free()
+	barrier = LosBarrier.new()
+	barrier.setup(main.field.width)
+	add_child(barrier)
 	_last_score = [0, 0]
 
 func _ground_quad(n: String, size: float, shader: String) -> MeshInstance3D:
@@ -272,6 +279,8 @@ func _process(delta: float) -> void:
 	_update_ball(delta, w)
 	_update_rings(w)
 	_update_chains()
+	if barrier:
+		barrier.update(w, delta, main.my_id)
 	excite = maxf(0.0, excite - delta * 0.18)
 	if stadium:
 		stadium.set_excitement(excite)
