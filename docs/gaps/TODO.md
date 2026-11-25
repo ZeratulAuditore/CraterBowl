@@ -16,7 +16,7 @@ The screenshots show the remaster's every-snap loop: **play-call screen → brea
 1. **B03 play-call huddle + C08 defensive calls/zones**, built together, so both sides call plays and see their own assignments.
 2. **B09 kickoffs + C02 punts/FGs**, which share the kick meter.
 3. **C01 run game.**
-4. **C04a–b clock**: running clock, timeouts, quarters.
+4. **C04a–c clock**: running clock, timeouts, quarters.
 5. **C31 nameplates + scorebug checklist** (handed to A26/A27).
 6. **C32 co-op vs bots.**
 
@@ -65,11 +65,19 @@ After that, follow the list order below. B01/B02 (line play, press) come after t
   - Under 1:00 in each half there is an automatic stoppage, and the clock stops after first downs.
   - Timeouts remaining are always visible on the scorebug (R-ss).
 
-### [ ] C04b Quarters, mercy rule and clock actions
-- **Why:** Gridiron had a mercy rule and configurable quarter length (O 1.0.3.18/20), and the remaster showed four short quarters (R-ss).
+### [~] C04b Four-quarter format and configurable periods (claimed: codex 2026-11-25)
+- **Why:** Gridiron supported configurable quarter lengths (O 1.0.3.18/20), and the remaster showed four short quarters (R-ss).
 - **Accept:**
+  - The host can select four quarters and their length in the lobby. The choice syncs to clients.
+  - Q1 and Q3 roll into the next quarter with possession, down, field position and timeouts intact.
+  - Halftime stays after Q2. The one-minute warning still occurs once per half, and the game can end after Q4.
+  - The scorebug shows the current quarter and its remaining time.
+
+### [ ] C04c Switching ends, mercy rule and clock actions
+- **Why:** Quarter transitions switch field ends. Gridiron also had a mercy rule (O 1.0.3.18/20).
+- **Accept:**
+  - Each team switches the goal it attacks every quarter. Preserve field position and on-field direction cues.
   - The host can enable a mercy rule that ends the match when a team leads by 28 or more.
-  - Add a quarters option with configurable quarter length in the lobby. Halftime stays after Q2, and teams switch direction each quarter.
   - Spike and kneel actions (stretch).
 
 ### [ ] C05 Competitive rules: eligibility, grounding, blocking zone, QB slowdown
