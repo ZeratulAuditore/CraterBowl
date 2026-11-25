@@ -149,6 +149,16 @@ func _setup() -> void:
 		[303, func():
 			menu.launch = launch
 			_btn(menu.content, "Snap / hike")
+			var mode: OptionButton = menu.content.find_child("DisplayMode", true, false)
+			check(mode.item_count == 3 and mode.get_item_text(mode.selected) == "Borderless fullscreen",
+				"three display modes with borderless fullscreen selected by default")
+			for i in [1, 2, 0]:
+				mode.select(i)
+				mode.item_selected.emit(i)
+				var saved = launch.SettingsStore.new()
+				saved.load_file(launch.settings_path)
+				check(saved.display_mode == ["borderless", "exclusive", "windowed"][i],
+					"display preference saved for " + mode.get_item_text(i))
 			var bind: Button = menu.content.find_child("Bind_snap", true, false)
 			bind.pressed.emit()
 			_key(KEY_K)],

@@ -23,6 +23,15 @@ func check(cond: bool, msg: String) -> void:
 	if not cond:
 		ok = false
 
+func _check_team_uniforms(context: String) -> void:
+	var team: int = main.world.get_athlete(main.my_id).team
+	check(main.views.all(func(view):
+		var opponent: bool = view.athlete.team != team
+		return (view.is_opponent == opponent and view._opponent_mesh.visible == opponent
+			and view.mesh_i.visible != opponent and view._open_helmet.visible != opponent
+			and view.anim.has_animation("u2/OverhandThrow"))
+	), "both uniforms share the live animation rig " + context)
+
 func _initialize() -> void:
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
@@ -30,7 +39,7 @@ func _initialize() -> void:
 	# scripted steps drive play changes; auto-advance checked at the end
 	steps = [
 		[2, func(): _connect_listeners(); _isolate_user_files()],  # world/series are (re)built in main._ready -> connect after
-		[5, func(): check(main.world.phase == main.World.Phase.PRESNAP, "starts presnap")],
+		[5, func(): check(main.world.phase == main.World.Phase.PRESNAP, "starts presnap"); _check_team_uniforms("opening lineup")],
 		[6, func(): check(main.world.snap(), "snap")],
 		[40, func(): check(main.world.ball.is_held_by(main.controlled_id), "QB has ball")],
 		[41, func(): main.aim_point = Vector2(40, 45); main._set_charging(true)],
@@ -72,7 +81,7 @@ func _initialize() -> void:
 		# A11: position change + team swap between plays, rejected while live
 		[3201, func(): before_id = main.my_id; check(main.do_action({"a": "cycle"}), "TAB position change"); check(main.my_id != before_id and main.controlled_id == main.my_id, "now controlling new position")],
 		[3202, func(): var t0: int = main.world.get_athlete(main.my_id).team; check(main.do_action({"a": "team"}), "team swap"); check(main.world.get_athlete(main.my_id).team == 1 - t0, "on the other team")],
-		[3203, func(): check(main.hud.text.find("[TAB pos") >= 0, "HUD shows position")],
+		[3203, func(): check(main.hud.text.find("[TAB pos") >= 0, "HUD shows position"); _check_team_uniforms("after a team swap")],
 		[3204, func(): main.world.snap()],
 		[3205, func(): check(not main.do_action({"a": "team"}), "no team swap during live play")],
 		# A12: play call -> route art -> receivers run it

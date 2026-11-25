@@ -63,7 +63,8 @@ func test_settings_roundtrip_and_validation() -> void:
 	var path := TMP + "_settings.cfg"
 	var s := Settings.new()
 	s.player_name = "Ace"
-	s.fullscreen = true
+	assert_eq(s.display_mode, "borderless", "fullscreen by default")
+	s.display_mode = "windowed"
 	s.render_scale = 0.75
 	s.max_fps = 144
 	s.master_volume = 0.3
@@ -73,10 +74,16 @@ func test_settings_roundtrip_and_validation() -> void:
 	assert_true(s.save(path), "saved")
 	var t := Settings.new()
 	t.load_file(path)
-	assert_eq([t.player_name, t.fullscreen, t.render_scale, t.max_fps, t.master_volume, t.matchmaker, t.upnp, t.bindings],
-		["Ace", true, 0.75, 144, 0.3, "mm.example.net:24600", false, {"snap": KEY_K}], "roundtrip")
+	assert_eq([t.player_name, t.display_mode, t.render_scale, t.max_fps, t.master_volume, t.matchmaker, t.upnp, t.bindings],
+		["Ace", "windowed", 0.75, 144, 0.3, "mm.example.net:24600", false, {"snap": KEY_K}], "roundtrip")
 	# corrupt values are clamped / defaulted
 	var cf := ConfigFile.new()
+	cf.set_value("video", "fullscreen", false)  # saved by older releases
+	cf.save(path)
+	var legacy := Settings.new()
+	legacy.load_file(path)
+	assert_eq(legacy.display_mode, "borderless", "legacy settings get the new default")
+	cf.set_value("video", "display_mode", "invalid")
 	cf.set_value("video", "render_scale", 9.0)
 	cf.set_value("video", "max_fps", 77)
 	cf.set_value("online", "matchmaker", "  ")
@@ -85,6 +92,7 @@ func test_settings_roundtrip_and_validation() -> void:
 	var u := Settings.new()
 	u.load_file(path)
 	assert_eq([u.render_scale, u.max_fps, u.matchmaker, u.bindings], [1.0, 0, Settings.DEFAULT_MM, {}], "sanitized")
+	assert_eq(u.display_mode, "borderless", "invalid display mode falls back")
 	DirAccess.remove_absolute(path)
 	assert_eq(Settings.clean_name("  Ben|ny  "), "Benny", "strips separator")
 	assert_eq(Settings.clean_name("x"), "", "too short")
