@@ -36,6 +36,8 @@ const CATCH_RADIUS := 1.2
 const CATCH_MIN_HEIGHT := 0.3
 const CATCH_MAX_HEIGHT := 2.6
 const CONTEST_MARGIN := 0.35
+const MIN_PASS_TRAVEL := 2.5      # ball must travel this far before it can be caught/deflected
+const INT_RADIUS := 0.6           # defender must be this close to the ball to intercept
 
 # Tackling
 const DIVE_SPEED := 11.0
@@ -67,3 +69,14 @@ const LOOSE_FRICTION := 6.0       # yd/s^2 rolling deceleration
 const LOOSE_BOUNCE := 0.35        # vertical restitution
 const RECOVER_RADIUS := 0.8
 const RECOVER_MAX_HEIGHT := 1.0
+
+# Bots
+const AI_SNAP_DELAY := 2.5         # AI-only offense snaps after this long presnap
+const AI_COVER_REACTION := 0.25   # defender reacts to where the receiver was
+const AI_COVER_TRAIL := 0.8       # yards behind along the receiver's path
+const AI_SPY_DEPTH := 6.0
+const AI_DEEP_ZONE := 14.0
+const AI_PROTECT_BALL_RANGE := 4.0 # don't sprint with a defender this close
+const AI_SPY_BLITZ_TIME := 3.5     # QB still holding it: the spy attacks
+const AI_QB_MIN_SEPARATION := 1.5
+const AI_QB_MAX_HOLD := 3.2

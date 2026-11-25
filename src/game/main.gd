@@ -389,6 +389,7 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 					net.set_assignment(pa[0], aid)
 			else:
 				Protocol.apply_action(series, pa[1], act)
+	ai.presnap_tick(world, humans, delta, series.downs.down, series.downs.distance())
 	var inputs := ai.think(world, humans)
 	inputs[controlled_id] = my_input
 	if is_server():

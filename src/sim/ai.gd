@@ -1,5 +1,5 @@
 extends RefCounted
-## Placeholder AI (foundation for A14 bots). Produces inputs for athletes not
+## Bots (A14): fill every athlete not controlled by a human. Produces inputs for athletes not
 ## controlled by humans and triggers defender dives. Deterministic.
 
 const T := preload("res://src/sim/tuning.gd")
@@ -9,15 +9,59 @@ const Passing := preload("res://src/sim/passing.gd")
 var defense_enabled := true
 var offense_enabled := true
 
-## Returns inputs for every athlete not in `human_ids`. May call world.tackle().
+var _presnap_t := 0.0
+var _presnap_called := false
+var _calls := 0           # plays called so far: deterministic variety
+var _man := {}            # defender id -> receiver id (set at snap)
+var _man_ref = null
+
+## Presnap bot behavior: an AI-run offense calls a situational play and snaps.
+## `down`/`distance` describe the situation (pass downs.down / downs.distance()).
+func presnap_tick(world, human_ids: Array, dt: float, down: int = 1, distance: float = 10.0) -> void:
+	if world.phase != world.Phase.PRESNAP:
+		_presnap_t = 0.0
+		_presnap_called = false
+		return
+	_presnap_t += dt
+	var humans_on_offense := false
+	for id in human_ids:
+		var h = world.get_athlete(id)
+		if h and h.team == world.offense_team:
+			humans_on_offense = true
+	var qb = world.find_role(world.offense_team, Athlete.Role.QB)
+	if not _presnap_called and qb and not human_ids.has(qb.id):
+		world.call_play(choose_play(down, distance, _calls))
+		_calls += 1
+		_presnap_called = true
+	if not humans_on_offense and _presnap_t >= T.AI_SNAP_DELAY:
+		world.snap()
+
+## Situational play choice: deterministic, rotating through fitting plays so
+## drives don't repeat (variant = plays called so far).
+static func choose_play(down: int, distance: float, variant: int = 0) -> String:
+	var options: Array
+	if distance >= 12.0:
+		options = ["Deep Shot", "Verticals", "Flood"]
+	elif distance <= 3.0:
+		options = ["Slants", "Curls", "Mesh"]
+	elif down >= 3:
+		options = ["Flood", "Mesh", "Slants", "Deep Shot"]
+	else:
+		options = ["Curls", "Mesh", "Slants", "Verticals", "Flood"]
+	return options[(variant + down) % options.size()]
+
+## Returns inputs for every athlete not in `human_ids`. May call world.tackle()/throw().
 func think(world, human_ids: Array) -> Dictionary:
 	var out := {}
 	if world.phase != world.Phase.LIVE:
 		return out
+	_refresh_man(world)
 	var c = world.carrier()
-	var caught: bool = c != null and c.role != Athlete.Role.QB
 	var loose: bool = world.ball.state == world.ball.State.LOOSE
-	var returning: bool = c != null and c.team != world.offense_team
+	var in_air: bool = c == null and world.ball.state == world.ball.State.IN_FLIGHT and world.forward_pass_thrown
+	var pass_phase: bool = c != null and c.team == world.offense_team and c.role == Athlete.Role.QB and c.position.y <= world.los_y and not world.forward_pass_thrown
+	var landing := _landing_point(world) if in_air else Vector2.INF
+	var ball_chasers := _nearest_to(world, landing, 2) if in_air else []
 	for a in world.athletes:
 		if human_ids.has(a.id):
 			continue
@@ -26,26 +70,169 @@ func think(world, human_ids: Array) -> Dictionary:
 				var bp := Vector2(world.ball.position.x, world.ball.position.y)
 				out[a.id] = {"dir": (bp - a.position).normalized(), "sprint": true}
 			continue
-		if returning:
-			if a.team == c.team:
-				out[a.id] = _escort(world, a, c)
+		if c != null and a.id == c.id:
+			if pass_phase:
+				_qb_decide(world, a)
+				out[a.id] = _qb_pocket(world, a)
+			else:
+				out[a.id] = _run_ball(world, a)
+			continue
+		if c != null and a.team != c.team:
+			if not defense_enabled:
+				continue
+			if pass_phase and a.role != Athlete.Role.DL:
+				out[a.id] = _cover(world, a, c)
 			else:
 				out[a.id] = _pursue(world, a, c)
 			continue
+		if c != null and a.team == c.team and not pass_phase:
+			out[a.id] = _escort(world, a, c)
+			continue
+		# Pass phase (offense) or ball in the air.
+		if in_air and a.team != world.offense_team and _man.has(a.id):
+			if not defense_enabled:
+				continue
+			# Play the receiver's hands, not the ball's landing spot.
+			var r = world.get_athlete(_man[a.id])
+			var to_r: Vector2 = r.position + r.velocity * 0.15 - a.position
+			# Receiver knows where the ball is going; defender reacts (no sprint burst).
+			out[a.id] = {"dir": to_r.normalized() if to_r.length() > 0.3 else Vector2.ZERO, "sprint": false}
+			continue
+		if in_air and ball_chasers.has(a.id) and (a.team != world.offense_team or world.is_eligible_receiver(a)):
+			if a.team != world.offense_team and not defense_enabled:
+				continue
+			out[a.id] = _arrive(a, landing)
+			continue
 		if a.team == world.offense_team:
 			if not offense_enabled:
-				continue
-			if world.ball.is_held_by(a.id):
-				if a.role == Athlete.Role.QB and not world.forward_pass_thrown:
-					_qb_decide(world, a)
 				continue
 			if a.role == Athlete.Role.WR or a.role == Athlete.Role.RB:
 				out[a.id] = {"dir": _avoid(world, a, _route_dir(world, a)), "sprint": false}
 			elif (a.role == Athlete.Role.OL or a.role == Athlete.Role.C) and c != null:
 				out[a.id] = _protect(world, a, c)
-		elif defense_enabled and c != null and (caught or a.role == Athlete.Role.DL or world.play_time >= T.AI_RUSH_DELAY):
-			out[a.id] = _pursue(world, a, c)
+		elif defense_enabled and in_air:
+			out[a.id] = _cover(world, a, null)
 	return out
+
+## Steering that arrives at p without overshooting (sprinting overshoots ~2 yd).
+func _arrive(a, p: Vector2) -> Dictionary:
+	var to: Vector2 = p - a.position
+	var d := to.length()
+	if d < 0.25:
+		return {"dir": Vector2.ZERO, "sprint": false}
+	var stop_d: float = a.velocity.length_squared() / (2.0 * T.DECEL)
+	var throttle := clampf(d / maxf(stop_d + 0.5, 1.0), 0.15, 1.0)
+	return {"dir": to.normalized() * throttle, "sprint": d > 4.0}
+
+## Man assignments at the snap: each eligible receiver gets the nearest free CB/S/LB.
+func _refresh_man(world) -> void:
+	if _man_ref == world.route_paths:
+		return
+	_man_ref = world.route_paths
+	_man = {}
+	var taken := {}
+	for r in world.receivers_in_order():
+		var best = null
+		var best_d := INF
+		for d in world.athletes:
+			if d.team == world.offense_team or taken.has(d.id):
+				continue
+			if not (d.role == Athlete.Role.CB or d.role == Athlete.Role.S or d.role == Athlete.Role.LB):
+				continue
+			if d.role == Athlete.Role.LB and r.role != Athlete.Role.RB:
+				continue   # LBs only take backs; they spy the QB otherwise
+			var dist: float = d.position.distance_to(r.position)
+			if dist < best_d:
+				best_d = dist
+				best = d
+		if best:
+			_man[best.id] = r.id
+			taken[best.id] = true
+
+func man_of(defender_id: int) -> int:
+	return _man.get(defender_id, -1)
+
+## Coverage: trail the assigned receiver with a cushion; unassigned = deep zone / QB spy.
+func _cover(world, a, qb) -> Dictionary:
+	var rid: int = _man.get(a.id, -1)
+	if rid >= 0:
+		var r = world.get_athlete(rid)
+		# Trail technique with a reaction lag: chase where the receiver was ~0.25 s ago,
+		# a step behind along his path. Route breaks create separation; the defender
+		# stays out of the QB's throwing lane.
+		var heading: Vector2 = r.velocity.normalized() if r.velocity.length() > 0.5 else Vector2(0, 1)
+		var spot: Vector2 = r.position - r.velocity * T.AI_COVER_REACTION - heading * T.AI_COVER_TRAIL
+		var to: Vector2 = spot - a.position
+		return {"dir": to.normalized() if to.length() > 0.3 else Vector2.ZERO, "sprint": to.length() > 2.0}
+	if a.role == Athlete.Role.LB and qb != null:
+		var spy: Vector2 = qb.position + Vector2(0, T.AI_SPY_DEPTH)
+		if qb.position.y > world.los_y or world.play_time >= T.AI_SPY_BLITZ_TIME:
+			return _pursue(world, a, qb)
+		var tl: Vector2 = spy - a.position
+		return {"dir": tl.normalized() if tl.length() > 0.5 else Vector2.ZERO, "sprint": false}
+	var deep := Vector2(world.field.width / 2.0 + (a.home_x - world.field.width / 2.0) * 0.5, world.los_y + T.AI_DEEP_ZONE)
+	var tz: Vector2 = deep - a.position
+	return {"dir": tz.normalized() if tz.length() > 0.5 else Vector2.ZERO, "sprint": false}
+
+## Where a thrown ball will descend through catch height.
+func _landing_point(world) -> Vector2:
+	var b = world.ball
+	var t: float = Passing.time_to_height(b.velocity, b.position.z, T.CATCH_HEIGHT)
+	return Vector2(b.position.x + b.velocity.x * t, b.position.y + b.velocity.y * t)
+
+## Ids of the `per_side` athletes per team nearest to p (standing only).
+func _nearest_to(world, p: Vector2, per_side: int) -> Array:
+	var out := []
+	for team in 2:
+		var cands := []
+		for a in world.athletes:
+			if a.team == team and a.can_act() and (a.team != world.offense_team or world.is_eligible_receiver(a)) and a.id != world.last_thrower_id:
+				cands.append(a)
+		cands.sort_custom(func(x, y): return x.position.distance_to(p) < y.position.distance_to(p))
+		for i in mini(per_side, cands.size()):
+			out.append(cands[i].id)
+	return out
+
+## QB holding the ball: drift away from the nearest rusher inside the pocket.
+func _qb_pocket(world, qb) -> Dictionary:
+	var near = null
+	var nd := INF
+	for d in world.athletes:
+		if d.team != qb.team and not d.is_grounded():
+			var dist: float = d.position.distance_to(qb.position)
+			if dist < nd:
+				nd = dist
+				near = d
+	if near == null or nd > 4.0:
+		return {"dir": Vector2.ZERO, "sprint": false}
+	var away: Vector2 = (qb.position - near.position).normalized()
+	away.y = minf(away.y, 0.0)   # never drift past the LOS while looking to throw
+	return {"dir": away.normalized() if away.length() > 0.01 else Vector2(1, 0), "sprint": false}
+
+## Ball carrier: head for the scoring end zone, juke defenders in the lane, and
+## protect the ball (no sprint) when someone is closing from behind.
+func _run_ball(world, c) -> Dictionary:
+	var goal := Vector2(0, 1) if c.team == world.offense_team else Vector2(0, -1)
+	var dir := goal
+	var threat_behind := false
+	for o in world.athletes:
+		if o.team == c.team or o.is_grounded():
+			continue
+		var rel: Vector2 = o.position - c.position
+		var ahead := rel.dot(goal)
+		var side := rel.dot(Vector2(goal.y, -goal.x))
+		if ahead > -0.5 and ahead < 5.0 and absf(side) < 2.5:
+			var away := -signf(side) if absf(side) > 0.05 else (1.0 if c.position.x < world.field.width / 2.0 else -1.0)
+			dir = (goal + Vector2(goal.y, -goal.x) * away * 1.3).normalized()
+		# Ball security matches the strip rule (any pursuer closing in): don't sprint near defenders.
+		if rel.length() < T.AI_PROTECT_BALL_RANGE:
+			threat_behind = true
+	# stay in bounds
+	if c.position.x < 2.0:
+		dir.x = maxf(dir.x, 0.3)
+	elif c.position.x > world.field.width - 2.0:
+		dir.x = minf(dir.x, -0.3)
+	return {"dir": dir.normalized(), "sprint": not threat_behind}
 
 func _pursue(world, a, c) -> Dictionary:
 	var to: Vector2 = c.position - a.position
@@ -55,10 +242,10 @@ func _pursue(world, a, c) -> Dictionary:
 		world.tackle(a.id)
 	return {"dir": to.normalized(), "sprint": true}
 
-## Returner's teammates: get in front of the nearest pursuer.
+## Carrier's teammates: get in front of the nearest pursuer.
 func _escort(world, a, c) -> Dictionary:
 	if a.id == c.id:
-		return {}
+		return _run_ball(world, c)
 	var best = null
 	var best_d := INF
 	for o in world.athletes:
@@ -69,7 +256,7 @@ func _escort(world, a, c) -> Dictionary:
 			best_d = d
 			best = o
 	if best == null:
-		return {"dir": Vector2(0, -1), "sprint": true}
+		return {"dir": Vector2(0, 1) if a.team == world.offense_team else Vector2(0, -1), "sprint": true}
 	var spot: Vector2 = best.position + (c.position - best.position).normalized() * 0.9
 	return {"dir": (spot - a.position).normalized(), "sprint": true}
 
@@ -79,7 +266,9 @@ func _qb_decide(world, qb) -> void:
 	for d in world.athletes:
 		if d.team != world.offense_team:
 			pressure = minf(pressure, d.position.distance_to(qb.position))
-	if world.play_time < T.AI_QB_THROW_TIME and pressure > T.AI_QB_PRESSURE:
+	# Vary the read slightly per play (deterministic) so drives aren't carbon copies.
+	var read_time: float = T.AI_QB_THROW_TIME + fmod(world.los_y * 0.37 + world.athletes.size(), 1.0) - 0.4
+	if world.play_time < read_time and pressure > T.AI_QB_PRESSURE:
 		return
 	var best = null
 	var best_sep := -INF
@@ -97,8 +286,43 @@ func _qb_decide(world, qb) -> void:
 			best = r
 	if best == null:
 		return
+	# Wait for real separation unless pressured or out of time.
+	if best_sep < T.AI_QB_MIN_SEPARATION and pressure > T.AI_QB_PRESSURE and world.play_time < T.AI_QB_MAX_HOLD:
+		return
 	var from := Vector3(qb.position.x, qb.position.y, T.RELEASE_HEIGHT)
-	world.throw(qb.id, Passing.lead_target(from, best.position, best.velocity, 0.85), 0.85)
+	var tgt := _route_lead(world, from, best, 0.85)
+	tgt.x = clampf(tgt.x, 1.5, world.field.width - 1.5)   # never lead a receiver out of bounds
+	world.throw(qb.id, tgt, 0.85)
+
+## Where receiver r will be after t seconds if he keeps running his route at run speed.
+func predict_on_route(world, r, t: float) -> Vector2:
+	var path: Array = world.route_paths.get(r.id, [])
+	if path.is_empty():
+		return r.position + r.velocity * t
+	var pos: Vector2 = r.position
+	var dist := T.RUN_SPEED * t
+	var i: int = _route_progress.get(r.id, 0)
+	while i < path.size() and dist > 0.0:
+		var seg: Vector2 = path[i] - pos
+		if seg.length() >= dist:
+			return pos + seg.normalized() * dist
+		dist -= seg.length()
+		pos = path[i]
+		i += 1
+	var prev: Vector2 = path[-2] if path.size() > 1 else pos - Vector2(0, 1)
+	var d: Vector2 = (path[-1] - prev).normalized()
+	if d.y < 0.0:
+		return pos   # settles at the end of a comeback route
+	return pos + d * dist
+
+## Lead a receiver along his route (iterate flight time <-> predicted spot).
+func _route_lead(world, from: Vector3, r, power: float) -> Vector2:
+	var target: Vector2 = r.position
+	for i in 6:
+		var v := Passing.solve_velocity(from, target, power)
+		var t := Passing.time_to_height(v, from.z, T.CATCH_HEIGHT)
+		target = predict_on_route(world, r, t)
+	return target
 
 ## Follow the assigned route path; after the last waypoint keep the final direction.
 var _route_progress := {}   # athlete_id -> waypoint index (reset when paths change)
@@ -120,6 +344,8 @@ func _route_dir(world, a) -> Vector2:
 	var last: Vector2 = path[-1]
 	var prev: Vector2 = path[-2] if path.size() > 1 else last - Vector2(0, 1)
 	var d := (last - prev).normalized()
+	if d.y < 0.0:
+		return Vector2.ZERO   # comeback route (curl): settle in the window, don't backpedal
 	return d if d.length_squared() > 0.0 else Vector2(0, 1)
 
 ## Steer around an opponent standing directly in the running lane.

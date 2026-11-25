@@ -210,3 +210,27 @@ func test_ai_chases_loose_ball() -> void:
 		if events.has("recovery"):
 			break
 	assert_true(events.has("recovery"), "AI recovered loose ball")
+
+func test_deflection_at_reach_not_interception() -> void:
+	var m := _match()
+	var w := m.world
+	_snap(w)
+	var qb := w.find_role(0, R.QB)
+	var cb := w.find_role(1, R.CB)
+	_clear_field(w, [qb.id, cb.id])
+	cb.position = Vector2(31.0, 40)   # ~1 yd off the ball's line: in reach, outside INT radius
+	w.throw(qb.id, Vector2(30, 40), 0.8)
+	_run(w, 3.0)
+	assert_true(events.has("breakup") and not events.has("interception"), "deflected: %s" % str(events))
+
+func test_no_bat_at_release() -> void:
+	var m := _match()
+	var w := m.world
+	_snap(w)
+	var qb := w.find_role(0, R.QB)
+	var dl := w.find_role(1, R.DL)
+	_clear_field(w, [qb.id, dl.id])
+	dl.position = qb.position + Vector2(0, 1.0)   # rusher in the QB's face
+	w.throw(qb.id, qb.position + Vector2(0, 25), 0.9)
+	for i in 6: w.step({}, DT)
+	assert_true(not events.has("breakup") and not events.has("interception"), "not batted at release: %s" % str(events))

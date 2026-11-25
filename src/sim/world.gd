@@ -25,6 +25,7 @@ var _snap_from := Vector3.ZERO
 var _snap_to_id := -1
 var forward_pass_thrown := false
 var last_thrower_id := -1
+var throw_origin := Vector2.ZERO
 var dead_ball_spot := Vector2.ZERO
 var last_possession := 0
 var dead_ball_team := 0
@@ -170,6 +171,7 @@ func throw(id: int, target: Vector2, power: float) -> bool:
 	ball.velocity = v
 	forward_pass_thrown = true
 	last_thrower_id = id
+	throw_origin = Vector2(from.x, from.y)
 	event.emit("throw", {"by": id, "target": target, "power": power})
 	return true
 
@@ -399,6 +401,9 @@ func _try_catch() -> bool:
 	var z := ball.position.z
 	if z < T.CATCH_MIN_HEIGHT or z > T.CATCH_MAX_HEIGHT:
 		return false
+	# Not catchable/deflectable until it has left the thrower's immediate area.
+	if Vector2(ball.position.x - throw_origin.x, ball.position.y - throw_origin.y).length() < T.MIN_PASS_TRAVEL:
+		return false
 	var bp := Vector2(ball.position.x, ball.position.y)
 	var best := [null, null]   # per side: [offense, defense]
 	var best_d := [INF, INF]
@@ -426,6 +431,15 @@ func _try_catch() -> bool:
 		return true
 	if defender_reaches and best[0] == null:
 		var dfn: Athlete = best[1]
+		# Only a defender squarely at the ball intercepts; within normal reach he deflects it.
+		# Decide at the ball's closest approach: keep flying while it's still getting closer.
+		if best_d[1] > T.INT_RADIUS:
+			var next := bp + Vector2(ball.velocity.x, ball.velocity.y) / 60.0
+			var next_z := ball.position.z + ball.velocity.z / 60.0
+			if next.distance_to(dfn.position) < best_d[1] and next_z >= T.CATCH_MIN_HEIGHT:
+				return false
+			_end_incomplete("breakup", {"by": dfn.id, "at": at})
+			return true
 		if field.zone_of(dfn.position) == Field.Zone.OUT_OF_BOUNDS:
 			_end_incomplete("breakup", {"by": dfn.id, "at": at})
 			return true
@@ -435,7 +449,7 @@ func _try_catch() -> bool:
 		return true
 	var rx: Athlete = best[0]
 	if field.zone_of(rx.position) == Field.Zone.OUT_OF_BOUNDS:
-		_end_incomplete("out_of_bounds", {"by": rx.id, "at": at})
+		_end_incomplete("caught_out_of_bounds", {"by": rx.id, "at": at})
 		return true
 	ball.hold(rx.id)
 	event.emit("catch", {"by": rx.id, "at": at})

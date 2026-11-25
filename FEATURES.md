@@ -21,7 +21,7 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [x] A11 Teams + positions: 7v7 rosters, position select (QB, C, WR, RB, LB, CB, S), team swap
 - [x] A12 Routes + play calling: pre-snap route selection, real-time route coordination for receivers
 - [x] A13 Interceptions + fumbles: turnovers during live play
-- [ ] A14 Bots: AI fills empty slots for offense and defense
+- [x] A14 Bots: AI fills empty slots for offense and defense
 - [ ] A15 Match sizes: custom matches 3v3, 5v5 and 7v7 (field scaling + roster rules)
 - [ ] A16 Private matches: lobby with host settings, invite code, ready-up
 - [ ] A17 Offline practice mode: solo vs bots, drills

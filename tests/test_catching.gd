@@ -84,7 +84,7 @@ func test_out_of_bounds_catch_incomplete() -> void:
 	var w := _setup([[0, Athlete.Role.WR, Vector2(-1.0, 40)]])
 	w.throw(_qb(w).id, Vector2(-1.0, 40), 0.9)
 	_run(w, {}, 4.0)
-	assert_true(events.has("out_of_bounds"), "oob: %s" % str(events))
+	assert_true(events.has("caught_out_of_bounds"), "oob: %s" % str(events))
 	assert_true(not events.has("catch"), "no catch")
 
 func test_center_is_ineligible() -> void:
@@ -94,3 +94,23 @@ func test_center_is_ineligible() -> void:
 	w.throw(_qb(w).id, c.position, 0.8)
 	_run(w, {}, 4.0)
 	assert_true(not catches.has(c.id), "C never catches")
+
+
+func test_oob_catch_in_match_is_plain_incomplete() -> void:
+	# Regression: the catch-OOB event used to share the runner-OOB name and crashed Match (no spot).
+	var w := World.new()
+	var m := preload("res://src/sim/match.gd").new(w)
+	w.add_athlete(0, Athlete.Role.C, Vector2(26, 20))
+	w.add_athlete(0, Athlete.Role.QB, Vector2(26, 15))
+	var wr := w.add_athlete(0, Athlete.Role.WR, Vector2(-1.0, 40))
+	m.start(0, 25.0)
+	wr.position = Vector2(-1.0, 40)
+	w.snap()
+	for i in 30: w.step({}, DT)
+	w.throw(w.find_role(0, Athlete.Role.QB).id, Vector2(-1.0, 40), 0.9)
+	for i in 240:
+		w.step({}, DT)
+		if w.phase == World.Phase.DEAD: break
+	var out = m.next_play()
+	assert_eq(out["outcome"], "next_down", "incomplete -> next down")
+	assert_eq(m.downs.down, 2)
