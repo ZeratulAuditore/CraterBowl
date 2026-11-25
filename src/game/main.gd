@@ -931,9 +931,9 @@ func _route_ribbon(pts: Array, c: Color, wdt: float) -> void:
 		if is_last:   # leave room for the arrowhead
 			p1 = p1 - dir * minf(1.1, seg.length() * 0.6)
 		var n := Vector2(-dir.y, dir.x) * wdt * 0.5
-		var a0 := c * Color(1, 1, 1, lerpf(0.45, 0.95, run / maxf(total, 0.01)))
+		var a0 := c * Color(1, 1, 1, lerpf(0.75, 1.0, run / maxf(total, 0.01)))
 		run += seg.length()
-		var a1 := c * Color(1, 1, 1, lerpf(0.45, 0.95, run / maxf(total, 0.01)))
+		var a1 := c * Color(1, 1, 1, lerpf(0.75, 1.0, run / maxf(total, 0.01)))
 		_tri(p0 + n, p0 - n, p1 + n, a0, a0, a1, h)
 		_tri(p1 + n, p0 - n, p1 - n, a1, a0, a1, h)
 		if i > 0:   # round the joint

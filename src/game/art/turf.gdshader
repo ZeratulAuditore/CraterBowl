@@ -7,6 +7,8 @@ uniform float ez = 10.0;
 uniform float hash_inset = 23.36;   // distance of the inbound hashes from each sideline
 uniform vec3 home_color : source_color = vec3(0.95, 0.75, 0.15);
 uniform vec3 away_color : source_color = vec3(0.3, 0.8, 0.95);
+uniform sampler2D grass_tex : source_color, filter_linear_mipmap, repeat_enable, hint_default_white;
+uniform sampler2D grass_nrm : hint_normal, filter_linear_mipmap, repeat_enable;
 
 varying vec3 wpos;
 
@@ -34,7 +36,9 @@ void fragment() {
 	float n = noise(p * 0.35) * 0.6 + noise(p * 2.7) * 0.3 + hash(floor(p * 18.0)) * 0.1;
 	vec3 grass_a = vec3(0.085, 0.22, 0.11);
 	vec3 grass_b = vec3(0.11, 0.27, 0.135);
-	vec3 col = mix(grass_a, grass_b, stripe) * (0.86 + n * 0.28);
+	vec3 gt = texture(grass_tex, p / 3.0).rgb;
+	float gl = dot(gt, vec3(0.333));
+	vec3 col = mix(grass_a, grass_b, stripe) * (0.8 + n * 0.2) * (0.55 + gl * 1.1);
 	// End zones: team-tinted turf with diagonal stripes.
 	if (inside && (p.y < 0.0 || p.y > field_len)) {
 		vec3 tc = p.y < 0.0 ? home_color : away_color;
@@ -75,6 +79,7 @@ void fragment() {
 	}
 	col = mix(col, vec3(0.8, 0.81, 0.8), lines * 0.94);
 	ALBEDO = col;
+	NORMAL_MAP = mix(texture(grass_nrm, p / 3.0).rgb, vec3(0.5, 0.5, 1.0), 0.5 + lines * 0.5);
 	ROUGHNESS = 0.92 - lines * 0.2;
 	SPECULAR = 0.25;
 }

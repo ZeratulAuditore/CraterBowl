@@ -183,6 +183,10 @@ func on_event(n: String, d: Dictionary) -> void:
 			shake = maxf(shake, 0.2)
 		"catch":
 			excite = maxf(excite, 0.35)
+		"throw":
+			var by := int(d.get("by", -1))
+			if by >= 0 and by < main.views.size():
+				main.views[by].throw_release()
 		"breakup":
 			_dust(_athlete_pos(int(d.get("by", -1))), 8)
 	overlay.on_event(n, d)

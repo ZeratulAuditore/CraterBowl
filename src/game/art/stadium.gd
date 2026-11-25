@@ -145,6 +145,11 @@ static func _quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector
 static func _vertex_color_mat() -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.vertex_color_use_as_albedo = true
+	m.albedo_texture = load("res://assets/textures/concrete/Concrete034_1K-JPG_Color.jpg")
+	m.normal_enabled = true
+	m.normal_texture = load("res://assets/textures/concrete/Concrete034_1K-JPG_NormalGL.jpg")
+	m.uv1_triplanar = true
+	m.uv1_scale = Vector3(0.25, 0.25, 0.25)
 	m.roughness = 0.85
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return m
@@ -190,7 +195,7 @@ func _ribbon(hx: float, hz: float, base_h: float, height: float, tag: String) ->
 	_mesh_node("Ribbon" + tag, st.commit(), m).position = center
 
 func _towers(ox: float, oz: float) -> void:
-	var col_mat := Mats.metal(Color(0.42, 0.45, 0.52))
+	var col_mat := Mats.brushed(Color(0.75, 0.78, 0.85))
 	var lamp := Mats.shader("res://src/game/art/lamp.gdshader")
 	for sx in [-1.0, 1.0]:
 		for sz in [-1.0, 0.0, 1.0]:
@@ -232,7 +237,7 @@ func _towers(ox: float, oz: float) -> void:
 ## Dome trusses: half-buried tori read as arches over the bowl.
 func _arches(ox: float, oz: float, Lt: float) -> void:
 	var rim := Mats.emissive(Color(0.36, 0.88, 1.0), 2.4)
-	var steel := Mats.metal(Color(0.3, 0.33, 0.4))
+	var steel := Mats.brushed(Color(0.55, 0.58, 0.66))
 	var R := ox + 6.0
 	for k in 5:
 		var z := lerpf(-oz * 0.75, oz * 0.75, float(k) / 4.0)
@@ -304,7 +309,10 @@ func _ground() -> void:
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(1400, 1400)
 	pm.subdivide_width = 0
-	var mi := _mesh_node("Regolith", pm, Mats.shader("res://src/game/art/regolith.gdshader"))
+	var rm := Mats.shader("res://src/game/art/regolith.gdshader")
+	rm.set_shader_parameter("diff", load("res://assets/textures/regolith/moon_01_diff_1k.jpg"))
+	rm.set_shader_parameter("nrm", load("res://assets/textures/regolith/moon_01_nor_gl_1k.jpg"))
+	var mi := _mesh_node("Regolith", pm, rm)
 	mi.position = center + Vector3(0, -0.06, 0)
 
 ## Jagged crater rim on the horizon.
@@ -336,7 +344,10 @@ func _crater_rim() -> void:
 				st.set_normal(nrm)
 				st.add_vertex(v)
 	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.42, 0.42, 0.45)
+	m.albedo_color = Color(0.62, 0.62, 0.66)
+	m.albedo_texture = load("res://assets/textures/regolith/moon_01_diff_1k.jpg")
+	m.uv1_triplanar = true
+	m.uv1_scale = Vector3(0.02, 0.02, 0.02)
 	m.roughness = 1.0
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_mesh_node("CraterRim", st.commit(), m).position = center
@@ -375,7 +386,9 @@ static func build_environment(parent: Node3D) -> void:
 	env.name = "WorldEnvironment"
 	var e := Environment.new()
 	var sky := Sky.new()
-	sky.sky_material = Mats.shader("res://src/game/art/sky.gdshader")
+	var skym := Mats.shader("res://src/game/art/sky.gdshader")
+	skym.set_shader_parameter("panorama", load("res://assets/sky/skybox-space-galaxy.png"))
+	sky.sky_material = skym
 	sky.radiance_size = Sky.RADIANCE_SIZE_32
 	sky.process_mode = Sky.PROCESS_MODE_INCREMENTAL
 	e.background_mode = Environment.BG_SKY

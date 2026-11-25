@@ -28,6 +28,19 @@ static func glossy(c: Color) -> StandardMaterial3D:
 	m.rim = 0.35
 	return m
 
+## Brushed metal with the CC0 ambientCG Metal009 maps, tinted.
+static func brushed(c: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = c
+	m.albedo_texture = load("res://assets/textures/metal/Metal009_1K-JPG_Color.jpg")
+	m.normal_enabled = true
+	m.normal_texture = load("res://assets/textures/metal/Metal009_1K-JPG_NormalGL.jpg")
+	m.roughness_texture = load("res://assets/textures/metal/Metal009_1K-JPG_Roughness.jpg")
+	m.metallic = 0.85
+	m.uv1_triplanar = true
+	m.uv1_scale = Vector3(0.5, 0.5, 0.5)
+	return m
+
 static func metal(c: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = c
@@ -74,17 +87,20 @@ static func blob_shadow() -> ShaderMaterial:
 
 static func number_font() -> Font:
 	if not _cache.has("num"):
-		var f := SystemFont.new()
-		f.font_names = PackedStringArray(["Oswald", "Impact", "Bebas Neue", "Arial Black", "Ubuntu Sans", "Ubuntu", "Liberation Sans", "DejaVu Sans"])
-		f.font_weight = 800
-		_cache["num"] = f
+		var fv := FontVariation.new()
+		fv.base_font = load("res://assets/fonts/Oswald-Variable.ttf")
+		fv.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 700}
+		_cache["num"] = fv
 	return _cache["num"]
 
 static func ui_font(weight: int = 700) -> Font:
 	var key := "ui%d" % weight
 	if not _cache.has(key):
-		var f := SystemFont.new()
-		f.font_names = PackedStringArray(["Rajdhani", "Oswald", "Barlow Condensed", "Arial Narrow", "Ubuntu Sans", "Ubuntu", "Liberation Sans Narrow", "DejaVu Sans Condensed", "DejaVu Sans"])
-		f.font_weight = weight
-		_cache[key] = f
+		if weight >= 700:
+			_cache[key] = load("res://assets/fonts/Rajdhani-Bold.ttf")
+		else:
+			var fv := FontVariation.new()
+			fv.base_font = load("res://assets/fonts/Oswald-Variable.ttf")
+			fv.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 500}
+			_cache[key] = fv
 	return _cache[key]

@@ -23,6 +23,8 @@ static func build(root: Node3D, field, team_colors: Array) -> void:
 	tm.set_shader_parameter("hash_inset", w * 0.438)
 	tm.set_shader_parameter("home_color", team_colors[0])
 	tm.set_shader_parameter("away_color", team_colors[1])
+	tm.set_shader_parameter("grass_tex", load("res://assets/textures/grass/Grass004_1K-JPG_Color.jpg"))
+	tm.set_shader_parameter("grass_nrm", load("res://assets/textures/grass/Grass004_1K-JPG_NormalGL.jpg"))
 	turf.material_override = tm
 	root.add_child(turf)
 	_yard_numbers(root, w, L)

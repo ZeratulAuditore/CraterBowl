@@ -50,11 +50,8 @@ func _ready() -> void:
 	_build_me()
 	_build_throw()
 	_build_banner()
-	hints = _label(15, Color(0.85, 0.9, 1.0, 0.75), 600)
-	hints.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	hints.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	hints.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hints.position.y = 14
+	hints = _label(13, Color(0.85, 0.9, 1.0, 0.7), 600)
+	hints.position = Vector2(18, 36)
 	root.add_child(hints)
 	mode_l = _label(15, Color(0.85, 0.9, 1.0, 0.85), 700)
 	mode_l.position = Vector2(18, 14)
@@ -394,7 +391,7 @@ func _hints(main) -> String:
 	var me = w.get_athlete(main.my_id)
 	var offense: bool = me != null and w.offense_team == me.team
 	if int(w.phase) == 0:
-		return "WASD MOVE   SHIFT SPRINT   TAB POSITION   T TEAM" + ("   Q PLAY   F ROUTE" if offense else "")
+		return "WASD MOVE · SHIFT SPRINT · TAB POSITION · T TEAM" + (" · Q PLAY · F ROUTE" if offense else "")
 	if int(w.phase) == 1 and main.world.ball.is_held_by(main.controlled_id):
-		return "HOLD J / LMB  AIM + CHARGE   RELEASE TO THROW   SHIFT SPRINT"
-	return "WASD MOVE   SHIFT SPRINT   E / RMB TACKLE"
+		return "HOLD J / LMB AIM + CHARGE · RELEASE TO THROW · CTRL LOB"
+	return "WASD MOVE · SHIFT SPRINT · E / RMB TACKLE"

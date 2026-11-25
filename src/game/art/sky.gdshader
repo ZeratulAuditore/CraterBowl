@@ -2,6 +2,7 @@ shader_type sky;
 // Lunar night sky: dense starfield, faint galactic band, and Earth hanging low.
 uniform vec3 earth_dir = vec3(0.55, 0.32, -0.77);
 uniform float earth_size = 0.075;
+uniform sampler2D panorama : source_color, filter_linear, hint_default_black;
 
 float hash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
 float stars(vec3 d, float scale, float thresh) {
@@ -18,13 +19,10 @@ float n3(vec3 p) {
 }
 void sky() {
 	vec3 d = normalize(EYEDIR);
-	vec3 col = vec3(0.006, 0.008, 0.018);
-	// Galactic band.
-	float band = exp(-pow(dot(d, normalize(vec3(0.3, 0.6, 0.74))) * 3.2, 2.0));
-	float cloud = 0.6 + 0.4 * sin(d.x * 17.0 + sin(d.y * 23.0) * 2.0) * sin(d.z * 13.0);
-	col += vec3(0.07, 0.06, 0.1) * band * cloud;
-	col += vec3(1.0) * stars(d, 220.0, 0.985) * 1.6;
-	col += vec3(0.8, 0.88, 1.0) * stars(d, 90.0, 0.992) * 3.0;
+	// CC0 Kenney space panorama (equirectangular) + a few hot stars for bloom.
+	vec2 uv = vec2(atan(d.x, -d.z) / 6.2831853 + 0.5, acos(clamp(d.y, -1.0, 1.0)) / 3.14159265);
+	vec3 col = texture(panorama, uv).rgb * 0.9;
+	col += vec3(0.8, 0.88, 1.0) * stars(d, 90.0, 0.994) * 2.5;
 	// Earth: day side lit from the "sun", blue oceans, cloud swirls, atmosphere rim.
 	vec3 e = normalize(earth_dir);
 	float ang = acos(clamp(dot(d, e), -1.0, 1.0));
