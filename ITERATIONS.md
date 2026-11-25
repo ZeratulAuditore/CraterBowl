@@ -174,3 +174,9 @@
 - Sync: client sends its look after assignment; host sanitizes, stores per peer, broadcasts `looks` (on join, swaps, changes); client shows its look only via the host echo. At FINAL host broadcasts `awards`; each machine credits only its own profile ("XP +182 (Level 1)"); ranked season rewards become badges. CLI `--equip=slot:id,...`, `--profile-file`.
 - **Data-safety fix:** the first smoke run wrote a test XP profile into the real user-data folder (created by this session; deleted). All tests now use temp profile/leaderboard/ranked files and smoke.sh fails if real user data files change.
 - Tests: 182 unit (+6); flow 87 checks (+7); net 12 checks (+1: #88 round-trips via host).
+
+## 026: A25 Replays (2026-11-25)
+- `src/sim/replay.gd`: 30 Hz compact frames (phase, ball xyz, per-athlete x/y/flags), plays bracketed snap → play-end events, player (fractional time, speed, interpolation, seek by play, clip ranges), zstd-compressed save/load (no object decoding). 2-min bot match: 3600 frames, 20 plays, ~170 KB.
+- Main: every match records; **V** at a dead ball = instant replay of the last play at 0.5× (offline the match pauses; host keeps simulating; views read replay frames — no player.gd change); final saves `user://replays/<timestamp>.replay` (`--replay-dir`); `-- --replay=FILE` viewer (Space, ←/→ plays, [ ] speed, V exit); replay HUD line.
+- Coordination: a parallel session owns A26 graphics (branch graphics-overhaul); FEATURES marks A26 `[~]` so the loop skips it; scorebug part of A27 deferred to their overlay; player.gd/_build_field/_draw_routes/_marker left untouched.
+- Tests: 186 unit (+4); flow 98 checks (+11: real V key, frames shown, sim frozen, replay ends, saved at final, viewer + speed key + exit).

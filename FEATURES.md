@@ -32,9 +32,9 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [x] A22 Leaderboards: per-position top 100 (local/file-backed first)
 - [x] A23 Ranked: skill rating, rank tiers, seasons with season rewards; competitive hosts apply the matchmaker's snake-draft teams (computed in A18, not yet applied)
 - [x] A24 Cosmetics: earnable through play, no gameplay effect, character customization
-- [ ] A25 Replays: record + playback of matches/plays
-- [ ] A26 Presentation: original sci-fi lunar stadium, animations, lighting pass
-- [ ] A27 Menus/HUD/settings: main menu, scoreboard HUD, gamepad + InputMap actions, controls rebinding, audio/video settings
+- [x] A25 Replays: record + playback of matches/plays
+- [~] A26 Presentation (IN PROGRESS in a parallel session: branch graphics-overhaul, worktree ~/Coding/football-game-gfx — loop skips this; checked off when merged): original sci-fi lunar stadium, animations, lighting pass
+- [ ] A27 Menus/HUD/settings: main menu, (scoreboard HUD = parallel overlay work, skip), gamepad + InputMap actions, controls rebinding, audio/video settings
 - [ ] A28 Parity audit: walk this list end to end in a built game, file bugs as new items
 
 ## Phase B: Better than Gridiron (from PLAN.md)

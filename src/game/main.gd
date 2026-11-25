@@ -25,6 +25,7 @@ const Stats := preload("res://src/sim/stats.gd")
 const Leaderboard := preload("res://src/sim/leaderboard.gd")
 const Ranked := preload("res://src/sim/ranked.gd")
 const Cosmetics := preload("res://src/sim/cosmetics.gd")
+const Replay := preload("res://src/sim/replay.gd")
 const MMServer := preload("res://src/net/mm_server.gd")
 const MMClient := preload("res://src/net/mm_client.gd")
 const InviteCode := preload("res://src/net/invite_code.gd")
@@ -69,6 +70,11 @@ var profile_path := Cosmetics.DEFAULT_PATH
 var looks := {}            # athlete_id -> look (view-only)
 var peer_looks := {}       # server: peer_id -> sanitized look
 var xp_line := ""
+var replay := Replay.new()
+var replay_active := false      # views show replay frames instead of the live sim
+var replay_viewer := false      # --replay=FILE standalone viewer
+var replay_dir := "user://replays"
+var saved_replay := ""
 var my_ranks := ""
 var field_root: Node3D
 var athlete_root: Node3D
@@ -105,6 +111,8 @@ func _ready() -> void:
 	if args.has("name"):
 		player_name = str(args["name"]).strip_edges().left(16)
 	ranked_match = args.has("ranked")
+	if args.has("replay-dir"):
+		replay_dir = str(args["replay-dir"])
 	if args.has("profile-file"):
 		profile_path = str(args["profile-file"])
 	profile.load_file(profile_path)
@@ -122,6 +130,8 @@ func _ready() -> void:
 	configure(MatchConfig.normalize(args.get("size", 7)), str(args.get("practice", "")) if args.has("practice") else "",
 		str(args.get("mode", "classic")))
 	_setup_net()
+	if args.has("replay"):
+		open_replay(str(args["replay"]))
 	route_lines = MeshInstance3D.new()
 	route_lines.name = "RouteLines"
 	route_lines.mesh = route_mesh
@@ -178,6 +188,10 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	world.event.connect(_on_world_event)
 	stats = Stats.new()
 	stats.attach(world, owner_name)
+	replay = Replay.new()
+	replay.attach(world)
+	replay.meta = {"size": match_size, "mode": match_mode}
+	replay_active = false
 	summary_lines = []
 	series.match_event.connect(_on_match_event)
 	if drill != null:
@@ -393,6 +407,9 @@ func _apply_award(xp: Dictionary) -> void:
 	xp_line = "XP +%d (Level %d%s)" % [int(xp[me]), profile.level(), " - LEVEL UP!" if gained > 0 else ""]
 
 func _on_match_event(n: String, _d: Dictionary) -> void:
+	if n == "final" and drill == null:
+		saved_replay = _save_replay()
+		print("REPLAY saved: %s" % saved_replay)
 	if n == "final":
 		if not is_client() and drill == null:
 			var awards := _match_awards()
@@ -785,6 +802,19 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		if not searching():
 			lobby_key(e.keycode)
 		return
+	if e.keycode == KEY_V:
+		toggle_replay()
+		return
+	if replay_viewer:
+		match e.keycode:
+			KEY_SPACE: replay.paused = not replay.paused
+			KEY_RIGHT: replay.seek_play(replay.current_play() + 1)
+			KEY_LEFT: replay.seek_play(replay.current_play() - 1)
+			KEY_BRACKETRIGHT: replay.speed = minf(2.0, replay.speed * 2.0)
+			KEY_BRACKETLEFT: replay.speed = maxf(0.25, replay.speed / 2.0)
+		return
+	if replay_active:
+		return
 	match e.keycode:
 		KEY_SPACE:
 			do_action({"a": "snap"})
@@ -820,6 +850,14 @@ func _physics_process(delta: float) -> void:
 			_step_lobby()
 		_render()
 		return
+	if replay_active:
+		replay.advance(delta)
+		if replay.ended() and not replay_viewer:
+			stop_replay()
+		elif net != null and not is_client():
+			_step_authoritative(delta, my_input)   # host keeps the match running
+		_render_replay()
+		return
 	if is_client():
 		# Predict own athlete now; server stays authoritative and reconciles via acks.
 		var seq := predictor.record(my_input["dir"], my_input["sprint"], delta)
@@ -832,6 +870,7 @@ func _physics_process(delta: float) -> void:
 		_apply_interpolation()
 	else:
 		_step_authoritative(delta, my_input)
+	replay.capture(world)
 	_render()
 
 func _step_authoritative(delta: float, my_input: Dictionary) -> void:
@@ -871,6 +910,52 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 		net_tick += 1
 		if net_tick % SNAPSHOT_EVERY == 0:
 			net.broadcast_snapshot(Protocol.encode_snapshot(series, net_tick, net.acks()))
+
+## Instant replay of the last play at half speed (V). Offline the match pauses.
+func toggle_replay() -> bool:
+	if replay_active:
+		stop_replay()
+		return true
+	var p := replay.last_play()
+	if p.is_empty() or world.phase == World.Phase.LIVE:
+		return false
+	replay.play_range(p["start"], p["end"], 0.5)
+	replay_active = true
+	return true
+
+func stop_replay() -> void:
+	replay_active = false
+	replay_viewer = false
+
+## Standalone viewer for a saved replay file.
+func open_replay(path: String) -> bool:
+	var r := Replay.new()
+	if not r.load_file(path):
+		print("REPLAY load failed: %s" % path)
+		return false
+	configure(int(r.meta.get("size", 7)), "", str(r.meta.get("mode", "classic")))
+	replay = r
+	replay.time = 0.0
+	replay_viewer = true
+	replay_active = true
+	print("REPLAY opened %s: %d frames, %d plays" % [path, r.frames.size(), r.plays.size()])
+	return true
+
+func _save_replay() -> String:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(replay_dir))
+	var path := "%s/%s.replay" % [replay_dir, Time.get_datetime_string_from_system().replace(":", "-")]
+	return path if replay.save(path) else ""
+
+## Views read replay frames (view-only; the sim is untouched).
+func _render_replay() -> void:
+	var smp := replay.sample()
+	if smp.is_empty():
+		return
+	var pos: Array = smp["pos"]
+	for i in mini(pos.size(), views.size()):
+		views[i].position = Vector3(pos[i].x, 0, -pos[i].y)
+	var b: Vector3 = smp["ball"]
+	ball_view.position = Vector3(b.x, b.z, -b.y)
 
 func _render() -> void:
 	for v in views:
@@ -924,6 +1009,12 @@ func _process(delta: float) -> void:
 		phase_name = banner + "  " + phase_name
 	if searching():
 		hud.text = "SEARCHING FOR A %s MATCH..." % str(_cli_args().get("queue", "")).to_upper()
+		return
+	if replay_active:
+		var p: int = replay.current_play()
+		var lbl: String = replay.plays[p]["label"] if p < replay.plays.size() else ""
+		hud.text = "REPLAY %sx  %s%s  [V exit%s]" % [str(replay.speed), lbl, "  (paused)" if replay.paused else "",
+			", Space pause, Left/Right play, [ ] speed" if replay_viewer else ""]
 		return
 	if in_lobby():
 		var who := "host: [3/5/7] size, [M] mode, [H] half length, " if is_server() else ""
