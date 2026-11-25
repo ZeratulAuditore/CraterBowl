@@ -274,13 +274,14 @@ func _spawn_teams() -> void:
 		drill_me = drill.build(world, _practice_kind())
 	if drill_me < 0:
 		roster.build(world, match_size)
+	my_id = drill_me if drill_me >= 0 else roster.auto_assign(LOCAL_PLAYER)
+	var local_team: int = world.get_athlete(my_id).team
 	for a in world.athletes:
 		var v := PlayerNode.new()
 		v.name = "Athlete%d" % a.id
-		v.setup(a, TEAM_COLORS[a.team], world)
+		v.setup(a, TEAM_COLORS[a.team], world, a.team != local_team)
 		athlete_root.add_child(v)
 		views.append(v)
-	my_id = drill_me if drill_me >= 0 else roster.auto_assign(LOCAL_PLAYER)
 	controlled_id = my_id
 	player = views[controlled_id]
 
@@ -548,7 +549,8 @@ func start_postgame() -> void:
 	layer.layer = 60     # over the match HUD, under the Esc menu (90)
 	postgame = PotgStage.new()
 	postgame.setup(potg, {"score": series.score.duplicate(), "winner": series.winner(),
-		"team_colors": TEAM_COLORS, "team_names": Potg.TEAM_NAMES})
+		"team_colors": TEAM_COLORS, "team_names": Potg.TEAM_NAMES,
+		"local_team": world.get_athlete(my_id).team})
 	postgame.finished.connect(finish_postgame)
 	layer.add_child(postgame)
 	add_child(layer)
@@ -974,6 +976,11 @@ func next_play() -> void:
 func set_controlled(id: int) -> void:
 	controlled_id = id
 	player = views[id]
+	var local_team: int = world.get_athlete(my_id).team
+	for view in views:
+		var opponent: bool = view.athlete.team != local_team
+		if view.is_opponent != opponent:
+			view.set_opponent(opponent)
 
 func read_input() -> Vector2:
 	if input_override != null:
