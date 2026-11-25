@@ -46,7 +46,7 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [ ] B06 Juice: hit-stop, screenshake, crowd stingers
 - [~] B07 Steam relay / NAT traversal (out-of-game session): UPnP + public-IP invite codes + server browser DONE; relay for CGNAT + hosted public matchmaker pending (needs user decision, docs/OUT_OF_GAME.md)
 - [ ] B08 Tuning data file (TUNING) editable by designers without code
-- [ ] B09 Real kickoffs + returns (A08 uses an automatic touchback)
+- [~] B09 Real kickoffs + returns (claimed: claude 2026-11-25, with C02; branch kicking-game) (A08 uses an automatic touchback)
 - [ ] B10 Overtime (sudden death or alternating possessions) for tied games
 
 ## Phase C: Gap backlog (docs/gaps/TODO.md)

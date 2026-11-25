@@ -35,7 +35,7 @@ After that, follow the list order below. B01/B02 (line play, press) come after t
   - Bots call run plays some fraction of the time, and the 2-min bot game still finishes with a sane score.
 - **Touch:** `world.gd` (possession transfer), `routes.gd` (plays), `ai.gd`, `stats.gd`, `protocol.gd` (whitelist `handoff`).
 
-### [ ] C02 Kicking game: coin toss, punts, field goals, PAT kicks
+### [~] C02 Kicking game: coin toss, punts, field goals, PAT kicks (claimed: claude 2026-11-25, with B09; branch kicking-game)
 - **Why:** Gridiron had a coin toss, punts with a power meter, punt returns, FGs, PATs, FG blocks, and scoop-and-score on blocked kicks. A missed FG gives the ball to the defense at the kick spot, or at the 20 when the kick was inside it (O 1.0.4.31). We have none of these, so 4th down is always go-for-it. **Kickoffs + returns are B09**; build B09 first or together with this, sharing the kick meter.
 - **Accept:**
   - The match starts with a coin toss whose winner chooses to kick or receive.
