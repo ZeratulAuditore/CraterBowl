@@ -33,9 +33,26 @@ var play_time := 0.0
 var play_name := "Verticals"
 var route_of := {}      # athlete_id -> route name (eligible offense receivers)
 var route_paths := {}   # athlete_id -> Array[Vector2] absolute, set at snap
+var ruleset := "classic"
+var rules := {"gravity": 1.0, "anyone_throws": false, "self_catch": false, "max_bounces": 0, "walls": false}
+var bounces := 0
 
 ## role/pos are for the athlete's current side. Optional two-way setup:
 ## off/def roles + x via set_two_way().
+func set_ruleset(name: String) -> void:
+	ruleset = name if name == "chaosball" else "classic"
+	if ruleset == "chaosball":
+		rules = {"gravity": T.CHAOS_GRAVITY_SCALE, "anyone_throws": true, "self_catch": true,
+			"max_bounces": T.CHAOS_MAX_BOUNCES, "walls": true}
+	else:
+		rules = {"gravity": 1.0, "anyone_throws": false, "self_catch": false, "max_bounces": 0, "walls": false}
+
+func gravity() -> float:
+	return T.GRAVITY * rules["gravity"]
+
+func is_chaos() -> bool:
+	return ruleset == "chaosball"
+
 func add_athlete(team: int, role: int, pos: Vector2) -> Athlete:
 	var a := Athlete.new(athletes.size(), team, role, pos, field)
 	athletes.append(a)
@@ -182,14 +199,14 @@ func snap() -> bool:
 	return true
 
 ## Throw from the holder toward target (field plane) with power 0..1.
-func throw(id: int, target: Vector2, power: float) -> bool:
+func throw(id: int, target: Vector2, power: float, lob: bool = false) -> bool:
 	var a := get_athlete(id)
 	if a == null or phase != Phase.LIVE or not ball.is_held_by(id):
 		return false
-	if forward_pass_thrown or a.position.y > los_y:
+	if not rules["anyone_throws"] and (forward_pass_thrown or a.position.y > los_y):
 		return false
 	var from := Vector3(a.position.x, a.position.y, T.RELEASE_HEIGHT)
-	var v := Passing.solve_velocity(from, target, power)
+	var v := Passing.solve_velocity(from, target, power, gravity(), lob)
 	v += Vector3(a.velocity.x, a.velocity.y, 0.0) * T.THROW_INHERIT
 	ball.state = Ball.State.IN_FLIGHT
 	ball.holder_id = -1
@@ -197,8 +214,10 @@ func throw(id: int, target: Vector2, power: float) -> bool:
 	ball.velocity = v
 	forward_pass_thrown = true
 	last_thrower_id = id
+	last_possession = a.team
+	bounces = 0
 	throw_origin = Vector2(from.x, from.y)
-	event.emit("throw", {"by": id, "target": target, "power": power})
+	event.emit("throw", {"by": id, "target": target, "power": power, "lob": lob})
 	return true
 
 ## Defender starts a dive tackle in their facing direction.
@@ -405,16 +424,52 @@ func _whistle(reason: String, data: Dictionary) -> void:
 func _step_flight(dt: float) -> void:
 	if ball.state != Ball.State.IN_FLIGHT or _snap_to_id >= 0:
 		return
-	ball.velocity.z -= T.GRAVITY * dt
+	ball.velocity.z -= gravity() * dt
 	ball.position += ball.velocity * dt
+	if rules["walls"]:
+		_wall_bounce()
 	if _try_catch():
 		return
 	if ball.position.z <= 0.0:
 		ball.position.z = 0.0
+		if rules["max_bounces"] > 0:
+			bounces += 1
+			event.emit("bounce", {"n": bounces})
+			if bounces < rules["max_bounces"]:
+				ball.velocity.z = -ball.velocity.z * T.BOUNCE_RESTITUTION
+				ball.velocity.x *= T.BOUNCE_FRICTION
+				ball.velocity.y *= T.BOUNCE_FRICTION
+				return
 		ball.velocity = Vector3.ZERO
 		ball.state = Ball.State.DEAD
 		phase = Phase.DEAD
-		event.emit("incomplete", {"at": Vector2(ball.position.x, ball.position.y)})
+		var at := Vector2(ball.position.x, ball.position.y)
+		dead_ball_spot = at
+		event.emit("incomplete", {"at": at, "team": last_possession})
+
+## Arena walls (Chaosball): sidelines and back lines reflect the ball; each hit is a bounce.
+func _wall_bounce() -> void:
+	var lo := Vector2(0.0, -field.endzone_depth)
+	var hi := Vector2(field.width, field.length + field.endzone_depth)
+	var hit := false
+	if ball.position.x < lo.x or ball.position.x > hi.x:
+		ball.position.x = clampf(ball.position.x, lo.x, hi.x)
+		ball.velocity.x = -ball.velocity.x * T.BOUNCE_FRICTION
+		hit = true
+	if ball.position.y < lo.y or ball.position.y > hi.y:
+		ball.position.y = clampf(ball.position.y, lo.y, hi.y)
+		ball.velocity.y = -ball.velocity.y * T.BOUNCE_FRICTION
+		hit = true
+	if hit:
+		bounces += 1
+		event.emit("bounce", {"n": bounces, "wall": true})
+		if bounces >= rules["max_bounces"]:
+			ball.velocity = Vector3.ZERO
+			ball.state = Ball.State.DEAD
+			phase = Phase.DEAD
+			var at := Vector2(ball.position.x, ball.position.y)
+			dead_ball_spot = at
+			event.emit("incomplete", {"at": at, "team": last_possession})
 
 ## Offensive linemen (C, OL) are ineligible; all defenders may play the ball.
 func is_eligible_receiver(a: Athlete) -> bool:
@@ -430,6 +485,8 @@ func _try_catch() -> bool:
 	# Not catchable/deflectable until it has left the thrower's immediate area.
 	if Vector2(ball.position.x - throw_origin.x, ball.position.y - throw_origin.y).length() < T.MIN_PASS_TRAVEL:
 		return false
+	if rules["anyone_throws"]:
+		return _try_catch_chaos()
 	var bp := Vector2(ball.position.x, ball.position.y)
 	var best := [null, null]   # per side: [offense, defense]
 	var best_d := [INF, INF]
@@ -479,6 +536,26 @@ func _try_catch() -> bool:
 		return true
 	ball.hold(rx.id)
 	event.emit("catch", {"by": rx.id, "at": at})
+	return true
+
+## Chaosball: nearest standing player in reach catches (own pass allowed); no breakups.
+func _try_catch_chaos() -> bool:
+	var bp := Vector2(ball.position.x, ball.position.y)
+	var best: Athlete = null
+	var best_d := T.CATCH_RADIUS
+	for a in athletes:
+		if not a.can_act() or (a.id == last_thrower_id and not rules["self_catch"]):
+			continue
+		var d: float = a.position.distance_to(bp)
+		if d <= best_d:
+			best_d = d
+			best = a
+	if best == null:
+		return false
+	var swing: bool = best.team != last_possession
+	ball.hold(best.id)
+	last_possession = best.team
+	event.emit("interception" if swing else "catch", {"by": best.id, "at": bp, "team": best.team})
 	return true
 
 func _end_incomplete(reason: String, data: Dictionary) -> void:

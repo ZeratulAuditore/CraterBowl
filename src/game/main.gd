@@ -48,6 +48,7 @@ var banner_t := 0.0
 var series: Match
 var roster := Roster.new()
 var match_size := 7
+var match_mode := "classic"     # classic | chaosball
 var lobby := Lobby.new()      # server: authoritative; client: mirror
 var debug_playclock := -1.0
 var drill: Drills = null        # offline practice drill (null = normal match)
@@ -79,7 +80,8 @@ func _ready() -> void:
 	_build_ball_view()
 	_build_aim_visuals()
 	var args := _cli_args()
-	configure(MatchConfig.normalize(args.get("size", 7)), str(args.get("practice", "")) if args.has("practice") else "")
+	configure(MatchConfig.normalize(args.get("size", 7)), str(args.get("practice", "")) if args.has("practice") else "",
+		str(args.get("mode", "classic")))
 	_setup_net()
 	route_lines = MeshInstance3D.new()
 	route_lines.name = "RouteLines"
@@ -105,8 +107,9 @@ func _ready() -> void:
 
 ## (Re)build the whole match for a size: field, roster, sim, views. Used at start,
 ## and on clients when the host's size differs.
-func configure(size: int, practice: String = "") -> void:
-	match_size = MatchConfig.normalize(size)
+func configure(size: int, practice: String = "", mode: String = "classic") -> void:
+	match_mode = "chaosball" if mode == "chaosball" else "classic"
+	match_size = 3 if match_mode == "chaosball" else MatchConfig.normalize(size)
 	drill = null
 	if practice != "":
 		drill = Drills.new()
@@ -128,6 +131,7 @@ func configure(size: int, practice: String = "") -> void:
 	predictor = Predictor.new()
 	interp = Interp.new()
 	views = []
+	world.set_ruleset(match_mode)
 	_spawn_teams()
 	_build_field()
 	series = Match.new(world)
@@ -221,12 +225,12 @@ func _update_arc() -> void:
 			d.visible = false
 		return
 	var from := Vector3(qb.position.x, qb.position.y, T.RELEASE_HEIGHT)
-	var v := Passing.solve_velocity(from, aim_point, charge)
+	var v := Passing.solve_velocity(from, aim_point, charge, world.gravity(), lob_held())
 	v += Vector3(qb.velocity.x, qb.velocity.y, 0) * T.THROW_INHERIT
-	var tf := Passing.time_to_height(v, from.z, 0.0)
+	var tf := Passing.time_to_height(v, from.z, 0.0, world.gravity())
 	for i in ARC_DOTS:
 		var t := tf * float(i + 1) / ARC_DOTS
-		var p := from + v * t + Vector3(0, 0, -0.5 * T.GRAVITY * t * t)
+		var p := from + v * t + Vector3(0, 0, -0.5 * world.gravity() * t * t)
 		arc_dots[i].position = Vector3(p.x, p.z, -p.y)
 		arc_dots[i].visible = true
 
@@ -236,7 +240,12 @@ func _set_charging(on: bool) -> void:
 		charge = 0.0
 	elif not on and charging:
 		charging = false
-		do_action({"a": "throw", "t": aim_point, "p": charge})
+		do_action({"a": "throw", "t": aim_point, "p": charge, "lob": lob_held()})
+
+## Ctrl held on release = lob (high arc; catch your own pass in Chaosball).
+var lob_override = null
+func lob_held() -> bool:
+	return lob_override if lob_override != null else Input.is_key_pressed(KEY_CTRL)
 
 ## All human actions go through here: local authority offline/host, sent to server as client.
 func do_action(action: Dictionary) -> bool:
@@ -409,6 +418,8 @@ func lobby_key(keycode: int) -> void:
 		KEY_3: changed = lobby.set_setting(LOCAL_PLAYER, "size", 3)
 		KEY_5: changed = lobby.set_setting(LOCAL_PLAYER, "size", 5)
 		KEY_7: changed = lobby.set_setting(LOCAL_PLAYER, "size", 7)
+		KEY_M:
+			changed = lobby.set_setting(LOCAL_PLAYER, "mode", "chaosball" if lobby.settings.get("mode", "classic") == "classic" else "classic")
 		KEY_H:
 			var i := (Lobby.HALF_MINUTES.find(lobby.settings["half_minutes"]) + 1) % Lobby.HALF_MINUTES.size()
 			changed = lobby.set_setting(LOCAL_PLAYER, "half_minutes", Lobby.HALF_MINUTES[i])
@@ -430,12 +441,13 @@ func _step_lobby() -> void:
 func _start_from_lobby() -> void:
 	if not lobby.start():
 		return
-	configure(lobby.settings["size"])
+	configure(lobby.settings["size"], "", lobby.settings.get("mode", "classic"))
 	series.clock.half_length = lobby.settings["half_minutes"] * 60.0
 	series.clock.reset()
 	if debug_playclock > 0.0:
 		series.clock.play_clock = debug_playclock
 	net.match_size = match_size
+	net.match_mode = match_mode
 	for id in lobby.players:
 		if id == LOCAL_PLAYER:
 			continue
@@ -447,8 +459,8 @@ func _start_from_lobby() -> void:
 
 ## Client: server (re)assigned our athlete (join, position change, team swap).
 func _on_assigned(aid: int) -> void:
-	if net.host_size != match_size:
-		configure(net.host_size)
+	if net.host_size != match_size or net.host_mode != match_mode:
+		configure(net.host_size, "", net.host_mode)
 	my_id = aid
 	predictor = Predictor.new()
 	set_controlled(aid)
@@ -701,10 +713,10 @@ func _process(delta: float) -> void:
 		hud.text = "SEARCHING FOR A %s MATCH..." % str(_cli_args().get("queue", "")).to_upper()
 		return
 	if in_lobby():
-		var who := "host: [3/5/7] size, [H] half length, " if is_server() else ""
+		var who := "host: [3/5/7] size, [M] mode, [H] half length, " if is_server() else ""
 		hud.text = "PRIVATE MATCH LOBBY   Invite code: %s\n%s\n[Enter] ready  (%s starts when everyone is ready)" % [lobby.code, lobby.summary(), who]
 		return
-	var clock_txt: String = "%dv%d %s" % [match_size, match_size, series.clock.label()]
+	var clock_txt: String = "%s%dv%d %s" % ["CHAOSBALL " if match_mode == "chaosball" else "", match_size, match_size, series.clock.label()]
 	if drill != null:
 		clock_txt = drill.label()
 	if world.phase == World.Phase.PRESNAP:

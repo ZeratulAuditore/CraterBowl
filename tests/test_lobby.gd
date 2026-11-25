@@ -72,3 +72,13 @@ func test_clock_half_length() -> void:
 	assert_near(c.remaining, 120.0)
 	c.start_next_half()
 	assert_near(c.remaining, 120.0)
+
+func test_mode_setting() -> void:
+	var l := Lobby.new()
+	l.add(1)
+	assert_true(l.set_setting(1, "mode", "chaosball"))
+	assert_eq(l.settings["size"], 3, "chaosball forces 3v3")
+	assert_true(not l.set_setting(1, "mode", "dodgeball"), "invalid mode")
+	var m := Lobby.new()
+	m.from_dict(l.to_dict())
+	assert_eq(m.settings["mode"], "chaosball")

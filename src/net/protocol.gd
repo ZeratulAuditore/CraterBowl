@@ -102,7 +102,7 @@ static func sanitize_action(act) -> Dictionary:
 			var p = act.get("p", 0.0)
 			if not _finite_v(t) or not (p is float or p is int) or not is_finite(float(p)):
 				return {}
-			return {"a": "throw", "t": t, "p": clampf(float(p), 0.0, 1.0)}
+			return {"a": "throw", "t": t, "p": clampf(float(p), 0.0, 1.0), "lob": act.get("lob", false) == true}
 		"try":
 			var n = act.get("n", 1)
 			return {"a": "try", "n": n} if n is int and (n == 1 or n == 2) else {}
@@ -129,7 +129,7 @@ static func apply_action(m, athlete_id: int, action: Dictionary) -> bool:
 		"tackle":
 			return w.tackle(athlete_id)
 		"throw":
-			return w.throw(athlete_id, act["t"], act["p"])
+			return w.throw(athlete_id, act["t"], act["p"], act["lob"])
 		"try":
 			return ath.team == w.offense_team and m.choose_try(act["n"])
 		"play":

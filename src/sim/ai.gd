@@ -75,6 +75,8 @@ func think(world, human_ids: Array) -> Dictionary:
 				_qb_decide(world, a)
 				out[a.id] = _qb_pocket(world, a)
 			else:
+				if world.is_chaos():
+					_chaos_pass(world, a)
 				out[a.id] = _run_ball(world, a)
 			continue
 		if c != null and a.team != c.team:
@@ -182,7 +184,7 @@ func _cover(world, a, qb) -> Dictionary:
 ## Where a thrown ball will descend through catch height.
 func _landing_point(world) -> Vector2:
 	var b = world.ball
-	var t: float = Passing.time_to_height(b.velocity, b.position.z, T.CATCH_HEIGHT)
+	var t: float = Passing.time_to_height(b.velocity, b.position.z, T.CATCH_HEIGHT, world.gravity())
 	return Vector2(b.position.x + b.velocity.x * t, b.position.y + b.velocity.y * t)
 
 ## Ids of the `per_side` athletes per team nearest to p (standing only).
@@ -213,6 +215,31 @@ func _qb_pocket(world, qb) -> Dictionary:
 	var away: Vector2 = (qb.position - near.position).normalized()
 	away.y = minf(away.y, 0.0)   # never drift past the LOS while looking to throw
 	return {"dir": away.normalized() if away.length() > 0.01 else Vector2(1, 0), "sprint": false}
+
+## Chaosball: a pressured carrier dumps it to the most open teammate.
+func _chaos_pass(world, c) -> void:
+	var pressure := INF
+	for o in world.athletes:
+		if o.team != c.team and not o.is_grounded():
+			pressure = minf(pressure, o.position.distance_to(c.position))
+	if pressure > T.AI_CHAOS_PRESSURE:
+		return
+	var best = null
+	var best_sep := 0.0
+	for r in world.athletes:
+		if r.team != c.team or r.id == c.id or not r.can_act():
+			continue
+		var sep := INF
+		for o in world.athletes:
+			if o.team != c.team:
+				sep = minf(sep, o.position.distance_to(r.position))
+		if sep > best_sep:
+			best_sep = sep
+			best = r
+	if best == null or best_sep < 2.0:
+		return
+	var from := Vector3(c.position.x, c.position.y, T.RELEASE_HEIGHT)
+	world.throw(c.id, Passing.lead_target(from, best.position, best.velocity, 0.7, world.gravity()), 0.7)
 
 ## Ball carrier: head for the scoring end zone, juke defenders in the lane, and
 ## protect the ball (no sprint) when someone is closing from behind.
@@ -324,8 +351,8 @@ func predict_on_route(world, r, t: float) -> Vector2:
 func _route_lead(world, from: Vector3, r, power: float) -> Vector2:
 	var target: Vector2 = r.position
 	for i in 6:
-		var v := Passing.solve_velocity(from, target, power)
-		var t := Passing.time_to_height(v, from.z, T.CATCH_HEIGHT)
+		var v := Passing.solve_velocity(from, target, power, world.gravity())
+		var t := Passing.time_to_height(v, from.z, T.CATCH_HEIGHT, world.gravity())
 		target = predict_on_route(world, r, t)
 	return target
 

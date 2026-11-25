@@ -8,7 +8,7 @@ const HALF_MINUTES := [2, 5, 8]
 var phase: Phase = Phase.LOBBY
 var host_id := 1
 var code := ""
-var settings := {"size": 7, "half_minutes": 5}
+var settings := {"size": 7, "half_minutes": 5, "mode": "classic"}
 var players := {}   # id -> {"name": String, "ready": bool}
 var expected := 0   # queue matches: auto-start only once this many players are present
 
@@ -48,6 +48,11 @@ func set_setting(by: int, key: String, value) -> bool:
 		"half_minutes":
 			if not (value is int and HALF_MINUTES.has(value)):
 				return false
+		"mode":
+			if not (value is String and (value == "classic" or value == "chaosball")):
+				return false
+			if value == "chaosball":
+				settings["size"] = 3   # Chaosball is 3v3
 		_:
 			return false
 	settings[key] = value
@@ -78,7 +83,8 @@ func from_dict(d: Dictionary) -> void:
 	code = str(d.get("code", ""))
 	var s = d.get("settings", {})
 	if s is Dictionary:
-		settings = {"size": int(s.get("size", 7)), "half_minutes": int(s.get("half_minutes", 5))}
+		settings = {"size": int(s.get("size", 7)), "half_minutes": int(s.get("half_minutes", 5)),
+			"mode": "chaosball" if s.get("mode", "") == "chaosball" else "classic"}
 	var p = d.get("players", {})
 	players = p if p is Dictionary else {}
 
@@ -86,4 +92,5 @@ func summary() -> String:
 	var names := []
 	for id in players:
 		names.append("%s%s" % [players[id]["name"], " ✓" if players[id]["ready"] else ""])
-	return "%dv%d, %d-min halves | %s" % [settings["size"], settings["size"], settings["half_minutes"], ", ".join(names)]
+	var mode_txt := "Chaosball " if settings.get("mode", "classic") == "chaosball" else ""
+	return "%s%dv%d, %d-min halves | %s" % [mode_txt, settings["size"], settings["size"], settings["half_minutes"], ", ".join(names)]

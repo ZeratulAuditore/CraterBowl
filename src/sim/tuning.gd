@@ -80,3 +80,11 @@ const AI_PROTECT_BALL_RANGE := 4.0 # don't sprint with a defender this close
 const AI_SPY_BLITZ_TIME := 3.5     # QB still holding it: the spy attacks
 const AI_QB_MIN_SEPARATION := 1.5
 const AI_QB_MAX_HOLD := 3.2
+
+# Chaosball
+const CHAOS_GRAVITY_SCALE := 0.45
+const CHAOS_MAX_BOUNCES := 3
+const BOUNCE_RESTITUTION := 0.55
+const BOUNCE_FRICTION := 0.8
+const AI_CHAOS_PRESSURE := 3.5
+const LOB_ANGLE := 65.0           # degrees, touch-pass arc

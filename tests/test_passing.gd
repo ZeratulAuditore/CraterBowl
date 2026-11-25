@@ -107,3 +107,14 @@ func test_lead_target_hits_moving_receiver() -> void:
 	var rx_at := rx + vel * t
 	var ball_at := Vector2(from.x, from.y) + Vector2(v.x, v.y) * t
 	assert_true(rx_at.distance_to(ball_at) < 1.0, "lead within 1yd: %f" % rx_at.distance_to(ball_at))
+
+func test_lob_hits_target_and_hangs_longer() -> void:
+	var from := Vector3(26, 20, T.RELEASE_HEIGHT)
+	var tgt := Vector2(26, 32)
+	var vf := Passing.solve_velocity(from, tgt, 0.6)
+	var vl := Passing.solve_velocity(from, tgt, 0.6, T.GRAVITY, true)
+	var tf := Passing.time_to_height(vf, from.z, T.CATCH_HEIGHT)
+	var tl := Passing.time_to_height(vl, from.z, T.CATCH_HEIGHT)
+	assert_true(tl > tf * 1.5, "lob hangs longer (%.2f vs %.2f)" % [tl, tf])
+	var land := Vector2(from.x, from.y) + Vector2(vl.x, vl.y) * tl
+	assert_true(land.distance_to(tgt) < 0.3, "lob lands on target (%s)" % str(land))

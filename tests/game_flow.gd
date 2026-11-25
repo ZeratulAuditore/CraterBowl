@@ -111,6 +111,11 @@ func _initialize() -> void:
 		[5300, func(): main.start_practice("tackling"); check(main.world.phase == main.World.Phase.LIVE, "tackling drill starts live")],
 		[5301, func(): _chase_and_tackle()],
 		[5800, func(): check(not _chasing, "tackling rep finished")],
+		# A19: Chaosball through the real game
+		[5900, func(): main.configure(7, "", "chaosball")],
+		[5902, func(): check(main.world.is_chaos() and main.match_size == 3, "chaosball forces 3v3 + ruleset"); check(main.hud.text.find("CHAOSBALL") >= 0, "HUD shows CHAOSBALL"); _key(KEY_SPACE)],
+		[5903, func(): main.ai.defense_enabled = false; var qb = main.world.get_athlete(main.my_id); qb.position.y = main.world.los_y + 6.0; main.aim_point = qb.position + Vector2(0, 8); main.lob_override = true; main._set_charging(true)],
+		[5910, func(): main._set_charging(false); main.lob_override = null; check(main.world.forward_pass_thrown, "real throw past the LOS accepted (lob)"); main.ai.defense_enabled = true],
 	]
 
 ## First receiver not controlled by the human (humans don't auto-run routes).

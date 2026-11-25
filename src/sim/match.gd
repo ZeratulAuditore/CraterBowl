@@ -54,7 +54,8 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 		"tackle", "out_of_bounds":
 			last_result = {"type": n, "spot": d["spot"].y, "team": d.get("team", world.offense_team)}
 		"incomplete":
-			last_result = {"type": "incomplete"}
+			last_result = {"type": "incomplete", "team": d.get("team", world.offense_team),
+				"spot": (d.get("at", Vector2(0, downs.los)) as Vector2).y}
 		"touchdown":
 			last_result = {"type": "touchdown", "team": d.get("team", world.offense_team)}
 
@@ -90,6 +91,18 @@ func winner() -> int:
 		return -1
 	return 0 if score[0] > score[1] else 1
 
+## Chaosball: one live play per possession. TD scores; anything else hands the
+## ball to the team that didn't end the play with it, at the spot.
+func _chaos_next(r: Dictionary, holder_team: int, off: int) -> Dictionary:
+	if r["type"] == "touchdown":
+		_award(holder_team, TD_POINTS, "touchdown")
+		return _kickoff(1 - holder_team)
+	var new_off := 1 - holder_team
+	var spot: float = r.get("spot", downs.los)
+	var los := spot if new_off == off else goal() - spot
+	downs.reset(new_off, clampf(los, 1.0, goal() - 1.0))
+	return {"outcome": "turnover", "los": downs.los, "offense": new_off}
+
 ## Apply the last play's result and line up for the next snap.
 func next_play() -> Dictionary:
 	if clock.final:
@@ -101,7 +114,9 @@ func next_play() -> Dictionary:
 	var off := downs.offense_team
 	var def := 1 - off
 	var r_team: int = r.get("team", off)
-	if state == State.TRY:
+	if world.is_chaos():
+		last_outcome = _chaos_next(r, r_team, off)
+	elif state == State.TRY:
 		if r["type"] == "touchdown" and r_team == off:
 			_award(off, try_points, "try")
 			last_outcome = _kickoff(def)

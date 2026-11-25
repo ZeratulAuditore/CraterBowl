@@ -135,3 +135,11 @@
 - Lobby `expected`: queue matches start only when the whole group is in.
 - Tests: 139 unit (+8 queue rules); new `scripts/mm_test.sh` (matchmaker + 2 queued headless clients → 3v3 match started with both humans, ~13 s) wired into smoke.sh.
 - Known gap: snake-draft teams computed but not applied by the host yet → folded into A23.
+
+## 020: A19 Chaosball (2026-11-24)
+- World ruleset (`set_ruleset`): Chaosball = 0.45× gravity, anyone throws anywhere (unlimited passes), self-catch, nearest player catches (no breakups; opponent catch swings possession live), up to 3 ground/wall bounces (restitution 0.55/0.8) then incomplete, arena walls reflect the ball.
+- Pass solver/lead/landing/arc preview take gravity → aim stays exact in low gravity. **Lob throws** (Ctrl on release; fixed 65° arc, speed solved to land on target) — needed because flat passes outrun a sprinter, making self-catch impossible.
+- Match: Chaosball possessions are one live play; TD +6 (streak scoring A20) → kickoff; any tackle/OOB/incomplete → turnover at the spot to the team that didn't end with the ball.
+- AI: pressured carriers in Chaosball pass to their most open teammate; AI aiming/landing uses world gravity.
+- Mode: `-- --mode=chaosball` (forces 3v3), lobby setting (host M), welcome carries mode; HUD "CHAOSBALL 3v3".
+- Tests: 151 unit (+12: low gravity, past-LOS + second pass, self-catch via lob, bounces, catch off a bounce, walls, swings, chaos turnovers, lob solver, mode setting, 2-min chaos bot game); flow +3 (mode, HUD, real lob throw past LOS).
