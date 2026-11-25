@@ -223,3 +223,9 @@
 - Calls drive bot man, zone and rush behavior. Presnap turf art shows teammates' coverage landmarks, man tethers, rush lanes, receiver routes and pass protection targets. The local assignment is emphasized.
 - Cover 2 allowed 1 deep completion across 24 matched bot snaps versus 8 with legacy coverage. Deep attempts fell from 10 to 1.
 - Tests: 208 unit (+4) and full smoke passed, including remote recall. Checked offense and defense screenshots offscreen. An initial smoke attempt hit a matchmaker port bind error and passed on retry.
+
+## 033: C01 Run game (2026-11-25)
+- Added Inside Zone and Outside Sweep for classic 5v5 and 7v7. The huddle and turf show the RB path and linemen's targets. X mirrors the run.
+- The QB uses G or gamepad R3 to hand off to an adjacent RB behind the line. The host validates the exchange and its cooldown. Offline control follows the RB. Online players keep their assigned slots.
+- Bots mix runs with passes and block for the chosen lane. The RB gets the carry and yards at the whistle or fumble spot. The two-minute bot match finished 0–2 with 12 handoffs and 33 throws.
+- Verified 238 unit tests and full headless smoke, including a remote QB handoff. Viewed offscreen captures of the sweep, the exchange prompt and the controlled RB. The smoke guard now checks the active XDG data directory so other checkouts' replay files cannot invalidate an isolated run.

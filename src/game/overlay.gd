@@ -354,7 +354,7 @@ func _status_text(main) -> String:
 		1:
 			if main.world.is_chaos():
 				return "PASS CLOCK %.1f" % maxf(0.0, main.T.PASS_CLOCK - w.hold_t)
-			return ""
+			return main.handoff_hint()
 		_:
 			return ("%s  ·  R FOR NEXT PLAY" % main.last_whistle) if main.last_whistle != "" else ""
 
@@ -384,9 +384,9 @@ func _refresh_me(main) -> void:
 	if pv == null:
 		return
 	var a = pv.athlete
-	var slot: int = main.roster.slot_of_athlete(main.my_id)
+	var slot: int = main.roster.slot_of_athlete(a.id)
 	var pos_l: String = main.roster.label(slot) if slot >= 0 else ""
-	var nm: String = main.owner_name(a.id) if a.id != main.my_id else main.player_name
+	var nm: String = main.player_name if a.id == main.controlled_id else main.owner_name(a.id)
 	me_name.text = "#%s  %s  %s" % [pv.number_text, nm.to_upper(), pos_l]
 	stamina_bar.value = a.stamina
 	var low: bool = a.sprint_locked or a.stamina < 0.25
@@ -398,7 +398,12 @@ func _hints(main) -> String:
 	var me = w.get_athlete(main.my_id)
 	var offense: bool = me != null and w.offense_team == me.team
 	if int(w.phase) == 0:
-		return "WASD MOVE · SHIFT SPRINT · TAB POSITION · T TEAM" + (" · Q PLAY · F ROUTE" if offense else "")
+		var hints := "WASD MOVE · SHIFT SPRINT · TAB POSITION · T TEAM"
+		if offense:
+			hints += " · Q PLAY" if not w.route_of.has(main.my_id) else " · Q PLAY · F ROUTE"
+		return hints
 	if int(w.phase) == 1 and main.world.ball.is_held_by(main.controlled_id):
+		if w.is_run_play():
+			return "WASD MOVE · SHIFT SPRINT"
 		return "HOLD J / LMB AIM + CHARGE · RELEASE TO THROW · CTRL LOB"
 	return "WASD MOVE · SHIFT SPRINT · E / RMB TACKLE"
