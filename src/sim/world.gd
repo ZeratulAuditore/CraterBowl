@@ -90,6 +90,8 @@ func setup_formation(los: float) -> void:
 		qb.position.x = cx
 	if c:
 		ball.hold(c.id)
+	elif qb:
+		ball.hold(qb.id)   # no center (3v3): QB starts with the ball
 	forward_pass_thrown = false
 	last_thrower_id = -1
 	_snap_to_id = -1
@@ -140,7 +142,21 @@ func snap() -> bool:
 		return false
 	var c := find_role(offense_team, Athlete.Role.C)
 	var qb := find_role(offense_team, Athlete.Role.QB)
-	if c == null or qb == null or not ball.is_held_by(c.id):
+	if qb == null:
+		return false
+	if c == null:
+		if not ball.is_held_by(qb.id):
+			return false
+		_snap_to_id = -1
+		route_paths = {}
+		for id in route_of:
+			var ra := get_athlete(id)
+			route_paths[id] = Routes.path_for(route_of[id], ra.position, field.width)
+		phase = Phase.LIVE
+		event.emit("snap", {"qb": qb.id})
+		event.emit("snap_received", {"qb": qb.id})
+		return true
+	if not ball.is_held_by(c.id):
 		return false
 	ball.state = Ball.State.IN_FLIGHT
 	ball.holder_id = -1

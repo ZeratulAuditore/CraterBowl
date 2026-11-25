@@ -7,8 +7,8 @@ const Clock := preload("res://src/sim/clock.gd")
 
 const TD_POINTS := 6
 const SAFETY_POINTS := 2
-const TRY_LOS := {1: 97.0, 2: 90.0}   # 1 pt from the 3, 2 pts from the 10
-const KICKOFF_LOS := 25.0
+const TRY_DIST := {1: 3.0, 2: 10.0}   # 1 pt from the 3, 2 pts from the 10
+const KICKOFF_FRACTION := 0.25        # receive at 25% of the field (own 25 on 100 yd)
 
 enum State { SCRIMMAGE, TRY }
 
@@ -26,9 +26,22 @@ var last_outcome := {}
 
 func _init(w: World) -> void:
 	world = w
+	downs.goal = w.field.length
 	world.event.connect(_on_world_event)
 
-func start(offense: int = 0, los: float = 25.0) -> void:
+func goal() -> float:
+	return world.field.length
+
+func try_los(points: int) -> float:
+	return goal() - TRY_DIST[points]
+
+func kickoff_los() -> float:
+	return roundf(goal() * KICKOFF_FRACTION)
+
+func start(offense: int = 0, los: float = -1.0) -> void:
+	downs.goal = goal()
+	if los < 0.0:
+		los = kickoff_los()
 	state = State.SCRIMMAGE
 	opening_receiver = offense
 	clock.reset()
@@ -47,10 +60,10 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 
 ## During try presnap: choose 1 (from the 3) or 2 (from the 10).
 func choose_try(points: int) -> bool:
-	if state != State.TRY or world.phase != World.Phase.PRESNAP or not TRY_LOS.has(points):
+	if state != State.TRY or world.phase != World.Phase.PRESNAP or not TRY_DIST.has(points):
 		return false
 	try_points = points
-	downs.los = TRY_LOS[points]
+	downs.los = try_los(points)
 	world.setup_formation(downs.los)
 	return true
 
@@ -60,8 +73,8 @@ func _award(team: int, pts: int, why: String) -> void:
 
 func _kickoff(receiving: int) -> Dictionary:
 	state = State.SCRIMMAGE
-	downs.reset(receiving, KICKOFF_LOS)
-	return {"outcome": "kickoff", "los": KICKOFF_LOS, "offense": receiving}
+	downs.reset(receiving, kickoff_los())
+	return {"outcome": "kickoff", "los": downs.los, "offense": receiving}
 
 ## Advance clocks; auto-snap when the play clock expires.
 func tick(dt: float) -> void:
@@ -102,15 +115,15 @@ func next_play() -> Dictionary:
 		state = State.TRY
 		try_points = 1
 		downs.down = 1
-		downs.los = TRY_LOS[1]
-		downs.first_down_y = Downs.GOAL
+		downs.los = try_los(1)
+		downs.first_down_y = goal()
 		last_outcome = {"outcome": "try", "los": downs.los}
 	elif r["type"] != "incomplete" and r_team != off:
 		# Takeaway: new offense from the mirrored spot; downed in own end zone -> touchback.
-		var spot := 100.0 - float(r["spot"])
+		var spot := goal() - float(r["spot"])
 		if spot <= 0.0:
-			spot = KICKOFF_LOS
-		downs.reset(r_team, clampf(spot, 1.0, 99.0))
+			spot = kickoff_los()
+		downs.reset(r_team, clampf(spot, 1.0, goal() - 1.0))
 		last_outcome = {"outcome": "turnover", "los": downs.los, "offense": r_team}
 	elif r["type"] != "incomplete" and r.get("spot", 1.0) < 0.0:
 		_award(def, SAFETY_POINTS, "safety")

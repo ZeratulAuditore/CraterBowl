@@ -23,6 +23,8 @@ var peer_athlete := {}         # server: peer_id -> athlete_id
 var inputs := {}               # server: athlete_id -> sanitized input
 var actions: Array = []        # server: [[peer_id, athlete_id, action], ...] pending
 var my_athlete := -1           # client
+var match_size := 7            # server: sent in welcome
+var host_size := 7             # client: host's match size from welcome
 var last_snapshot_tick := -1
 
 func _ready() -> void:
@@ -73,7 +75,7 @@ func set_assignment(id: int, aid: int) -> void:
 	if peer_athlete.has(id):
 		inputs.erase(peer_athlete[id])
 	peer_athlete[id] = aid
-	_send(id, {"k": "welcome", "aid": aid}, true)
+	_send(id, {"k": "welcome", "aid": aid, "size": match_size}, true)
 
 func _on_peer_disconnected(id: int) -> void:
 	if peer_athlete.has(id):
@@ -131,6 +133,8 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 		"welcome":
 			if mode == Mode.CLIENT and from == 1:
 				my_athlete = int(msg.get("aid", -1))
+				var sz = msg.get("size", 7)
+				host_size = int(sz) if (sz is int and (sz == 3 or sz == 5 or sz == 7)) else 7
 				welcomed.emit(my_athlete)
 		"snap":
 			if mode == Mode.CLIENT and from == 1 and int(msg.get("t", -1)) > last_snapshot_tick:

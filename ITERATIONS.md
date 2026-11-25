@@ -108,3 +108,10 @@
 - Tools: `tools/bot_stats.gd` (all-bot game outcome stats), `tools/play_stats.gd` (per-play pass outcomes). 10-min all-bot game: 80% completion, 2 INT, 10 breakups, 41–44.
 - Tests: 111 unit (+10 incl. 4-min all-bot game with balance assertions, OOB-catch regression); flow 50 checks (+3: human on defense, presnap, bot offense snaps itself).
 - Known gaps: deep passing is easy vs bots (Verticals/Flood ~100%) — safety help over the top is basic; zone coverage only for unassigned safeties.
+
+## 016: A15 Match sizes (2026-11-24)
+- `src/sim/match_config.gd`: 3v3 (60×30 field, 8-yd end zones), 5v5 (80×40), 7v7 (100×53.3).
+- Roster builds the first N priority slots (3v3 QB/LB + 2 WR/CB; 5v5 + RB/S + C/DL) with formation x scaled to width. No center → QB starts with the ball, snap goes straight LIVE.
+- Downs/Match now goal-relative: turnover mirror, try LOS (goal−3 / goal−10), kickoff at 25% of field, OWN/OPP labels around midfield.
+- Main: `-- --size=3|5|7`; `configure(size)` rebuilds field/roster/sim/views in place (containers FieldRoot/AthleteRoot); HUD shows "5v5 H1 4:32". Host's welcome carries size; clients rebuild to match.
+- Tests: 118 unit (+7 incl. 3v3/5v5 all-bot games); flow 55 checks (+5: in-place 3v3 rebuild); net test now hosts 5v5 and checks the client adopts it (11 checks). Flow listeners now connect after main._ready (configure() replaces the World).

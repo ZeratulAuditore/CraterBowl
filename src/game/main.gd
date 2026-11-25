@@ -18,6 +18,7 @@ const INTERP_DELAY := 0.1   # seconds others render in the past
 const Roster := preload("res://src/sim/roster.gd")
 const LOCAL_PLAYER := 1      # the local human's player id (= host peer id online)
 const Routes := preload("res://src/sim/routes.gd")
+const MatchConfig := preload("res://src/sim/match_config.gd")
 const T := preload("res://src/sim/tuning.gd")
 const ARC_DOTS := 24
 
@@ -41,6 +42,9 @@ var banner := ""
 var banner_t := 0.0
 var series: Match
 var roster := Roster.new()
+var match_size := 7
+var field_root: Node3D
+var athlete_root: Node3D
 var my_id := -1          # the human's athlete (QB on offense, LB on defense)
 var dead_t := 0.0
 var auto_next := true
@@ -63,15 +67,10 @@ static func to_world(p: Vector2, h: float = 0.0) -> Vector3:
 
 func _ready() -> void:
 	_build_environment()
-	_build_field()
-	_spawn_teams()
+	_build_ball_view()
 	_build_aim_visuals()
-	series = Match.new(world)
-	series.start(0, 25.0)
-	world.event.connect(_on_world_event)
+	configure(MatchConfig.normalize(_cli_args().get("size", 7)))
 	_setup_net()
-	los_marker = _marker(Color(0.2, 0.5, 1.0), "LOSMarker")
-	fd_marker = _marker(Color(1.0, 0.85, 0.1), "FirstDownMarker")
 	route_lines = MeshInstance3D.new()
 	route_lines.name = "RouteLines"
 	route_lines.mesh = route_mesh
@@ -94,17 +93,50 @@ func _ready() -> void:
 	layer.add_child(hud)
 	add_child(layer)
 
+## (Re)build the whole match for a size: field, roster, sim, views. Used at start,
+## and on clients when the host's size differs.
+func configure(size: int) -> void:
+	match_size = MatchConfig.normalize(size)
+	for r in [field_root, athlete_root]:
+		if r:
+			remove_child(r)
+			r.queue_free()
+	field_root = Node3D.new()
+	field_root.name = "FieldRoot"
+	add_child(field_root)
+	athlete_root = Node3D.new()
+	athlete_root.name = "AthleteRoot"
+	add_child(athlete_root)
+	world = World.new()
+	field = world.field
+	roster = Roster.new()
+	ai = AI.new()
+	predictor = Predictor.new()
+	interp = Interp.new()
+	views = []
+	_spawn_teams()
+	_build_field()
+	series = Match.new(world)
+	series.start(0)
+	world.event.connect(_on_world_event)
+	los_marker = _marker(Color(0.2, 0.5, 1.0), "LOSMarker")
+	fd_marker = _marker(Color(1.0, 0.85, 0.1), "FirstDownMarker")
+	for v in views:
+		v.sync()
+
 func _spawn_teams() -> void:
-	roster.build(world)
+	roster.build(world, match_size)
 	for a in world.athletes:
 		var v := PlayerNode.new()
 		v.name = "Athlete%d" % a.id
 		v.setup(a, TEAM_COLORS[a.team])
-		add_child(v)
+		athlete_root.add_child(v)
 		views.append(v)
 	my_id = roster.auto_assign(LOCAL_PLAYER)
 	controlled_id = my_id
 	player = views[controlled_id]
+
+func _build_ball_view() -> void:
 	ball_view = MeshInstance3D.new()
 	ball_view.name = "Ball"
 	var sm := SphereMesh.new()
@@ -220,6 +252,7 @@ func _setup_net() -> void:
 	if args.has("host"):
 		if args.has("playclock"):  # test/debug: shorten the first play clock
 			series.clock.play_clock = float(args["playclock"])
+		net.match_size = match_size
 		var err := net.host(port, func(peer): return roster.auto_assign(peer), func(peer): roster.release(peer))
 		print("NET host on %d: %s" % [port, error_string(err)])
 	else:
@@ -232,6 +265,8 @@ func _setup_net() -> void:
 
 ## Client: server (re)assigned our athlete (join, position change, team swap).
 func _on_assigned(aid: int) -> void:
+	if net.host_size != match_size:
+		configure(net.host_size)
 	my_id = aid
 	predictor = Predictor.new()
 	set_controlled(aid)
@@ -313,7 +348,7 @@ func _marker(c: Color, n: String) -> MeshInstance3D:
 	bm.material = m
 	mi.mesh = bm
 	mi.name = n
-	add_child(mi)
+	field_root.add_child(mi)
 	return mi
 
 func next_play() -> void:
@@ -451,7 +486,7 @@ func _process(delta: float) -> void:
 	banner_t = maxf(0.0, banner_t - delta)
 	if banner_t > 0.0:
 		phase_name = banner + "  " + phase_name
-	var clock_txt: String = series.clock.label()
+	var clock_txt: String = "%dv%d %s" % [match_size, match_size, series.clock.label()]
 	if world.phase == World.Phase.PRESNAP:
 		clock_txt += " | PLAY %d" % int(ceil(series.clock.play_clock))
 	if series.is_final():
@@ -487,7 +522,7 @@ func _box(size: Vector3, center: Vector3, color: Color, n: String) -> void:
 	mi.mesh = bm
 	mi.position = center
 	mi.name = n
-	add_child(mi)
+	field_root.add_child(mi)
 
 func _build_field() -> void:
 	var total := field.length + field.endzone_depth * 2.0

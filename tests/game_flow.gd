@@ -26,11 +26,8 @@ func _initialize() -> void:
 	root.add_child(main)
 	main.auto_next = false
 	# scripted steps drive play changes; auto-advance checked at the end
-	main.world.event.connect(func(n, d): if n == "catch": caught_by = d["by"])
-	main.world.event.connect(func(n, d): if n == "tackle" and caught_by >= 0: tackled = true)
-	main.world.event.connect(func(n, _d): if n == "interception": picked = true)
 	steps = [
-		[2, func(): main.series.match_event.connect(func(_n, _d): series_events += 1)],  # series exists after _ready
+		[2, func(): _connect_listeners()],  # world/series are (re)built in main._ready -> connect after
 		[5, func(): check(main.world.phase == main.World.Phase.PRESNAP, "starts presnap")],
 		[6, func(): check(main.world.snap(), "snap")],
 		[40, func(): check(main.world.ball.is_held_by(main.controlled_id), "QB has ball")],
@@ -91,6 +88,10 @@ func _initialize() -> void:
 		# A14: you're on defense vs a bot offense -> bots call a play and snap on their own
 		[4301, func(): check(main.world.get_athlete(main.my_id).team != main.world.offense_team, "human on defense"); check(main.world.phase == main.World.Phase.PRESNAP, "presnap")],
 		[4301 + int(60 * 2.5) + 10, func(): check(main.world.phase != main.World.Phase.PRESNAP, "bot offense snapped by itself")],
+		# A15: rebuild as 3v3 in place
+		[4500, func(): main.configure(3)],
+		[4502, func(): check(main.world.athletes.size() == 6 and main.athlete_root.get_child_count() == 6, "3v3: 6 athletes + views"); check(absf(main.field.width - 30.0) < 0.01, "3v3 field width 30"); check(main.hud.text.find("3v3") >= 0, "HUD shows 3v3")],
+		[4503, func(): var qb = main.world.find_role(0, main.Athlete.Role.QB); check(main.world.ball.is_held_by(qb.id), "3v3: QB starts with the ball"); check(main.world.snap(), "3v3 snap")],
 	]
 
 ## First receiver not controlled by the human (humans don't auto-run routes).
@@ -107,6 +108,12 @@ func _setup_pick() -> void:
 		if a.id != cb.id and a.position.distance_to(Vector2(50, 60)) < 6.0:
 			a.position.x = 30.0
 	cb.position = Vector2(50, 60)
+
+func _connect_listeners() -> void:
+	main.series.match_event.connect(func(_n, _d): series_events += 1)
+	main.world.event.connect(func(n, d): if n == "catch": caught_by = d["by"])
+	main.world.event.connect(func(n, d): if n == "tackle" and caught_by >= 0: tackled = true)
+	main.world.event.connect(func(n, _d): if n == "interception": picked = true)
 
 func _force_dead_if_live() -> void:
 	if main.world.phase != main.World.Phase.DEAD:

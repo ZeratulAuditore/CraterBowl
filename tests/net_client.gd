@@ -81,6 +81,7 @@ func _physics_process(_dt: float) -> bool:
 	if f == 1100 or (bad_snap_sent_at > 0 and f == bad_snap_sent_at + 91):
 		check(aid >= 0, "welcomed with athlete %d" % aid)
 		check(first_team == 1, "joiner initially placed on the opponent team")
+		check(main.match_size == 5 and main.world.athletes.size() == 10, "client adopted host's 5v5 (%d athletes)" % main.world.athletes.size())
 		check(snaps > 20, "receiving snapshots (%d)" % snaps)
 		check(max_dx > 2.0, "own input moved own athlete on server (dx %.1f)" % max_dx)
 		check(lead_samples > 10, "own athlete predicted ahead of server state (%d frames)" % lead_samples)

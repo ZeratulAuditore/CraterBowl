@@ -9,17 +9,26 @@ const PAIRS := [
 	[R.QB, 0.0, R.LB, 0.0], [R.WR, -18.0, R.CB, -18.0], [R.WR, 18.0, R.CB, 18.0], [R.RB, 4.0, R.S, -8.0],
 	[R.C, 0.0, R.DL, -1.5], [R.OL, -2.5, R.DL, 1.5], [R.OL, 2.5, R.S, 8.0],
 ]
+const MatchConfig := preload("res://src/sim/match_config.gd")
+const BASE_WIDTH := 53.33
 const ROLE_NAMES := {R.QB: "QB", R.C: "C", R.WR: "WR", R.RB: "RB", R.LB: "LB", R.CB: "CB", R.S: "S", R.OL: "OL", R.DL: "DL"}
 
 var slots: Array = []   # [{team, athlete_id, owner, off_role, def_role}]
 
-## Create both teams' athletes in `world` and their slots.
-func build(world) -> void:
+var size := 7
+
+## Create both teams' athletes in `world` and their slots for a match size
+## (also sizes the field).
+func build(world, match_size: int = 7) -> void:
+	size = MatchConfig.normalize(match_size)
+	MatchConfig.apply_field(world.field, size)
 	var cx: float = world.field.width / 2.0
+	var k: float = world.field.width / BASE_WIDTH
 	slots.clear()
 	for t in 2:
-		for p in PAIRS:
-			var a = world.add_two_way(t, p[0], cx + p[1], p[2], cx + p[3])
+		for i in MatchConfig.get_config(size)["slots"]:
+			var p: Array = PAIRS[i]
+			var a = world.add_two_way(t, p[0], cx + p[1] * k, p[2], cx + p[3] * k)
 			slots.append({"team": t, "athlete_id": a.id, "owner": -1, "off_role": p[0], "def_role": p[2]})
 
 func slot_of_player(player: int) -> int:
