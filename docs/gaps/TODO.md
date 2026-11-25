@@ -97,7 +97,7 @@ After that, follow the list order below. B01/B02 (line play, press) come after t
   - Contested catches resolve by position plus timing instead of always a breakup.
   - Dive and jump catch animations reuse the C03 moves.
 
-### [~] C08a Defensive playbook and situational suggestions (claimed: codex 2026-11-25)
+### [x] C08a Defensive playbook and situational suggestions
 - **Accept:** Define at least eight man, zone and blitz calls across base, goal-line and prevent shells.
 - **Accept:** Suggest a goal-line call near the end zone and a prevent call on long late downs, with a base fallback.
 - This catalog supplies the defensive side of B03. Apply assignments in the sim and expose them in the huddle and on-field art in C08b.
