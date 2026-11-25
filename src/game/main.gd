@@ -21,6 +21,7 @@ const Routes := preload("res://src/sim/routes.gd")
 const MatchConfig := preload("res://src/sim/match_config.gd")
 const Lobby := preload("res://src/net/lobby.gd")
 const Drills := preload("res://src/sim/drills.gd")
+const Stats := preload("res://src/sim/stats.gd")
 const MMServer := preload("res://src/net/mm_server.gd")
 const MMClient := preload("res://src/net/mm_client.gd")
 const InviteCode := preload("res://src/net/invite_code.gd")
@@ -52,6 +53,8 @@ var match_mode := "classic"     # classic | chaosball
 var lobby := Lobby.new()      # server: authoritative; client: mirror
 var debug_playclock := -1.0
 var drill: Drills = null        # offline practice drill (null = normal match)
+var stats: Stats
+var summary_lines: Array = []   # end-of-match summary (server computes; clients receive)
 var field_root: Node3D
 var athlete_root: Node3D
 var my_id := -1          # the human's athlete (QB on offense, LB on defense)
@@ -137,6 +140,10 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	series = Match.new(world)
 	series.start(0, Drills.LOS if drill != null else -1.0)
 	world.event.connect(_on_world_event)
+	stats = Stats.new()
+	stats.attach(world, owner_name)
+	summary_lines = []
+	series.match_event.connect(_on_match_event)
 	if drill != null:
 		world.event.connect(drill.on_event)
 		if drill.kind != "scrimmage":
@@ -241,6 +248,23 @@ func _set_charging(on: bool) -> void:
 	elif not on and charging:
 		charging = false
 		do_action({"a": "throw", "t": aim_point, "p": charge, "lob": lob_held()})
+
+## Display name of whoever controls athlete `aid` right now ("Bot" for AI).
+func owner_name(aid: int) -> String:
+	var slot := roster.slot_of_athlete(aid)
+	var owner: int = roster.slots[slot]["owner"] if slot >= 0 else (LOCAL_PLAYER if aid == my_id else -1)
+	if owner < 0:
+		return "Bot"
+	if lobby.players.has(owner):
+		return str(lobby.players[owner]["name"])
+	return "You" if owner == LOCAL_PLAYER else "P%d" % owner
+
+func _on_match_event(n: String, _d: Dictionary) -> void:
+	if n == "final":
+		summary_lines = stats.summary_lines()
+		print("MATCH SUMMARY:\n  " + "\n  ".join(summary_lines))
+		if is_server():
+			net.broadcast_event("summary", {"lines": summary_lines})
 
 ## Ctrl held on release = lob (high arc; catch your own pass in Chaosball).
 var lob_override = null
@@ -518,6 +542,8 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 		last_whistle = "INCOMPLETE"
 	if n in ["tackle", "out_of_bounds", "breakup", "touchdown", "explode"]:
 		last_whistle = n.replace("_", " ").to_upper()
+	if n == "summary":
+		summary_lines = d.get("lines", []) if d.get("lines") is Array else []
 	if n == "snap":
 		last_whistle = ""
 	if n in ["interception", "fumble", "recovery"]:
@@ -725,7 +751,8 @@ func _process(delta: float) -> void:
 		clock_txt += " | PLAY %d" % int(ceil(series.clock.play_clock))
 	if series.is_final():
 		var w := series.winner()
-		phase_name = "FINAL: HOME %d - AWAY %d  %s" % [series.score[0], series.score[1], "TIE" if w < 0 else ("HOME WINS" if w == 0 else "AWAY WINS")]
+		phase_name = "FINAL: HOME %d - AWAY %d  %s\n%s" % [series.score[0], series.score[1], "TIE" if w < 0 else ("HOME WINS" if w == 0 else "AWAY WINS"),
+			"\n".join(summary_lines) if not summary_lines.is_empty() else "(no stats)"]
 	else:
 		phase_name = "HOME %d - AWAY %d | %s | %s | %s | %s" % [series.score[0], series.score[1], clock_txt, situation, side, phase_name]
 	var charge_txt := ("   THROW %d%%" % int(charge * 100)) if charging else ""

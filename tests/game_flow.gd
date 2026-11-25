@@ -120,6 +120,13 @@ func _initialize() -> void:
 		[6000, func(): main.configure(3, "", "chaosball"); main.ai.defense_enabled = false; main.ai.offense_enabled = false],
 		[6002, func(): check(main.hud.text.find("STREAK 0 -> TD 2") >= 0, "HUD shows streak + TD value"); _key(KEY_SPACE)],
 		[6002 + int(60 * 5.3), func(): check(main.last_whistle == "EXPLODE", "held too long: ball exploded (%s)" % main.last_whistle); main.ai.defense_enabled = true; main.ai.offense_enabled = true],
+		# A21: stats from a real completion -> final whistle -> HUD summary
+		[6400, func(): main.configure(7); main.ai.defense_enabled = false; main.world.call_play("Verticals")],
+		[6401, func(): _key(KEY_SPACE)],
+		[6480, func(): _lead_to_wr(); main._set_charging(true)],
+		[6530, func(): main._set_charging(false)],
+		[6800, func(): check(main.stats.total("att") >= 1 and main.stats.total("comp") >= 1, "stats tracked the completion (%d/%d)" % [main.stats.total("comp"), main.stats.total("att")]); _force_dead_if_live(); main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.next_play(); main.ai.defense_enabled = true],
+		[6802, func(): check(main.series.is_final(), "final"); check(main.hud.text.find("You QB: 1/1") >= 0, "HUD summary shows your QB line")],
 	]
 
 ## First receiver not controlled by the human (humans don't auto-run routes).

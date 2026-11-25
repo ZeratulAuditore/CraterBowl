@@ -149,3 +149,9 @@
 - Pass clock: holding the ball 5 s explodes it (carrier knocked down, DEAD, Match turnover at the spot); every catch resets the clock.
 - Snapshot carries streak + hold time; HUD "STREAK n -> TD v | BALL t s"; EXPLODE whistle text. AI passes when pressured **or** with < 1.2 s on the pass clock.
 - Tests: 159 unit (+8); flow 73 checks (+2: streak HUD, real-game explosion).
+
+## 022: A21 Stats (2026-11-24)
+- `src/sim/stats.gd`: play-context tracking from World events; lines per **owner|POSITION** (switching positions splits your stats): passing att/comp/yds/td/int, receiving, rushing, tkl/sack/int/pbu/ff/fr, points (incl. Chaosball streak values). Yards = offense-frame gain from the snap LOS; return yards not yet tracked.
+- Main: Stats per match, owner names from roster/lobby ("You", lobby names, "Bot"); at FINAL the summary prints to stdout + shows on the HUD; server broadcasts summary lines to clients.
+- Tests: 165 unit (+6 incl. 3-min bot game consistency: pass yds == rec yds); flow 76 checks (+3: real completion tracked, final summary on HUD).
+- Known gap: return yards after takeaways (add with B-phase stat polish).
