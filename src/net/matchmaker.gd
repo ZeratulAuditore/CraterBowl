@@ -10,11 +10,15 @@ const MODES := ["casual", "competitive"]
 
 var queue: Array = []
 
-func enqueue(id: int, mode: String, size: int, rating: float, now: float, name: String = "") -> bool:
+## party: shared code among friends ("" = solo); party_size: members expected.
+func enqueue(id: int, mode: String, size: int, rating: float, now: float, name: String = "", party: String = "", party_size: int = 1) -> bool:
 	if not MODES.has(mode) or not [3, 5, 7].has(size):
 		return false
+	if party != "" and (party_size < 2 or party_size > size):
+		return false   # a party must fit on one team
 	dequeue(id)
-	queue.append({"id": id, "mode": mode, "size": size, "rating": rating, "since": now, "name": name if name != "" else "P%d" % id})
+	queue.append({"id": id, "mode": mode, "size": size, "rating": rating, "since": now,
+		"name": name if name != "" else "P%d" % id, "party": party, "party_size": party_size if party != "" else 1})
 	return true
 
 func dequeue(id: int) -> void:
@@ -49,40 +53,80 @@ func _group(mode: String, size: int) -> Array:
 	g.sort_custom(func(a, b): return a["since"] < b["since"])
 	return g
 
+## Matchable units: solo players, and parties once every member has queued.
+func _units(mode: String, size: int) -> Array:
+	var by_key := {}
+	for e in _group(mode, size):
+		var key: String = e["party"] if e["party"] != "" else "solo:%d" % e["id"]
+		if not by_key.has(key):
+			by_key[key] = []
+		by_key[key].append(e)
+	var units := []
+	for key in by_key:
+		var members: Array = by_key[key]
+		if members.size() < int(members[0]["party_size"]):
+			continue   # party still assembling
+		var r := 0.0
+		var since := INF
+		for m in members:
+			r += m["rating"]
+			since = minf(since, m["since"])
+		units.append({"members": members, "rating": r / members.size(), "since": since})
+	units.sort_custom(func(a, b): return a["since"] < b["since"])
+	return units
+
 func _try_form(mode: String, size: int, now: float) -> Dictionary:
-	var g := _group(mode, size)
-	if g.size() < 2:
+	var units := _units(mode, size)
+	if units.is_empty():
 		return {}
 	var full := size * 2
-	var oldest: Dictionary = g[0]
+	var oldest: Dictionary = units[0]
 	var waited: float = now - oldest["since"]
-	var picked := []
-	if mode == "casual":
-		if g.size() >= full:
-			picked = g.slice(0, full)
-		elif waited >= CASUAL_WAIT:
-			picked = g
-	else:
+	var pool := units
+	if mode == "competitive":
 		var w := window_for(waited)
-		var cands := []
-		for e in g:
-			if absf(e["rating"] - oldest["rating"]) <= w:
-				cands.append(e)
-		cands.sort_custom(func(a, b): return absf(a["rating"] - oldest["rating"]) < absf(b["rating"] - oldest["rating"]))
-		if cands.size() >= full:
-			picked = cands.slice(0, full)
-		elif waited >= COMP_WAIT and cands.size() >= 2:
-			picked = cands
-	if picked.size() < 2:
+		pool = units.filter(func(u): return absf(u["rating"] - oldest["rating"]) <= w)
+		pool.sort_custom(func(a, b): return absf(a["rating"] - oldest["rating"]) < absf(b["rating"] - oldest["rating"]))
+	var picked := []
+	var count := 0
+	for u in pool:
+		if count + u["members"].size() <= full:
+			picked.append(u)
+			count += u["members"].size()
+	var wait_needed := CASUAL_WAIT if mode == "casual" else COMP_WAIT
+	if count < full and not (waited >= wait_needed and count >= 2):
 		return {}
 	var ids := []
-	for e in picked:
-		ids.append(e["id"])
-	var teams := snake_teams(picked)
+	var host := -1
+	for u in picked:
+		for m in u["members"]:
+			ids.append(m["id"])
+	host = oldest["members"][0]["id"]
+	var teams := unit_teams(picked, size)
 	var team_names := {}
-	for e in picked:
-		team_names[e["name"]] = teams[e["id"]]
-	return {"mode": mode, "size": size, "players": ids, "host": oldest["id"], "teams": teams, "team_names": team_names}
+	for u in picked:
+		for m in u["members"]:
+			team_names[m["name"]] = teams[m["id"]]
+	return {"mode": mode, "size": size, "players": ids, "host": host, "teams": teams, "team_names": team_names}
+
+## Team split that keeps parties together: biggest units first, each onto the team
+## with fewer players (tie: lower rating total), never over `size`.
+static func unit_teams(units: Array, size: int) -> Dictionary:
+	var order := units.duplicate()
+	order.sort_custom(func(a, b): return a["members"].size() > b["members"].size() or (a["members"].size() == b["members"].size() and a["rating"] > b["rating"]))
+	var n := [0, 0]
+	var sum := [0.0, 0.0]
+	var teams := {}
+	for u in order:
+		var k: int = u["members"].size()
+		var t := 0 if (n[0] < n[1] or (n[0] == n[1] and sum[0] <= sum[1])) else 1
+		if n[t] + k > size:
+			t = 1 - t
+		for m in u["members"]:
+			teams[m["id"]] = t
+		n[t] += k
+		sum[t] += u["rating"] * k
+	return teams
 
 ## Snake draft by rating (highest first): A B B A A B B A ...
 static func snake_teams(entries: Array) -> Dictionary:

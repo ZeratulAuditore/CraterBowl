@@ -37,7 +37,8 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 			var size = msg.get("size", 7)
 			var rating = msg.get("rating", 1000.0)
 			var ok := mm.enqueue(from, str(msg.get("mode", "")), int(size) if size is int else 7,
-				float(rating) if (rating is float or rating is int) else 1000.0, _now(), str(msg.get("name", "")).left(16))
+				float(rating) if (rating is float or rating is int) else 1000.0, _now(), str(msg.get("name", "")).left(16),
+				str(msg.get("party", "")).left(12), int(msg.get("party_size", 1)) if (msg.get("party_size", 1) is int) else 1)
 			_send(from, {"k": "queued", "ok": ok, "n": mm.queue.size()})
 			print("MM enqueue %d -> %s (queue %d)" % [from, ok, mm.queue.size()])
 		"hosting":

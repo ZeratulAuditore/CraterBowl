@@ -14,7 +14,7 @@ Source of truth for "does our game match Gridiron's features" (Steam 708720 / Gr
 | G06 | Snap, block, pass, tackle, sprint | world.gd, athlete.gd | auto |
 | G07 | Casual + competitive matchmaking | matchmaker.gd, mm_server/client | auto |
 | G08 | Private matches | lobby.gd, invite_code.gd | auto |
-| G09 | Party up with friends (queue together) | — | GAP (D02) |
+| G09 | Party up with friends (queue together) | matchmaker.gd units + unit_teams | auto |
 | G10 | Offline practice | drills.gd | auto |
 | G11 | Chaosball 3v3: anyone throws/catches anytime | world rules | auto |
 | G12 | Chaosball: up to 3 bounces off ground/walls | world rules | auto |
@@ -61,6 +61,9 @@ EVIDENCE G07 mm MM TEST PASS (casual)
 EVIDENCE G07 mm MM TEST PASS (competitive)
 EVIDENCE G08 unit test_lobby.gd::test_lobby_ready_flow
 EVIDENCE G08 net joined by code into the private lobby
+EVIDENCE G09 unit test_matchmaker.gd::test_party_never_split
+EVIDENCE G09 unit test_matchmaker.gd::test_party_waits_for_all_members
+EVIDENCE G09 mm MM TEST PASS (party)
 EVIDENCE G10 unit test_drills.gd::test_builds
 EVIDENCE G10 flow drill counted the completion
 EVIDENCE G10 flow tackled with the real E key

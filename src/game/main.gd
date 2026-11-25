@@ -572,7 +572,8 @@ func _queue_up(args: Dictionary) -> void:
 	var rk := Ranked.new()
 	rk.load_file(ranked_path)
 	var err := mm_client.queue_up(addr, mm_port, mode, MatchConfig.normalize(args.get("size", 7)),
-		float(args.get("rating", rk.rating(player_name))), player_name)
+		float(args.get("rating", rk.rating(player_name))), player_name,
+		str(args.get("party", "")).get_slice(":", 0), int(str(args.get("party", "x:1")).get_slice(":", 1)) if str(args.get("party", "")).find(":") > 0 else 1)
 	print("QUEUE %s via %s:%d: %s" % [mode, addr, mm_port, error_string(err)])
 
 func _practice_kind() -> String:
