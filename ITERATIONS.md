@@ -35,3 +35,11 @@
 - Game: E / RMB dive, diving/grounded athletes lie flat, HUD shows whistle reason + spot.
 - Tests: 41 unit (+7); game flow 13 checks (catch → AI pursuit → tackle → HUD reason). Flow caught a HUD ordering bug (generic whistle overwrote reason).
 - Known gaps: no broken tackles/stiff-arm yet (could come with B06 juice), defense not human-playable until A11 team select.
+
+## 006: A06 Blocking (2026-11-24)
+- Sim: body circles (0.45 yd) with separation (grounded ignored); auto-engage blocks (blocker facing defender within 1.0 yd) → defender displacement 70% driven by blocker; 1.5 s hold then shed; defender 0.75 s immunity, beaten blocker 1.5 s cooldown. C/OL block anytime; skill players only block downfield (after catch / carrier past LOS).
+- Formation now role-based depth + per-athlete `home_x` (bug found: second play kept drifted x from the previous play).
+- AI: DL rush at snap; OL/C pass-protect (get between rusher and carrier); route runners sidestep defenders in their lane.
+- Measured: full 7v7 pocket holds ~4.0 s before a sack.
+- Tests: 51 unit (+10); test.sh now fails on leaked resources; game flow 13 checks pass with live pass rush.
+- Known gaps: no player-driven shove/shed input (B01 line minigame), no run-blocking schemes until play calling (A12).

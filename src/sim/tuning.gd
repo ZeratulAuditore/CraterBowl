@@ -46,3 +46,12 @@ const DIVE_RECOVER := 1.0
 # Placeholder AI
 const AI_RUSH_DELAY := 2.5
 const AI_DIVE_RANGE := 2.0
+
+# Bodies + blocking
+const BODY_RADIUS := 0.45
+const ENGAGE_DIST := 1.0
+const ENGAGE_FACING_DOT := 0.3
+const BLOCK_DRIVE := 0.7       # fraction of defender displacement taken from blocker
+const BLOCK_HOLD := 1.5
+const BLOCK_IMMUNITY := 0.75
+const BLOCKER_BEATEN := 1.5   # after a shed, the blocker cannot re-engage for this long

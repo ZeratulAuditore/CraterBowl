@@ -41,24 +41,30 @@ func find_role(team: int, role: int) -> Athlete:
 			return a
 	return null
 
-## Offense attacks +y. Places the C on the LOS and the QB 5 yd behind. Other
-## athletes keep their x and are set on their side of the line.
+## Depth from the LOS per role (offense behind, defense ahead).
+const FORMATION_DEPTH := {
+	Athlete.Role.C: 0.5, Athlete.Role.OL: 1.0, Athlete.Role.WR: 1.0, Athlete.Role.QB: 5.0,
+	Athlete.Role.RB: 6.0, Athlete.Role.DL: 1.0, Athlete.Role.LB: 5.0, Athlete.Role.CB: 2.0,
+	Athlete.Role.S: 12.0,
+}
+
+## Offense attacks +y. Everyone returns to their home x at role depth; the C
+## lines up at the field center with the ball.
 func setup_formation(los: float) -> void:
 	los_y = los
-	var cx := field.width / 2.0
-	var c := find_role(offense_team, Athlete.Role.C)
-	var qb := find_role(offense_team, Athlete.Role.QB)
 	play_time = 0.0
+	var cx := field.width / 2.0
 	for a in athletes:
 		a.reset_state()
-		if a.team == offense_team:
-			a.position.y = los - 1.0
-		else:
-			a.position.y = los + 5.0
+		var depth: float = FORMATION_DEPTH.get(a.role, 1.0)
+		var y := los - depth if a.team == offense_team else los + depth
+		a.position = Vector2(a.home_x, y)
+	var c := find_role(offense_team, Athlete.Role.C)
+	var qb := find_role(offense_team, Athlete.Role.QB)
 	if c:
-		c.position = Vector2(cx, los - 0.5)
+		c.position.x = cx
 	if qb:
-		qb.position = Vector2(cx, los - 5.0)
+		qb.position.x = cx
 	if c:
 		ball.hold(c.id)
 	forward_pass_thrown = false
@@ -115,16 +121,93 @@ func carrier() -> Athlete:
 func step(inputs: Dictionary, dt: float) -> void:
 	if phase == Phase.LIVE:
 		play_time += dt
+	var prev: Array = []
 	for a in athletes:
+		prev.append(a.position)
 		var inp: Dictionary = inputs.get(a.id, {})
 		a.step(inp.get("dir", Vector2.ZERO), inp.get("sprint", false), dt)
-		if phase == Phase.PRESNAP:
+	if phase == Phase.LIVE:
+		_step_blocks(prev, dt)
+	_resolve_collisions()
+	if phase == Phase.PRESNAP:
+		for a in athletes:
 			_enforce_neutral_zone(a)
 	_step_snap(dt)
 	_step_flight(dt)
 	_sync_ball()
 	if phase == Phase.LIVE:
 		_check_tackles()
+
+## Linemen block any time; skill players only block downfield (after a catch
+## or once the carrier is past the LOS), so receivers run routes instead.
+func _can_block(a: Athlete) -> bool:
+	if a.team != offense_team or ball.is_held_by(a.id) or not a.can_act() or a.engaged_with >= 0 or a.immune_t > 0.0:
+		return false
+	if a.role == Athlete.Role.OL or a.role == Athlete.Role.C:
+		return true
+	var c := carrier()
+	return c != null and (c.role != Athlete.Role.QB or c.position.y > los_y)
+
+func _can_be_blocked(d: Athlete) -> bool:
+	return d.team != offense_team and not d.is_grounded() and d.engaged_with < 0 and d.immune_t <= 0.0
+
+func _step_blocks(prev: Array, dt: float) -> void:
+	for a in athletes:
+		a.immune_t = maxf(0.0, a.immune_t - dt)
+	# Form new engagements
+	for b in athletes:
+		if not _can_block(b):
+			continue
+		for d in athletes:
+			if not _can_be_blocked(d):
+				continue
+			var to: Vector2 = d.position - b.position
+			if to.length() <= T.ENGAGE_DIST and b.facing.dot(to.normalized()) >= T.ENGAGE_FACING_DOT:
+				b.engaged_with = d.id
+				d.engaged_with = b.id
+				b.engage_t = 0.0
+				d.engage_t = 0.0
+				event.emit("block", {"blocker": b.id, "defender": d.id})
+				break
+	# Apply engagements: defender displacement driven by blocker
+	for d in athletes:
+		if d.team == offense_team or d.engaged_with < 0:
+			continue
+		var b := get_athlete(d.engaged_with)
+		d.engage_t += dt
+		if d.engage_t >= T.BLOCK_HOLD or b == null or not b.can_act() or ball.is_held_by(b.id):
+			_release_block(d, b)
+			continue
+		var d_delta: Vector2 = d.position - prev[d.id]
+		var b_delta: Vector2 = b.position - prev[b.id]
+		d.position = field.clamp_playable(prev[d.id] + d_delta.lerp(b_delta, T.BLOCK_DRIVE))
+		d.velocity = d.velocity.lerp(b.velocity, T.BLOCK_DRIVE)
+
+func _release_block(d: Athlete, b: Athlete) -> void:
+	d.engaged_with = -1
+	d.immune_t = T.BLOCK_IMMUNITY
+	if b:
+		b.engaged_with = -1
+		b.immune_t = T.BLOCKER_BEATEN
+	event.emit("shed", {"defender": d.id})
+
+func _resolve_collisions() -> void:
+	var min_d := T.BODY_RADIUS * 2.0
+	for i in athletes.size():
+		var a: Athlete = athletes[i]
+		if a.is_grounded():
+			continue
+		for j in range(i + 1, athletes.size()):
+			var o: Athlete = athletes[j]
+			if o.is_grounded():
+				continue
+			var delta: Vector2 = o.position - a.position
+			var d := delta.length()
+			if d < min_d:
+				var n := delta / d if d > 0.0001 else Vector2(1, 0)
+				var push := (min_d - d) * 0.5
+				a.position -= n * push
+				o.position += n * push
 
 func _check_tackles() -> void:
 	var c := carrier()

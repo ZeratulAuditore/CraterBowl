@@ -7,6 +7,7 @@ const T := preload("res://src/sim/tuning.gd")
 const DT := 1.0 / 60.0
 
 var events: Array = []
+var carrier_at_whistle := Vector2.INF
 
 ## C, QB (holds ball after snap), plus extras placed at given positions after formation.
 func _setup(extra: Array) -> World:
@@ -19,7 +20,10 @@ func _setup(extra: Array) -> World:
 	w.setup_formation(25.0)
 	for i in extra.size():
 		w.athletes[2 + i].position = extra[i][2]
-	w.event.connect(func(n, d): events.append(n))
+	var qb: Athlete = w.find_role(0, Athlete.Role.QB)  # capture athlete, not world (avoids ref cycle)
+	w.event.connect(func(n, d):
+		events.append(n)
+		if n == "tackle" and d["carrier"] == qb.id: carrier_at_whistle = qb.position)
 	w.snap()
 	_run(w, {}, 0.5)
 	return w
@@ -39,7 +43,7 @@ func test_dive_tackles_carrier() -> void:
 	_run(w, {}, 0.4)
 	assert_true(events.has("tackle"), "tackle: %s" % str(events))
 	assert_eq(w.phase, World.Phase.DEAD, "dead")
-	assert_true(w.dead_ball_spot.distance_to(_qb(w).position) < 0.01, "spot at carrier")
+	assert_true(w.dead_ball_spot.distance_to(carrier_at_whistle) < 0.01, "spot at carrier when whistled")
 
 func test_missed_dive_grounds_defender() -> void:
 	var w := _setup([[1, Athlete.Role.LB, Vector2(40, 22)]])

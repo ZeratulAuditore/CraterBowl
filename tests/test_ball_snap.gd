@@ -67,3 +67,13 @@ func test_live_players_can_cross_los() -> void:
 	w.snap()
 	_run(w, {wr.id: {"dir": Vector2(0, 1)}}, 2.0)
 	assert_true(wr.position.y > 26.0, "WR runs past LOS after snap")
+
+func test_formation_restores_home_x() -> void:
+	var w := _world()
+	var wr := w.find_role(0, Athlete.Role.WR)
+	var home := wr.home_x
+	w.snap()
+	_run(w, {wr.id: {"dir": Vector2(1, 1)}}, 2.0)
+	w.setup_formation(30.0)
+	assert_near(wr.position.x, home, 0.001, "WR back at home x")
+	assert_near(wr.position.y, 29.0, 0.001, "WR at role depth")

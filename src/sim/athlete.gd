@@ -8,12 +8,17 @@ var team: int = 0
 var role: Role = Role.WR
 var dive_t := 0.0
 var recover_t := 0.0
+var home_x := 0.0          # formation x (spawn x); restored every setup_formation
+var engaged_with := -1   # id of blocker (on defender) or defender (on blocker)
+var engage_t := 0.0
+var immune_t := 0.0
 
 func _init(p_id: int = 0, p_team: int = 0, p_role: Role = Role.WR, start: Vector2 = Vector2.ZERO, f = null) -> void:
 	super(start, f)
 	id = p_id
 	team = p_team
 	role = p_role
+	home_x = start.x
 
 func is_diving() -> bool:
 	return dive_t > 0.0
@@ -33,6 +38,9 @@ func start_dive() -> bool:
 func reset_state() -> void:
 	dive_t = 0.0
 	recover_t = 0.0
+	engaged_with = -1
+	engage_t = 0.0
+	immune_t = 0.0
 	velocity = Vector2.ZERO
 
 func step(input: Vector2, wants_sprint: bool, dt: float) -> void:
