@@ -7,18 +7,23 @@ const BASE_WINDOW := 100.0
 const WINDOW_GROWTH := 25.0   # rating points per second waited
 const MAX_WINDOW := 600.0
 const MODES := ["casual", "competitive"]
+const GAMES := ["classic", "chaosball"]
 
 var queue: Array = []
 
 ## party: shared code among friends ("" = solo); party_size: members expected.
-func enqueue(id: int, mode: String, size: int, rating: float, now: float, name: String = "", party: String = "", party_size: int = 1) -> bool:
+func enqueue(id: int, mode: String, size: int, rating: float, now: float, name: String = "", party: String = "", party_size: int = 1, game: String = "classic") -> bool:
+	if not GAMES.has(game):
+		return false
+	if game == "chaosball":
+		size = 3   # Chaosball is always 3v3
 	if not MODES.has(mode) or not [3, 5, 7].has(size):
 		return false
 	if party != "" and (party_size < 2 or party_size > size):
 		return false   # a party must fit on one team
 	dequeue(id)
 	queue.append({"id": id, "mode": mode, "size": size, "rating": rating, "since": now,
-		"name": name if name != "" else "P%d" % id, "party": party, "party_size": party_size if party != "" else 1})
+		"name": name if name != "" else "P%d" % id, "party": party, "party_size": party_size if party != "" else 1, "game": game})
 	return true
 
 func dequeue(id: int) -> void:
@@ -35,28 +40,29 @@ func tick(now: float) -> Array:
 	var formed := true
 	while formed:
 		formed = false
-		for mode in MODES:
-			for size in [3, 5, 7]:
-				var m := _try_form(mode, size, now)
-				if not m.is_empty():
-					out.append(m)
-					for p in m["players"]:
-						dequeue(p)
-					formed = true
+		for game in GAMES:
+			for mode in MODES:
+				for size in [3, 5, 7]:
+					var m := _try_form(mode, size, now, game)
+					if not m.is_empty():
+						out.append(m)
+						for p in m["players"]:
+							dequeue(p)
+						formed = true
 	return out
 
-func _group(mode: String, size: int) -> Array:
+func _group(mode: String, size: int, game: String = "classic") -> Array:
 	var g := []
 	for e in queue:
-		if e["mode"] == mode and e["size"] == size:
+		if e["mode"] == mode and e["size"] == size and e.get("game", "classic") == game:
 			g.append(e)
 	g.sort_custom(func(a, b): return a["since"] < b["since"])
 	return g
 
 ## Matchable units: solo players, and parties once every member has queued.
-func _units(mode: String, size: int) -> Array:
+func _units(mode: String, size: int, game: String = "classic") -> Array:
 	var by_key := {}
-	for e in _group(mode, size):
+	for e in _group(mode, size, game):
 		var key: String = e["party"] if e["party"] != "" else "solo:%d" % e["id"]
 		if not by_key.has(key):
 			by_key[key] = []
@@ -75,8 +81,8 @@ func _units(mode: String, size: int) -> Array:
 	units.sort_custom(func(a, b): return a["since"] < b["since"])
 	return units
 
-func _try_form(mode: String, size: int, now: float) -> Dictionary:
-	var units := _units(mode, size)
+func _try_form(mode: String, size: int, now: float, game: String = "classic") -> Dictionary:
+	var units := _units(mode, size, game)
 	if units.is_empty():
 		return {}
 	var full := size * 2
@@ -107,7 +113,7 @@ func _try_form(mode: String, size: int, now: float) -> Dictionary:
 	for u in picked:
 		for m in u["members"]:
 			team_names[m["name"]] = teams[m["id"]]
-	return {"mode": mode, "size": size, "players": ids, "host": host, "teams": teams, "team_names": team_names}
+	return {"mode": mode, "size": size, "game": game, "players": ids, "host": host, "teams": teams, "team_names": team_names}
 
 ## Team split that keeps parties together: biggest units first, each onto the team
 ## with fewer players (tie: lower rating total), never over `size`.

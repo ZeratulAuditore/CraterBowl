@@ -103,3 +103,16 @@ func test_competitive_party_uses_avg_rating() -> void:
 	mm.enqueue(2, "competitive", 3, 1000, 0.0, "B", "DUO", 2)   # duo avg 1200
 	mm.enqueue(3, "competitive", 3, 1250, 0.0, "C")
 	assert_eq(mm.tick(MM.COMP_WAIT + 0.1).size(), 1, "solo within window of duo avg")
+
+func test_chaosball_queue_separate_and_3v3() -> void:
+	var mm := MM.new()
+	assert_true(mm.enqueue(1, "casual", 7, 1000, 0.0, "A", "", 1, "chaosball"), "chaosball accepted")
+	assert_eq(mm.queue[0]["size"], 3, "forced to 3v3")
+	mm.enqueue(2, "casual", 3, 1000, 0.0, "B")   # classic 3v3
+	assert_eq(mm.tick(100.0).size(), 0, "classic and chaosball never mix")
+	mm.enqueue(3, "casual", 3, 1000, 0.0, "C", "", 1, "chaosball")
+	var ms := mm.tick(100.0)
+	assert_eq(ms.size(), 1)
+	assert_eq(ms[0]["game"], "chaosball")
+	assert_eq(ms[0]["players"].size(), 2)
+	assert_true(not mm.enqueue(9, "casual", 3, 1000, 0.0, "Z", "", 1, "dodgeball"), "unknown game rejected")

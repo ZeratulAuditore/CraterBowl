@@ -190,3 +190,7 @@
 - Matchmaker units (solo or complete party), party-aware FCFS/rating-window forming, `unit_teams` split keeps parties together; `--party=CODE:SIZE` through client/server/main. Parity G09 now automated.
 - Process: iter 027's `git add -A` swept another session's uncommitted files (AGENTS.md, CLAUDE.md, docs/TESTING.md, shot.sh, capture.gd) into my commit — content is theirs and intact; LOOP.md now requires explicit-path staging.
 - Tests: 190 unit (+4); `MODE=party mm_test.sh` (Ann+Ben seated together) added to smoke.sh and the parity audit.
+
+## 029: D03 Chaosball in matchmaking (2026-11-25)
+- Matchmaker `game` dimension (classic/chaosball, Chaosball forced 3v3) through server/client/main; host lobby opens in the queued game mode. Parity G17 automated.
+- Tests: 191 unit (+1); `MODE=chaos mm_test.sh` in smoke.sh + parity audit.

@@ -1,6 +1,9 @@
 # Gap analysis
 
-Last evaluated: **2026-11-25** (baseline, see `reviews/2026-11-25.md`). State of `main` at `9b9ff79` (iter 026), plus uncommitted A26/A27 worktrees.
+Last evaluated: **2026-11-25**: baseline plus a screenshot pass (see `reviews/2026-11-25.md`). State of `main` at `2343e57` (iter 029), plus uncommitted A26/A27 worktrees.
+
+- **R-ss** = seen in the user's Gridiron Remastered open-beta screenshots (build 6763c93).
+- The other source tags are listed below.
 
 Source tags:
 - **O** = shipped in the original Gridiron (patch notes 2020–2022)
@@ -16,6 +19,22 @@ The A-list parity items are checked off and tested. However, the A-list was writ
 - **Ball carriers and blockers have no moves.** Gridiron's line play is a resource game (shield energy, bash, pancake, DL spin). Ours is an automatic engage with no input.
 - **The out-of-game layer is missing.** There is no audio, gamepad, menu, settings, chat, spectating, reconnect or party. A27 is in progress but nothing is merged yet.
 - **Online only works on a LAN or with open ports.** The invite code is just an encoded IP:port, and the host is trusted for XP, ratings and leaderboards.
+
+## What the remaster screenshots show (R-ss, open beta build 6763c93)
+The user's three screenshots are first-hand evidence of the remaster's current loop. That evidence settles several things web research couldn't confirm:
+
+| Seen in remaster | Ours today | → |
+|---|---|---|
+| Defensive play-call screen every snap: Zone/Man/Blitz filters, call × shell (Cover 2 Deep, Goal Line, Prevent 3 Deep), "LAST" recall, FLIP, auto "best play" + "every play", countdown, BREAK | QB cycles 6 pass plays with Q; defense has no calls | B03 + C08 (moved to the top) |
+| Full-field play diagram with teammate names on slots; drag to swap positions | none | B03, C12 |
+| Zones projected on the turf (hook vs flat/deep colors), tether lines, red blitz arrows, all pre-snap and in 3D | offense route lines only | C08 |
+| Live kickoff: stepped power meter, ball on a tee, kick/return alignments, KICKOFF banner | instant reset to the 25 | B09 (moved ahead of B01/B02) |
+| Scorebug: logos, scores, 3 timeout pips, quarter, clock, play clock, down & distance, "BALL ON COOLERS 19", mini field strip with LOS, mode label | one text label | A26/A27 checklist (TODO addenda) |
+| 4 quarters; 1st & **15** | 2 halves; 10-yd line to gain | C04, C21 (line to gain setting) |
+| Name tag + team ring over every athlete; own ring highlighted | jersey numbers only | C31 |
+| "7 VS BOTS" co-op queue; bots with generated names | co-op only by hand in private lobbies | C32 |
+| Named teams with logos and end-zone wordmarks | Team 0 / Team 1 | C33 |
+| 3-point stances, huddle animations | A26 in progress | A26 |
 
 ## Matrix
 
@@ -93,7 +112,7 @@ The A-list parity items are checked off and tested. However, the A-list was writ
 ### Modes
 | Feature | Ref | Ours | Gap → |
 |---|---|---|---|
-| 3v3/5v5/7v7, casual, ranked, private, practice, Chaosball | O/R | yes | none (D03: Chaosball not in matchmaking) |
+| 3v3/5v5/7v7, casual, ranked, private, practice, Chaosball | O/R | yes (Chaosball queue: iter 029) | none |
 | Chaosball double jump, dash-down, dive-cancel | O | no | C03 addendum |
 | 1v1 catching race (first to 15 vs. a robot QB) | O | no | C17 |
 | Tutorial | O | no (drills only) | C18 |
@@ -102,7 +121,8 @@ The A-list parity items are checked off and tested. However, the A-list was writ
 ### Online, social, trust
 | Feature | Ref | Ours | Gap → |
 |---|---|---|---|
-| Party queue (stays on the same team) | O | no | D02 |
+| Party queue (stays on the same team) | O | yes (iter 028) | none |
+| Co-op vs bots queue | R-ss | no | C32 |
 | Reconnect into the same slot; leaver/dodge penalties | O, Gx (Rocket League) | rejoining counts as a new join | **C11** |
 | Server browser for public custom lobbies | O | no | C15 |
 | NAT traversal / relay / dedicated server | O (GameLift) | raw IP code; host plays | B07 + C15 |
