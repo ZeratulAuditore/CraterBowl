@@ -49,7 +49,7 @@ func _initialize() -> void:
 					var p := item.split(":")
 					var code := OS.find_keycode_from_string(p[1])
 					if code == KEY_NONE:
-						push_error("capture: unknown key name '%s'" % p[1])
+						printerr("CAPTURE FAIL unknown key name '%s'" % p[1])
 						continue
 					var hold := int(p[2]) if p.size() > 2 else 1
 					_at(int(p[0]), func(): _key(code, true))

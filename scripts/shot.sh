@@ -36,8 +36,8 @@ env -u WAYLAND_DISPLAY timeout "${TIMEOUT:-240}" \
   --resolution "$RES" --fixed-fps 60 -s res://tools/capture.gd -- "${args[@]}" > "$LOG" 2>&1
 status=$?
 grep -E "^SHOT |^CAPTURE " "$LOG"
-if grep -E "SCRIPT ERROR|Parse Error" "$LOG" | grep -q .; then
-  grep -E "SCRIPT ERROR|Parse Error|at: " "$LOG" | head -20; echo "SHOT FAIL (script errors, log: $LOG)"; exit 1
+if grep -E "SCRIPT ERROR|Parse Error|CAPTURE FAIL" "$LOG" | grep -q .; then
+  grep -E "SCRIPT ERROR|Parse Error|CAPTURE FAIL|at: " "$LOG" | head -20; echo "SHOT FAIL (script errors, log: $LOG)"; exit 1
 fi
 if [ $status -ne 0 ] || ! grep -q "^SHOT .*(OK)" "$LOG"; then
   tail -20 "$LOG"; echo "SHOT FAIL (exit $status, log: $LOG)"; exit 1
