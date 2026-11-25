@@ -84,7 +84,8 @@ func _process(delta: float) -> void:
 		var ctl: Control = p[0]
 		var at: Vector2 = camera.unproject_position(p[1])
 		ctl.position = at - ctl.size * Vector2(0.5, 0.0 if p[2] else 0.5)
-		ctl.visible = not camera.is_position_behind(p[1]) and at.x > -200 and at.x < size.x + 200
+		var in_view := Rect2(Vector2.ZERO, size).encloses(ctl.get_rect())
+		ctl.visible = in_view and not camera.is_position_behind(p[1])
 
 # ---------------------------------------------------------------- scene
 func _build_stage(vp: SubViewport) -> void:
