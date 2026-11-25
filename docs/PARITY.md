@@ -14,7 +14,7 @@ Source of truth for "does our game match Gridiron's features" (Steam 708720 / Gr
 | G06 | Snap, block, pass, tackle, sprint | world.gd, athlete.gd | auto |
 | G07 | Casual + competitive matchmaking | matchmaker.gd, mm_server/client | auto |
 | G08 | Private matches | lobby.gd, invite_code.gd | auto |
-| G09 | Party up with friends (queue together) | — | GAP (D02) |
+| G09 | Party up with friends (queue together) | matchmaker.gd units + unit_teams | auto |
 | G10 | Offline practice | drills.gd | auto |
 | G11 | Chaosball 3v3: anyone throws/catches anytime | world rules | auto |
 | G12 | Chaosball: up to 3 bounces off ground/walls | world rules | auto |
@@ -22,7 +22,7 @@ Source of truth for "does our game match Gridiron's features" (Steam 708720 / Gr
 | G14 | Chaosball: low gravity | world.gravity() | auto |
 | G15 | Chaosball: pass streak raises TD value (cap 7) | world.streak_points | auto |
 | G16 | Chaosball: pass clock explodes the ball | world._step_pass_clock | auto |
-| G17 | Chaosball playable from matchmaking | — | GAP (D03) |
+| G17 | Chaosball playable from matchmaking | matchmaker GAMES + host lobby mode | auto |
 | G18 | Ranked climbing, seasons, season-exclusive rewards | ranked.gd | auto |
 | G19 | Extensive stats system | stats.gd | auto |
 | G20 | Public per-position leaderboards (top 100) | leaderboard.gd | auto |
@@ -61,6 +61,9 @@ EVIDENCE G07 mm MM TEST PASS (casual)
 EVIDENCE G07 mm MM TEST PASS (competitive)
 EVIDENCE G08 unit test_lobby.gd::test_lobby_ready_flow
 EVIDENCE G08 net joined by code into the private lobby
+EVIDENCE G09 unit test_matchmaker.gd::test_party_never_split
+EVIDENCE G09 unit test_matchmaker.gd::test_party_waits_for_all_members
+EVIDENCE G09 mm MM TEST PASS (party)
 EVIDENCE G10 unit test_drills.gd::test_builds
 EVIDENCE G10 flow drill counted the completion
 EVIDENCE G10 flow tackled with the real E key
@@ -75,6 +78,8 @@ EVIDENCE G15 unit test_chaos_scoring.gd::test_td_value
 EVIDENCE G15 flow HUD shows streak + TD value
 EVIDENCE G16 unit test_chaos_scoring.gd::test_pass_clock_explodes_and_turns_over
 EVIDENCE G16 flow held too long: ball exploded
+EVIDENCE G17 unit test_matchmaker.gd::test_chaosball_queue_separate_and_3v3
+EVIDENCE G17 mm MM TEST PASS (chaos)
 EVIDENCE G18 unit test_ranked.gd::test_season_rollover
 EVIDENCE G18 unit test_ranked.gd::test_upset_gains_more
 EVIDENCE G18 flow ratings saved

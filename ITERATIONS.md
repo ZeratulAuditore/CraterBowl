@@ -185,3 +185,12 @@
 - `docs/PARITY.md`: every Gridiron feature (G01–G26) → where it's built → machine-checkable evidence lines (unit PASS / flow OK / net OK / mm PASS). `scripts/parity_audit.sh` runs all suites and verifies evidence; exit 0 only with 0 fail, 0 gaps, 0 pending (`SKIP_RUN=1` re-checks last logs). Verified it discriminates (planted fake evidence → FAIL).
 - Result: 21 PASS, 3 GAP → filed D02 party queue (G09), D03 Chaosball in matchmaking (G17), D04 achievements (G23); +D05 return yards (A21 gap). 2 PENDING in parallel sessions: G25 controls/menus/settings (A27), G26 stadium presentation (A26).
 - A28 stays unchecked until the gaps are closed and A26/A27 merge; then the audit must pass.
+
+## 028: D02 Party queue (2026-11-25)
+- Matchmaker units (solo or complete party), party-aware FCFS/rating-window forming, `unit_teams` split keeps parties together; `--party=CODE:SIZE` through client/server/main. Parity G09 now automated.
+- Process: iter 027's `git add -A` swept another session's uncommitted files (AGENTS.md, CLAUDE.md, docs/TESTING.md, shot.sh, capture.gd) into my commit — content is theirs and intact; LOOP.md now requires explicit-path staging.
+- Tests: 190 unit (+4); `MODE=party mm_test.sh` (Ann+Ben seated together) added to smoke.sh and the parity audit.
+
+## 029: D03 Chaosball in matchmaking (2026-11-25)
+- Matchmaker `game` dimension (classic/chaosball, Chaosball forced 3v3) through server/client/main; host lobby opens in the queued game mode. Parity G17 automated.
+- Tests: 191 unit (+1); `MODE=chaos mm_test.sh` in smoke.sh + parity audit.

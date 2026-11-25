@@ -9,5 +9,7 @@
 .mm-a.log
 .mm-b.log
 .parity-*.log
+.menu-flow.log
+build/
 __pycache__/
 *.pyc
