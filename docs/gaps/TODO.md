@@ -26,7 +26,7 @@ After that, follow the list order below. B01/B02 (line play, press) come after t
 
 ## P0: core football a player notices in match one
 
-### [ ] C01 Run game: handoffs, run plays, RB carries
+### [~] C01 Run game: handoffs, run plays, RB carries (claimed: codex 2026-11-25)
 - **Why:** Gridiron had animated handoffs with a re-handoff cooldown and 2 s of stamina immunity (O 1.0.3.52/53). Ours is pass-only, so RBs and OL have nothing to do on most plays. This is the single biggest feel gap.
 - **Accept:**
   - QB can hand the ball to an adjacent back with an action key. Possession transfers in the sim, and a second handoff is blocked by a cooldown.
