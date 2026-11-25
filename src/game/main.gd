@@ -26,6 +26,7 @@ const Leaderboard := preload("res://src/sim/leaderboard.gd")
 const Ranked := preload("res://src/sim/ranked.gd")
 const Cosmetics := preload("res://src/sim/cosmetics.gd")
 const Replay := preload("res://src/sim/replay.gd")
+const Achievements := preload("res://src/sim/achievements.gd")
 const MMServer := preload("res://src/net/mm_server.gd")
 const MMClient := preload("res://src/net/mm_client.gd")
 const InviteCode := preload("res://src/net/invite_code.gd")
@@ -70,6 +71,7 @@ var profile_path := Cosmetics.DEFAULT_PATH
 var looks := {}            # athlete_id -> look (view-only)
 var peer_looks := {}       # server: peer_id -> sanitized look
 var xp_line := ""
+var achievement_line := ""
 var replay := Replay.new()
 var replay_active := false      # views show replay frames instead of the live sim
 var replay_viewer := false      # --replay=FILE standalone viewer
@@ -397,14 +399,45 @@ func _match_awards() -> Dictionary:
 		xp[nm] = Cosmetics.award_xp(lines.get(nm, {}), series.winner() == team_of[nm])
 	return xp
 
-## Every machine credits only its own player's local profile.
-func _apply_award(xp: Dictionary) -> void:
+## Per-human achievement context (merged stats, result, deficit overcome, rating).
+func _match_contexts(ratings: Dictionary) -> Dictionary:
+	var out := {}
+	var team_of := {}
+	for s in roster.slots:
+		if s["owner"] >= 0:
+			team_of[owner_name(s["athlete_id"])] = s["team"]
+	if roster.slots.is_empty():
+		team_of[owner_name(my_id)] = world.get_athlete(my_id).team
+	for nm in team_of:
+		var line := {}
+		for k in stats.lines:
+			if k.get_slice("|", 0) == nm:
+				for f in stats.lines[k]:
+					line[f] = maxf(line.get(f, 0.0), float(stats.lines[k][f])) if f == "max_td_pts" else line.get(f, 0.0) + float(stats.lines[k][f])
+		var t: int = team_of[nm]
+		out[nm] = {"line": line, "won": series.winner() == t, "deficit": series.max_deficit[t],
+			"rating": ratings.get(nm, 0.0), "mode": match_mode}
+	return out
+
+## Every machine credits only its own player's local profile (XP + achievements).
+func _apply_award(xp: Dictionary, ctx: Dictionary = {}) -> void:
 	var me := owner_name(my_id) if not is_client() else player_name
 	if not xp.has(me):
 		return
-	var gained := profile.add_xp(int(xp[me]))
+	var total := int(xp[me])
+	profile.games += 1
+	var unlocked := []
+	if ctx.has(me):
+		var c: Dictionary = ctx[me].duplicate()
+		c["games"] = profile.games
+		for a in Achievements.evaluate(c, profile.achievements):
+			profile.achievements.append(a["id"])
+			unlocked.append(a["name"])
+			total += int(a["xp"])
+	var gained := profile.add_xp(total)
 	profile.save(profile_path)
-	xp_line = "XP +%d (Level %d%s)" % [int(xp[me]), profile.level(), " - LEVEL UP!" if gained > 0 else ""]
+	xp_line = "XP +%d (Level %d%s)" % [total, profile.level(), " - LEVEL UP!" if gained > 0 else ""]
+	achievement_line = ("ACHIEVEMENTS: " + ", ".join(unlocked)) if not unlocked.is_empty() else ""
 
 func _on_match_event(n: String, _d: Dictionary) -> void:
 	if n == "final" and drill == null:
@@ -412,21 +445,24 @@ func _on_match_event(n: String, _d: Dictionary) -> void:
 		print("REPLAY saved: %s" % saved_replay)
 	if n == "final":
 		if not is_client() and drill == null:
-			var awards := _match_awards()
-			_apply_award(awards)
-			if is_server():
-				net.broadcast_event("awards", {"xp": awards})
 			my_ranks = _record_leaderboard()
+			var ratings := {}
 			if ranked_match:
 				var r := _record_ranked()
 				var rk := Ranked.new()
 				rk.load_file(ranked_path)
 				profile.season_rewards = rk.rewards.get(owner_name(my_id), [])
-				profile.save(profile_path)
+				for nm in r.get("deltas", {}):
+					ratings[nm] = rk.rating(nm)
 				ranked_line = _ranked_text(r)
 				print("RANKED: %s" % str(r))
 				if is_server():
 					net.broadcast_event("ranked", r)
+			var awards := _match_awards()
+			var ctx := _match_contexts(ratings)
+			_apply_award(awards, ctx)
+			if is_server():
+				net.broadcast_event("awards", {"xp": awards, "ctx": ctx})
 		summary_lines = stats.summary_lines()
 		print("MATCH SUMMARY:\n  " + "\n  ".join(summary_lines))
 		if is_server():
@@ -742,7 +778,7 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 		looks = d["looks"]
 		_apply_looks()
 	if n == "awards" and d.get("xp") is Dictionary:
-		_apply_award(d["xp"])
+		_apply_award(d["xp"], d.get("ctx", {}) if d.get("ctx") is Dictionary else {})
 	if n == "touchdown":
 		var cid: int = d.get("carrier", -1)
 		if cid >= 0 and cid < views.size():
@@ -1042,6 +1078,8 @@ func _process(delta: float) -> void:
 			phase_name += "\n" + ranked_line
 		if xp_line != "":
 			phase_name += "\n" + xp_line
+		if achievement_line != "":
+			phase_name += "\n" + achievement_line
 	else:
 		phase_name = "HOME %d - AWAY %d | %s | %s | %s | %s" % [series.score[0], series.score[1], clock_txt, situation, side, phase_name]
 	var charge_txt := ("   THROW %d%%" % int(charge * 100)) if charging else ""

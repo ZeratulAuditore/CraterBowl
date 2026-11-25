@@ -4,7 +4,7 @@ extends RefCounted
 const Athlete := preload("res://src/sim/athlete.gd")
 const ROLE := {0: "QB", 1: "C", 2: "WR", 3: "RB", 4: "LB", 5: "CB", 6: "S", 7: "OL", 8: "DL"}
 const FIELDS := ["att", "comp", "pass_yds", "pass_td", "int_thrown", "rec", "rec_yds", "rec_td",
-	"car", "rush_yds", "rush_td", "tkl", "sack", "int", "pbu", "ff", "fr", "pts", "blk"]
+	"car", "rush_yds", "rush_td", "tkl", "sack", "int", "pbu", "ff", "fr", "pts", "blk", "def_td", "max_td_pts"]
 
 var world
 var owner_fn: Callable     # athlete_id -> owner name ("Bot" for AI)
@@ -83,6 +83,8 @@ func _end_play(n: String, d: Dictionary) -> void:
 	if not on_offense:
 		if n == "touchdown":
 			_add(carrier, "pts", d.get("points", 6))
+			_add(carrier, "def_td")
+			_note_td_points(carrier, d.get("points", 6))
 		return   # return yards not tracked yet
 	if _receiver >= 0 and carrier == _receiver:
 		_add(_passer, "pass_yds", gain)
@@ -97,6 +99,12 @@ func _end_play(n: String, d: Dictionary) -> void:
 			_add(carrier, "rush_td")
 	if n == "touchdown":
 		_add(carrier, "pts", d.get("points", 6))
+		_note_td_points(carrier, d.get("points", 6))
+
+func _note_td_points(aid: int, pts) -> void:
+	_add(aid, "max_td_pts", 0.0)
+	var k := _key(aid)
+	lines[k]["max_td_pts"] = maxf(lines[k]["max_td_pts"], float(pts))
 
 func get_line(owner: String, pos: String) -> Dictionary:
 	return lines.get("%s|%s" % [owner, pos], {})

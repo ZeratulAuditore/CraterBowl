@@ -194,3 +194,9 @@
 ## 029: D03 Chaosball in matchmaking (2026-11-25)
 - Matchmaker `game` dimension (classic/chaosball, Chaosball forced 3v3) through server/client/main; host lobby opens in the queued game mode. Parity G17 automated.
 - Tests: 191 unit (+1); `MODE=chaos mm_test.sh` in smoke.sh + parity audit.
+
+## 030: D04 Achievements (2026-11-25)
+- `src/sim/achievements.gd`: 12 original milestones (First Touchdown, First Win, Gunslinger, Sure Hands, Workhorse, Sack Artist, Lockdown, Pick Six, Perfect Chaos, Comeback Kids, Going for Gold, Iron Man) as predicates over a per-player match context; bonus XP each. Stats `def_td` + `max_td_pts`; Match `max_deficit`; profile `achievements` + `games`.
+- FINAL: host computes ranked first, then per-human contexts, broadcasts `awards` {xp, ctx}; each machine evaluates/saves only its own player; HUD "ACHIEVEMENTS: …". Parity G23 automated → all 3 pre-audit gaps closed.
+- Found: flow steps placed out of frame order silently never ran (harness quits after the last listed step) → game_flow.gd now sorts steps by frame.
+- Tests: 196 unit (+5); flow +3 (real TD + win unlocks + HUD + saved).
