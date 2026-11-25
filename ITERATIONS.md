@@ -121,4 +121,4 @@
 - `src/net/lobby.gd`: LOBBY/IN_GAME, players + ready, host-only validated settings (size 3/5/7, half 2/5/8 min; settings change clears ready), serialization. Clock half length per match.
 - Host opens a lobby by default (`--no-lobby` for instant start; `--start-when-ready`, `--advertise=IP` for headless/tests); prints the invite code; lobby state broadcast reliably; clients ready via lobby actions; when all ready → configure(size) + half length + roster slots + welcomes; late joiners go straight in. Lobby HUD + keys (Enter ready; host 3/5/7, H).
 - **Found + fixed a latent bug:** the real keyboard handler had never been updated since iter 002 (string-replace patches silently didn't match): Space/E/1/2 bypassed `do_action` (broken online), and TAB/T/Q/F didn't exist. Rewrote it; added real-key-event flow steps; added `tools/patch.py` (strict) + LOOP.md rules.
-- Tests: 125 unit (+7); flow 62 checks (+6 real-key steps); net test joins **by invite code** through lobby ready-up (11 checks), 3/3 passes.
+- Tests: 125 unit (+7); flow 61 checks (+6 real-key steps); net test joins **by invite code** through lobby ready-up (11 checks), 3/3 passes.
