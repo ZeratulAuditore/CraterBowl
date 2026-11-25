@@ -2,6 +2,7 @@ extends RefCounted
 ## Wire protocol: snapshot codec, input sanitizing, authoritative action routing. Pure.
 
 const Routes := preload("res://src/sim/routes.gd")
+const DefensivePlaybook := preload("res://src/sim/defensive_playbook.gd")
 const DIVE_FLAG := 1
 const GROUND_FLAG := 2
 
@@ -22,6 +23,7 @@ static func encode_snapshot(m, tick: int, acks: Dictionary = {}) -> Dictionary:
 		"s": PackedInt32Array(m.score),
 		"c": PackedFloat32Array([m.clock.half, m.clock.remaining, m.clock.play_clock, 1.0 if m.clock.final else 0.0]),
 		"ms": m.state, "tp": m.try_points, "ack": acks, "pl": w.play_name, "rt": _routes_array(w),
+		"dc": w.defensive_call,
 		"cs": PackedFloat32Array([w.streak, w.hold_t]),
 	}
 
@@ -71,6 +73,7 @@ static func apply_snapshot(m, s: Dictionary) -> void:
 	m.state = s["ms"]
 	m.try_points = s["tp"]
 	w.play_name = str(s.get("pl", w.play_name))
+	w.defensive_call = s.get("dc", "")
 	var cs: PackedFloat32Array = s.get("cs", PackedFloat32Array([0, 0]))
 	w.streak = int(cs[0])
 	w.hold_t = cs[1]
@@ -113,6 +116,9 @@ static func sanitize_action(act) -> Dictionary:
 		"play":
 			var p = act.get("p", "")
 			return {"a": "play", "p": p} if p is String and Routes.PLAYBOOK.has(p) else {}
+		"defense":
+			var id = act.get("p", "")
+			return {"a": "defense", "p": id} if id is String and DefensivePlaybook.CALLS.has(id) else {}
 		"route":
 			var r = act.get("r", "")
 			return {"a": "route", "r": r} if r is String and Routes.ROUTES.has(r) else {}
@@ -138,6 +144,8 @@ static func apply_action(m, athlete_id: int, action: Dictionary) -> bool:
 			return ath.team == w.offense_team and m.choose_try(act["n"])
 		"play":
 			return ath.team == w.offense_team and w.phase == w.Phase.PRESNAP and w.call_play(act["p"])
+		"defense":
+			return ath.team != w.offense_team and w.call_defense(act["p"])
 		"route":
 			return w.phase == w.Phase.PRESNAP and w.set_route(athlete_id, act["r"])
 	return false

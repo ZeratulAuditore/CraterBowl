@@ -102,7 +102,7 @@ After that, follow the list order below. B01/B02 (line play, press) come after t
 - **Accept:** Suggest a goal-line call near the end zone and a prevent call on long late downs, with a base fallback.
 - This catalog supplies the defensive side of B03. Apply assignments in the sim and expose them in the huddle and on-field art in the remaining C08 items.
 
-### [~] C08b Defensive play selection and synchronization (claimed: codex 2026-11-25)
+### [x] C08b Defensive play selection and synchronization
 - **Accept:** Each classic snap starts with the suggested defensive call. The defending team can select any catalog call during presnap, and the selection is synchronized to clients.
 - The huddle control, on-field assignments and bot behavior follow in C08c.
 

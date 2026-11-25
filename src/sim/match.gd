@@ -47,7 +47,12 @@ func start(offense: int = 0, los: float = -1.0) -> void:
 	clock.reset()
 	downs.reset(offense, los)
 	world.set_offense(offense)
-	world.setup_formation(los)
+	_setup_formation()
+
+func _setup_formation() -> void:
+	world.setup_formation(downs.los)
+	world.call_defense(World.DefensivePlaybook.suggest(downs.down, downs.distance(),
+		goal() - downs.los, clock.remaining))
 
 func _on_world_event(n: String, d: Dictionary) -> void:
 	match n:
@@ -67,7 +72,7 @@ func choose_try(points: int) -> bool:
 		return false
 	try_points = points
 	downs.los = try_los(points)
-	world.setup_formation(downs.los)
+	_setup_formation()
 	return true
 
 func _award(team: int, pts: int, why: String) -> void:
@@ -163,6 +168,6 @@ func next_play() -> Dictionary:
 	clock.new_play()
 	if downs.offense_team != world.offense_team:
 		world.set_offense(downs.offense_team)
-	world.setup_formation(downs.los)
+	_setup_formation()
 	match_event.emit(last_outcome["outcome"], last_outcome)
 	return last_outcome
