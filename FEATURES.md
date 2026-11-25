@@ -41,7 +41,8 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [ ] B01 Line play minigame (leverage/hand-fighting timing)
 - [ ] B02 DB press/jam mechanic
 - [ ] B03 Play-card huddle (5s, 6–8 plays per side)
-- [ ] B04 Instant replay of last play + highlight clips
+- [x] B04a Play replays: play summaries + highlight tags, auto highlight replay (offline), replay cameras, in-match transport (pause/frame/plays/highlights/speed), highlight reel at FINAL, replay overlay
+- [ ] B04b Highlights, part 2: online auto TD replay with a skip vote, MVP card at FINAL, free-cam replay theater, clip export (frame range → image sequence/video), auto-replay toggle in Settings
 - [ ] B05 Friend-group seasons + persistent stats
 - [ ] B06 Juice: hit-stop, screenshake, crowd stingers
 - [~] B07 Steam relay / NAT traversal (out-of-game session): UPnP + public-IP invite codes + server browser DONE; relay for CGNAT + hosted public matchmaker pending (needs user decision, docs/OUT_OF_GAME.md)

@@ -204,3 +204,10 @@
 - Classic matches seed a defensive call from the game situation each snap. The host accepts catalog calls from defending athletes during presnap and sends the current call in match snapshots.
 - Player controls, assignment behavior and play art remain open in C08c and B03.
 - Tests: 204 unit (+2); full smoke passed, including a remote defender's selection round-tripping through the host.
+
+## 032: B04a Play replays (2026-11-25)
+- `replay.gd`: per-play summaries from sim events (yards from LOS, pass/run, TOUCHDOWN / INTERCEPTION / FUMBLE LOST / SACK tags, 20+ yd = highlight, clock + down context in the label). Highlight clips run at 1x and finish with a 2 s slow-mo. Also adds a highlight reel, next-highlight, frame-step and progress. Files from before this change still load; the save version is now 2.
+- Main: offline highlights auto-replay 1 s after the whistle (once; V/Enter skips; `--auto-replay=0`). In-match and viewer transport: Space, `,` `.`, ←/→, H, `[ ]`, C. Ball-tracking replay cameras (Broadcast / End zone / Sky / Player) cut in, then track. V at FINAL plays the highlight reel.
+- `src/game/replay_overlay.gd`: broadcast REPLAY / HIGHLIGHT / REEL bug, summary, context, progress bar, hints. It hides the live overlay widgets during the replay and restores them; `overlay.gd` (A26) is untouched.
+- Tests: 208 unit (+4); flow 116 checks (+19, real keys). Verified visually with shot.sh: sack highlight on the Broadcast cam, then on the End zone cam in slow-mo.
+- Gaps → B04b: online auto replay needs a skip vote; MVP card; free-cam theater; clip export; no Settings toggle for auto replay yet (CLI flag only). An `mm_test` competitive run failed once under load from 14 Godot processes run by other sessions; it passed 3/3 alone.
