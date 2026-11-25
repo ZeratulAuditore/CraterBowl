@@ -34,3 +34,10 @@ func clamp_playable(p: Vector2) -> Vector2:
 	return Vector2(
 		clampf(p.x, -m, width + m),
 		clampf(p.y, -endzone_depth - m, length + endzone_depth + m))
+
+## Goalposts sit on the back (end) line. Kicks attack +y, so the live posts are at the far end.
+func upright_span() -> float:
+	return clampf(width * T.UPRIGHT_SPAN_FRACTION, 4.5, 6.2)
+
+func posts_y() -> float:
+	return length + endzone_depth

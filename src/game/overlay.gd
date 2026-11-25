@@ -323,6 +323,10 @@ func _down_text(main) -> String:
 		return main.drill.label()
 	if int(s.state) == 1:
 		return "TRY FOR %d" % s.try_points
+	if int(s.state) == 2:
+		return "KICKOFF"
+	if int(s.state) == 3:
+		return "COIN TOSS"
 	if main.world.is_chaos():
 		return "STREAK %d  ·  TD %d" % [main.world.streak, main.world.streak_points()]
 	var lab: String = s.downs.label()
@@ -350,6 +354,13 @@ func _status_text(main) -> String:
 		0:
 			var mine: bool = w.offense_team == w.get_athlete(main.my_id).team
 			var t := "BALL ON %s  ·  " % spot if spot != "" else ""
+			if int(s.state) == 3:
+				var won: bool = s.toss_winner == w.get_athlete(main.my_id).team
+				return ("YOU WON THE TOSS  ·  1 RECEIVE  ·  2 KICK" if won else "COIN TOSS  ·  %s CHOOSING" % ("HOME" if s.toss_winner == 0 else "AWAY"))
+			if w.kick_play == "kickoff":
+				return "KICKOFF  ·  " + ("SPACE / HOLD J TO KICK" if mine else "RETURN TEAM")
+			if w.kick_play != "" and mine:
+				t += ("PUNT" if w.kick_play == "punt" else "FIELD GOAL") + "  ·  "
 			return t + ("SPACE TO SNAP" if mine else "DEFENSE  ·  SPACE TO LET THEM SNAP")
 		1:
 			if main.world.is_chaos():
@@ -391,7 +402,11 @@ func _hints(main) -> String:
 	var me = w.get_athlete(main.my_id)
 	var offense: bool = me != null and w.offense_team == me.team
 	if int(w.phase) == 0:
-		return "WASD MOVE · SHIFT SPRINT · TAB POSITION · T TEAM" + (" · Q PLAY · F ROUTE" if offense else "")
+		if w.kick_play == "kickoff":
+			return "HOLD J / LMB AIM + CHARGE · RELEASE TO KICK" if offense else "WASD MOVE · SHIFT SPRINT"
+		return "WASD MOVE · SHIFT SPRINT · TAB POSITION · T TEAM" + (" · Q PLAY · F ROUTE · K KICK" if offense else "")
 	if int(w.phase) == 1 and main.world.ball.is_held_by(main.controlled_id):
+		if main.kicking():
+			return "HOLD J / LMB AIM + CHARGE · RELEASE TO KICK"
 		return "HOLD J / LMB AIM + CHARGE · RELEASE TO THROW · CTRL LOB"
 	return "WASD MOVE · SHIFT SPRINT · E / RMB TACKLE"

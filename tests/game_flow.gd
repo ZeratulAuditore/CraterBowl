@@ -17,6 +17,7 @@ var picked := false
 var xp0 := 0
 var frozen_y := 0.0
 var wr_id := -1
+var kick_events: Array = []
 
 func check(cond: bool, msg: String) -> void:
 	print(("  FLOW OK   " if cond else "  FLOW FAIL ") + msg)
@@ -30,6 +31,9 @@ func _initialize() -> void:
 	# scripted steps drive play changes; auto-advance checked at the end
 	steps = [
 		[2, func(): _connect_listeners(); _isolate_user_files()],  # world/series are (re)built in main._ready -> connect after
+		# Random toss at boot: a human winner gets the choice; a bot winner takes the ball at once.
+		[3, func(): var s = main.series; check(s.toss_winner >= 0 and main.world.kick_play == "kickoff", "match opens with a coin toss + kickoff"); check((s.state == main.Match.State.TOSS and main.world.kick_locked and main.hud.text.find("COIN TOSS") >= 0) or (s.state == main.Match.State.KICKOFF and s.toss_choice == "receive" and main.hud.text.find("KICKOFF") >= 0), "toss pending for a human winner, else decided (%s)" % s.toss_choice)],
+		[4, func(): main.opening_kickoff = false; main.series.start(0); main.set_controlled(main.my_id)],  # legacy steps start on a scrimmage snap
 		[5, func(): check(main.world.phase == main.World.Phase.PRESNAP, "starts presnap")],
 		[6, func(): check(main.world.snap(), "snap")],
 		[40, func(): check(main.world.ball.is_held_by(main.controlled_id), "QB has ball")],
@@ -63,12 +67,12 @@ func _initialize() -> void:
 		[2435, func(): check(main.series.choose_try(2), "choose 2-pt try"); check(absf(main.world.los_y - 90.0) < 0.01, "2-pt from the 10")],
 		[2436, func(): main.world.snap()],
 		[2470, func(): var c = main.world.carrier(); c.position = Vector2(26, 101.0)],
-		[2472, func(): main.next_play(); check(main.series.score[0] == 8, "try good: 8"); check(main.world.offense_team == 1 and absf(main.world.los_y - 25.0) < 0.01, "kickoff: away ball at its 25")],
+		[2472, func(): main.next_play(); check(main.series.score[0] == 8, "try good: 8"); check(main.series.state == main.Match.State.KICKOFF and main.world.offense_team == 0 and absf(main.world.los_y - 35.0) < 0.01, "kickoff: home kicks from its 35")],
 		# A09: play clock auto-snap, untimed down, halftime
 		[2473, func(): check(main.hud.text.find("H1 ") >= 0 and main.hud.text.find("PLAY ") >= 0, "HUD game + play clock"); main.series.clock.play_clock = 0.3],
 		[2500, func(): check(main.world.phase == main.World.Phase.LIVE, "play clock auto-snapped"); main.series.clock.remaining = 0.2],
 		[2530, func(): check(main.series.clock.expired(), "clock hit 0:00")],
-		[3200, func(): _force_dead_if_live(); main.next_play(); check(main.series.clock.half == 2, "halftime -> 2nd half"); check(main.world.offense_team == 1 - main.series.opening_receiver, "other team receives 2nd half")],
+		[3200, func(): _force_dead_if_live(); main.next_play(); check(main.series.clock.half == 2, "halftime -> 2nd half"); check(main.series.last_outcome.get("receiving", -1) == 1 - main.series.opening_receiver, "other team receives 2nd half")],
 		# A11: position change + team swap between plays, rejected while live
 		[3201, func(): before_id = main.my_id; check(main.do_action({"a": "cycle"}), "TAB position change"); check(main.my_id != before_id and main.controlled_id == main.my_id, "now controlling new position")],
 		[3202, func(): var t0: int = main.world.get_athlete(main.my_id).team; check(main.do_action({"a": "team"}), "team swap"); check(main.world.get_athlete(main.my_id).team == 1 - t0, "on the other team")],
@@ -155,6 +159,27 @@ func _initialize() -> void:
 		[7502, func(): check(main.saved_replay != "" and FileAccess.file_exists(main.saved_replay), "replay saved at final (%s)" % main.saved_replay)],
 		[7503, func(): check(main.open_replay(main.saved_replay) and main.replay_viewer and main.replay.plays.size() >= 1, "viewer opens the saved replay"); _key(KEY_BRACKETRIGHT); check(main.replay.speed == 2.0, "] speeds up")],
 		[7504, func(): _key(KEY_V); check(not main.replay_active, "V exits viewer"); for f in DirAccess.get_files_at(ProjectSettings.globalize_path("user://test_flow_replays")): DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_flow_replays/" + f))],
+		# B09/C02: coin toss with the real keys -> live kickoff with the charge meter -> return
+		[7600, func(): main.opening_kickoff = true; main.toss_seed = 0; main.configure(7); kick_events.clear(); main.world.event.connect(func(n, _d): kick_events.append(n))],
+		[7602, func(): check(main.series.state == main.Match.State.TOSS and main.series.toss_winner == 0, "home won the toss"); check(main.hud.text.find("COIN TOSS: HOME wins") >= 0, "HUD offers the choice"); _key(KEY_2)],
+		[7603, func(): check(main.series.state == main.Match.State.KICKOFF and main.world.offense_team == 0, "2 key: home kicks"); check(main.world.ball.is_held_by(main.controlled_id), "you are the kicker"); check(main.hud.text.find("KICKOFF") >= 0, "HUD: kickoff")],
+		[7604, func(): main.aim_point = Vector2(main.field.width / 2.0, 95.0); main._set_charging(true)],
+		[7640, func(): check(main.hud.text.find("KICK ") >= 0, "HUD meter says KICK"); check(main.arc_dots[0].visible, "kick arc preview")],
+		[7641, func(): main._set_charging(false); check(main.world.kicked and kick_events.has("kick"), "kicked off with the charge meter")],
+		[8300, func(): check(main.world.phase == main.World.Phase.DEAD, "kickoff play over (%s)" % main.last_whistle); _force_dead_if_live(); main.next_play(); check(main.world.offense_team == 1 and main.series.state == main.Match.State.SCRIMMAGE, "receiving team's ball (%s)" % main.series.last_outcome.get("outcome", "?"))],
+		# 4th down: K calls a punt, Space snaps, the meter punts
+		[8301, func(): main.series.start(0, 30.0); main.series.downs.down = 4; main.set_controlled(main.my_id); kick_events.clear()],
+		[8302, func(): _key(KEY_K); check(main.world.kick_play == "punt", "K key calls a punt")],
+		[8303, func(): check(main.hud.text.find("KICK: PUNT") >= 0, "HUD shows the punt call"); _key(KEY_SPACE)],
+		[8340, func(): check(main.world.ball.is_held_by(main.controlled_id), "punter has the snap"); main.aim_point = Vector2(main.field.width / 2.0, 75.0); main._set_charging(true)],
+		[8380, func(): main._set_charging(false); check(kick_events.has("kick") and not kick_events.has("throw"), "punted, not thrown")],
+		[9100, func(): _force_dead_if_live(); main.next_play(); check(main.world.offense_team == 1, "punt: possession changes (%s)" % main.series.last_outcome.get("outcome", "?"))],
+		# K twice = field goal; a good kick scores 3
+		[9101, func(): main.series.start(0, 85.0); main.series.downs.down = 4; main.set_controlled(main.my_id); main.ai.defense_enabled = false],
+		[9102, func(): _key(KEY_K); _key(KEY_K); check(main.world.kick_play == "fg", "K K: field goal"); _key(KEY_SPACE)],
+		[9140, func(): var k = main.world.get_athlete(main.controlled_id); main.aim_point = Vector2(main.field.width / 2.0, main.field.posts_y()); main._set_charging(true); main.charge = main.World.kick_power_for("fg", main.field.posts_y() - k.position.y + 6.0, 5.3, main.world.gravity())],
+		[9141, func(): main._set_charging(false)],
+		[9400, func(): check(main.last_whistle == "FIELD GOAL GOOD", "field goal good (%s)" % main.last_whistle); main.next_play(); check(main.series.score[0] == 3, "+3"); check(main.series.state == main.Match.State.KICKOFF, "then a kickoff"); main.ai.defense_enabled = true],
 	]
 
 ## First receiver not controlled by the human (humans don't auto-run routes).

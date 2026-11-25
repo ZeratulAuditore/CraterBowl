@@ -40,6 +40,16 @@ var rules := {"gravity": 1.0, "anyone_throws": false, "self_catch": false, "max_
 var bounces := 0
 var streak := 0          # Chaosball: completed teammate passes this possession
 var hold_t := 0.0        # Chaosball: how long the current holder has had the ball
+# Kicking (B09/C02). Kicks always travel +y (the kicking team is the world offense).
+const KICK_CALLS := ["", "punt", "fg"]
+var kick_play := ""      # "", "punt", "fg" (field goal or PAT), "kickoff"
+var kick_locked := false # kickoff can't go yet (coin-toss choice pending)
+var kicked := false      # the ball was kicked this play
+var kick_live := false   # a kick is in the air
+var kick_free := false   # kicked ball not yet possessed by anyone (and not blocked)
+var kick_blocked := false
+var kick_spot := Vector2.ZERO
+var _kick_rest_t := 0.0
 
 ## role/pos are for the athlete's current side. Optional two-way setup:
 ## off/def roles + x via set_two_way().
@@ -122,8 +132,132 @@ func setup_formation(los: float) -> void:
 	hold_t = 0.0
 	call_play("Verticals")
 	defensive_call = ""
+	_reset_kick()
 	phase = Phase.PRESNAP
 	_sync_ball()
+
+func _reset_kick() -> void:
+	kick_play = ""
+	kick_locked = false
+	kicked = false
+	kick_live = false
+	kick_free = false
+	kick_blocked = false
+	_kick_rest_t = 0.0
+
+func kicker() -> Athlete:
+	return find_role(offense_team, Athlete.Role.QB)
+
+## Presnap: offense calls a punt / field goal ("" = run a normal play). The kicker
+## backs up to punt/hold depth and the return team drops a returner deep on punts.
+func call_kick(kind: String) -> bool:
+	if phase != Phase.PRESNAP or is_chaos() or not KICK_CALLS.has(kind) or kick_play == "kickoff":
+		return false
+	kick_play = kind
+	var k := kicker()
+	var c := find_role(offense_team, Athlete.Role.C)
+	if k and c:   # 3v3 has no snapper: the QB kicks from where he stands
+		var depth: float = {"punt": T.PUNT_DEPTH, "fg": T.FG_HOLD_DEPTH}.get(kind, FORMATION_DEPTH[Athlete.Role.QB])
+		k.position = Vector2(field.width / 2.0, los_y - depth)
+	var ret := returner()
+	if ret:
+		var deep: float = los_y + (T.PUNT_RETURNER_DEPTH if kind == "punt" else FORMATION_DEPTH.get(ret.role, 12.0))
+		ret.position = Vector2(field.width / 2.0 if kind == "punt" else ret.home_x, minf(deep, field.length + field.endzone_depth * 0.5))
+	_sync_ball()
+	return true
+
+## The return team's deep man: a safety, else a corner, else anyone.
+func returner() -> Athlete:
+	var best: Athlete = null
+	for a in athletes:
+		if a.team == offense_team:
+			continue
+		if best == null or _return_rank(a.role) > _return_rank(best.role) or (_return_rank(a.role) == _return_rank(best.role) and a.id < best.id):
+			best = a
+	return best
+
+static func _return_rank(role: int) -> int:
+	return {Athlete.Role.S: 3, Athlete.Role.CB: 2, Athlete.Role.LB: 1}.get(role, 0)
+
+## Kickoff alignment: kicker on the tee at the LOS with the coverage spread
+## beside him; the return team lines up 12+ yd off with a returner deep.
+func setup_kickoff(los: float) -> void:
+	setup_formation(los)
+	kick_play = "kickoff"
+	var cx := field.width / 2.0
+	var k := kicker()
+	var cover: Array = []
+	var ret := returner()
+	var front: Array = []
+	for a in athletes:
+		if a.team == offense_team and a != k:
+			cover.append(a)
+		elif a.team != offense_team and a != ret:
+			front.append(a)
+	cover.sort_custom(func(p, q): return p.home_x < q.home_x)
+	front.sort_custom(func(p, q): return p.home_x < q.home_x)
+	for i in cover.size():
+		cover[i].position = Vector2(_spread(i, cover.size()), los - 1.0)
+	for i in front.size():
+		front[i].position = Vector2(_spread(i, front.size()), los + 12.0 + 6.0 * (i % 2))
+	if ret:
+		ret.position = Vector2(cx, field.length * (1.0 - T.KICKOFF_RETURNER_DEPTH))
+	if k:
+		k.position = Vector2(cx, los - 3.0)
+		ball.hold(k.id)
+	_sync_ball()
+
+func _spread(i: int, n: int) -> float:
+	var margin := minf(4.0, field.width * 0.1)
+	return lerpf(margin, field.width - margin, (i + 0.5) / float(n))
+
+## Kick from the holder toward `target` (field plane) with meter power 0..1.
+## Kickoff: from presnap (this starts the play). Punt/FG: live, behind the LOS.
+func kick(id: int, target: Vector2, power: float) -> bool:
+	var a := get_athlete(id)
+	if a == null or kick_play == "" or kicked or not ball.is_held_by(id) or a.team != offense_team:
+		return false
+	if kick_play == "kickoff":
+		if phase != Phase.PRESNAP or kick_locked:
+			return false
+		phase = Phase.LIVE
+		play_time = 0.0
+		event.emit("snap", {"qb": id})
+	elif phase != Phase.LIVE or forward_pass_thrown or a.position.y > los_y:
+		return false
+	ball.state = Ball.State.IN_FLIGHT
+	ball.holder_id = -1
+	ball.position = Vector3(a.position.x, a.position.y, T.KICK_HEIGHT)
+	ball.velocity = kick_velocity(kick_play, a.position, target, power)
+	kicked = true
+	kick_live = true
+	kick_free = true
+	kick_spot = a.position
+	forward_pass_thrown = true   # no throws after a kick
+	last_thrower_id = id
+	last_possession = a.team
+	throw_origin = a.position
+	event.emit("kick", {"by": id, "kind": kick_play, "power": power, "target": target})
+	return true
+
+## Launch velocity of a kick: fixed angle per kind, speed from the meter, forward only.
+static func kick_velocity(kind: String, from: Vector2, target: Vector2, power: float) -> Vector3:
+	var dir := target - from
+	dir = dir.normalized() if dir.length() > 0.01 else Vector2(0, 1)
+	if dir.y < 0.2:   # kicks go forward
+		dir = Vector2(signf(dir.x), 0.2).normalized()
+	var ang := deg_to_rad(T.KICK_ANGLE.get(kind, 45.0))
+	var speed := lerpf(T.KICK_SPEED_MIN, T.KICK_SPEED_MAX, clampf(power, 0.0, 1.0))
+	return Vector3(dir.x * speed * cos(ang), dir.y * speed * cos(ang), speed * sin(ang))
+
+## Kick speed needed to carry `dist` yd and be `h` yd high there (for bots).
+static func kick_power_for(kind: String, dist: float, h: float, g: float) -> float:
+	var ang := deg_to_rad(T.KICK_ANGLE[kind])
+	var denom := 2.0 * cos(ang) * cos(ang) * (dist * tan(ang) - h)
+	if denom <= 0.0:
+		return 2.0
+	var v := sqrt(g * dist * dist / denom)
+	return (v - T.KICK_SPEED_MIN) / (T.KICK_SPEED_MAX - T.KICK_SPEED_MIN)
 
 ## Eligible receivers in playbook order: left WR, right WR, RB.
 func receivers_in_order() -> Array:
@@ -180,6 +314,9 @@ func start_live_with(id: int) -> void:
 func snap() -> bool:
 	if phase != Phase.PRESNAP:
 		return false
+	if kick_play == "kickoff":
+		var k := kicker()
+		return k != null and kick(k.id, Vector2(field.width / 2.0, field.length), T.KICKOFF_DEFAULT_POWER)
 	var c := find_role(offense_team, Athlete.Role.C)
 	var qb := find_role(offense_team, Athlete.Role.QB)
 	if qb == null:
@@ -401,6 +538,9 @@ func _step_loose(dt: float) -> void:
 		ball.velocity.x = flat.x
 		ball.velocity.y = flat.y
 	var bp := Vector2(ball.position.x, ball.position.y)
+	if kick_free:
+		_step_free_kick(bp, dt)
+		return
 	if field.zone_of(bp) == Field.Zone.OUT_OF_BOUNDS:
 		dead_ball_spot = bp
 		dead_ball_team = last_possession
@@ -438,6 +578,9 @@ func _whistle(reason: String, data: Dictionary) -> void:
 
 func _step_flight(dt: float) -> void:
 	if ball.state != Ball.State.IN_FLIGHT or _snap_to_id >= 0:
+		return
+	if kick_live:
+		_step_kick(dt)
 		return
 	ball.velocity.z -= gravity() * dt
 	ball.position += ball.velocity * dt
@@ -637,3 +780,129 @@ func _sync_ball() -> void:
 		var h := get_athlete(ball.holder_id)
 		if h:
 			ball.position = Vector3(h.position.x, h.position.y, T.BALL_CARRY_HEIGHT)
+
+## Kick in the air: block window near the kicker, uprights for field goals,
+## fair fielding by the return team for punts/kickoffs, then a live bounce.
+func _step_kick(dt: float) -> void:
+	var prev := ball.position
+	ball.velocity.z -= gravity() * dt
+	ball.position += ball.velocity * dt
+	var bp := Vector2(ball.position.x, ball.position.y)
+	var travel := bp.distance_to(kick_spot)
+	if kick_play != "kickoff" and travel <= T.KICK_BLOCK_WINDOW and ball.position.z <= T.KICK_BLOCK_HEIGHT:
+		for a in athletes:
+			if a.team != offense_team and a.can_act() and a.position.distance_to(bp) <= T.KICK_BLOCK_REACH:
+				_block_kick(a)
+				return
+	if kick_play == "fg":
+		var py := field.posts_y()
+		if prev.y < py and ball.position.y >= py:
+			var k := (py - prev.y) / maxf(ball.position.y - prev.y, 0.0001)
+			var x := lerpf(prev.x, ball.position.x, k)
+			var z := lerpf(prev.z, ball.position.z, k)
+			var good := absf(x - field.width / 2.0) <= field.upright_span() / 2.0 and z >= T.CROSSBAR_HEIGHT
+			_kick_dead("field_goal", Vector2(x, py), {"good": good, "distance": py - kick_spot.y})
+			return
+		if ball.position.z <= 0.0:
+			_kick_dead("field_goal", bp, {"good": false, "distance": field.posts_y() - kick_spot.y})
+		return
+	# Punt / kickoff: sails past the end line -> touchback.
+	if ball.position.y > field.length + field.endzone_depth:
+		_kick_dead("touchback", bp, {})
+		return
+	if travel > T.KICK_BLOCK_WINDOW and ball.position.z >= T.CATCH_MIN_HEIGHT and ball.position.z <= T.CATCH_MAX_HEIGHT:
+		var best: Athlete = null
+		var best_d := T.CATCH_RADIUS
+		for a in athletes:
+			if a.team == offense_team or not a.can_act():
+				continue
+			var d: float = a.position.distance_to(bp)
+			if d <= best_d:
+				best_d = d
+				best = a
+		if best:
+			_field_kick(best, bp)
+			return
+	if ball.position.z <= 0.0:
+		ball.position.z = 0.0
+		kick_live = false
+		if field.zone_of(bp) == Field.Zone.OUT_OF_BOUNDS or bp.x < 0.0 or bp.x > field.width:
+			_kick_dead("touchback" if bp.y > field.length else "kick_out_of_bounds", bp, {})
+			return
+		if bp.y > field.length:
+			_kick_dead("touchback", bp, {})
+			return
+		ball.state = Ball.State.LOOSE
+		ball.velocity = Vector3(ball.velocity.x * 0.55, ball.velocity.y * 0.55, absf(ball.velocity.z) * T.LOOSE_BOUNCE)
+		event.emit("kick_land", {"at": bp})
+
+## The return team gets the ball (catch in the air or a clean pickup).
+func _field_kick(a: Athlete, bp: Vector2) -> void:
+	kick_live = false
+	kick_free = false
+	if a.position.y > field.length:
+		ball.state = Ball.State.DEAD   # fielded in the end zone: downed for a touchback
+		_kick_dead("touchback", a.position, {"by": a.id})
+		return
+	ball.hold(a.id)
+	last_possession = a.team
+	event.emit("kick_catch", {"by": a.id, "team": a.team, "at": bp})
+
+func _block_kick(a: Athlete) -> void:
+	kick_live = false
+	kick_free = false
+	kick_blocked = true
+	ball.state = Ball.State.LOOSE
+	var side := signf(ball.position.x - a.position.x)
+	ball.velocity = Vector3(side * 2.5, -absf(ball.velocity.y) * 0.25 - 2.0, 3.0)
+	ball.position.z = maxf(ball.position.z, T.RECOVER_MAX_HEIGHT + 0.2)   # pops up: a live scramble, not an instant pickup
+	last_possession = offense_team
+	event.emit("kick_blocked", {"by": a.id, "team": a.team, "at": Vector2(ball.position.x, ball.position.y)})
+
+## A kicked ball on the ground that nobody has possessed yet.
+func _step_free_kick(bp: Vector2, dt: float) -> void:
+	if bp.x < 0.0 or bp.x > field.width or field.zone_of(bp) == Field.Zone.OUT_OF_BOUNDS:
+		_kick_dead("touchback" if bp.y > field.length else "kick_out_of_bounds", bp, {})
+		return
+	if bp.y > field.length:
+		_kick_dead("touchback", bp, {})
+		return
+	if Vector2(ball.velocity.x, ball.velocity.y).length() < 0.3 and ball.position.z <= 0.01:
+		_kick_rest_t += dt
+		if _kick_rest_t >= T.KICK_REST_TIME:
+			_kick_dead("kick_downed", bp, {})
+			return
+	if ball.position.z > T.RECOVER_MAX_HEIGHT:
+		return
+	var best: Athlete = null
+	var best_d := T.RECOVER_RADIUS
+	for a in athletes:
+		if a.can_act() and a.position.distance_to(bp) <= best_d:
+			best_d = a.position.distance_to(bp)
+			best = a
+	if best == null:
+		return
+	if best.team != offense_team:
+		_field_kick(best, bp)
+	elif kick_play == "kickoff" and bp.y - kick_spot.y >= T.ONSIDE_MIN_TRAVEL:
+		kick_free = false
+		ball.hold(best.id)
+		last_possession = best.team
+		event.emit("recovery", {"by": best.id, "team": best.team, "turnover": false, "onside": true})
+	else:
+		_kick_dead("kick_downed", bp, {"by": best.id})   # kicking team downs it
+
+## Kick play over. `reason`: field_goal, touchback, kick_out_of_bounds, kick_downed.
+func _kick_dead(reason: String, at: Vector2, extra: Dictionary) -> void:
+	kick_live = false
+	kick_free = false
+	ball.velocity = Vector3.ZERO
+	ball.state = Ball.State.DEAD
+	phase = Phase.DEAD
+	dead_ball_spot = at
+	dead_ball_team = offense_team
+	var data := {"spot": at, "team": offense_team, "kind": kick_play}
+	data.merge(extra)
+	event.emit(reason, data)
+	event.emit("whistle", data)
+

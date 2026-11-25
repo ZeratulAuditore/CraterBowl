@@ -64,8 +64,11 @@ func test_untimed_down_and_halftime() -> void:
 	assert_eq(out["outcome"], "halftime")
 	assert_eq(m.clock.half, 2)
 	assert_near(m.clock.remaining, Clock.HALF_LENGTH)
-	assert_eq(m.world.offense_team, 1, "other team receives 2nd half")
-	assert_near(m.world.los_y, 25.0)
+	# Opening receiver was team 0, so team 0 kicks off to team 1 from its 35.
+	assert_eq(m.state, m.State.KICKOFF, "2nd half opens with a kickoff")
+	assert_eq(out["receiving"], 1, "other team receives 2nd half")
+	assert_eq(m.world.offense_team, 0, "team 0 kicks")
+	assert_near(m.world.los_y, 35.0)
 
 func test_final_and_winner() -> void:
 	var m := _match()

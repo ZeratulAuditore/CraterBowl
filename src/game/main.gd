@@ -196,7 +196,7 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	_spawn_teams()
 	_build_field()
 	series = Match.new(world)
-	series.start(0, Drills.LOS if drill != null else -1.0)
+	_start_series()
 	world.event.connect(_on_world_event)
 	stats = Stats.new()
 	stats.attach(world, owner_name)
@@ -311,6 +311,9 @@ func _update_arc() -> void:
 	var from := Vector3(qb.position.x, qb.position.y, T.RELEASE_HEIGHT)
 	var v := Passing.solve_velocity(from, aim_point, charge, world.gravity(), lob_held())
 	v += Vector3(qb.velocity.x, qb.velocity.y, 0) * T.THROW_INHERIT
+	if kicking():
+		from = Vector3(qb.position.x, qb.position.y, T.KICK_HEIGHT)
+		v = World.kick_velocity(world.kick_play, qb.position, aim_point, charge)
 	var tf := Passing.time_to_height(v, from.z, 0.0, world.gravity())
 	for i in ARC_DOTS:
 		var t := tf * float(i + 1) / ARC_DOTS
@@ -324,7 +327,30 @@ func _set_charging(on: bool) -> void:
 		charge = 0.0
 	elif not on and charging:
 		charging = false
-		do_action({"a": "throw", "t": aim_point, "p": charge, "lob": lob_held()})
+		if kicking():
+			do_action({"a": "kick", "t": aim_point, "p": charge})
+		else:
+			do_action({"a": "throw", "t": aim_point, "p": charge, "lob": lob_held()})
+
+## The charge meter kicks instead of throwing (punt/FG/PAT called, or a kickoff).
+func kicking() -> bool:
+	return world.kick_play != "" and not world.kicked
+
+## Coin-toss seed: `--toss=N` for a fixed result, else random.
+var toss_seed := -1
+var opening_kickoff := true   # false = start on a scrimmage snap (scripted tests)
+
+func _start_series() -> void:
+	if drill != null or match_mode == "chaosball" or not opening_kickoff or _cli_args().has("no-kickoff"):
+		series.start(0, Drills.LOS if drill != null else -1.0)
+		return
+	var s := toss_seed if toss_seed >= 0 else int(_cli_args().get("toss", randi() % 2))
+	var winner_humans := false
+	for id in [my_id] + roster.humans():
+		var a = world.get_athlete(id)
+		if a and a.team == posmod(s, 2):
+			winner_humans = true
+	series.start_match(s, winner_humans)
 
 ## Display name of whoever controls athlete `aid` right now ("Bot" for AI).
 func owner_name(aid: int) -> String:
@@ -745,8 +771,15 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 		pres.on_event(n, d)
 	if n == "incomplete" and last_whistle == "":
 		last_whistle = "INCOMPLETE"
-	if n in ["tackle", "out_of_bounds", "breakup", "touchdown", "explode"]:
-		last_whistle = n.replace("_", " ").to_upper()
+	if n in ["tackle", "out_of_bounds", "breakup", "touchdown", "explode", "touchback", "kick_out_of_bounds", "kick_downed"]:
+		last_whistle = n.replace("kick_", "").replace("_", " ").to_upper()
+	if n == "field_goal":
+		last_whistle = "FIELD GOAL GOOD" if d.get("good", false) else "FIELD GOAL NO GOOD"
+		banner = "IT'S GOOD!" if d.get("good", false) else "NO GOOD!"
+		banner_t = 2.0
+	if n == "kick_blocked":
+		banner = "BLOCKED!"
+		banner_t = 2.0
 	if n == "ranked":
 		ranked_line = _ranked_text(d)
 	if n == "looks" and d.get("looks") is Dictionary:
@@ -771,7 +804,7 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 	if net == null and n == "catch" and world.get_athlete(d["by"]).team == world.offense_team:
 		set_controlled(d["by"])
 	# Offline: take control of whoever on your team just took the ball away.
-	if net == null and n in ["interception", "recovery"] and world.get_athlete(d["by"]).team == world.get_athlete(my_id).team:
+	if net == null and n in ["interception", "recovery", "kick_catch"] and world.get_athlete(d["by"]).team == world.get_athlete(my_id).team:
 		set_controlled(d["by"])
 
 func _marker(c: Color, n: String) -> MeshInstance3D:
@@ -836,9 +869,12 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		KEY_SPACE:
 			do_action({"a": "snap"})
 		KEY_1:
-			do_action({"a": "try", "n": 1})
+			do_action({"a": "toss", "c": "receive"} if series.state == Match.State.TOSS else {"a": "try", "n": 1})
 		KEY_2:
-			do_action({"a": "try", "n": 2})
+			do_action({"a": "toss", "c": "kick"} if series.state == Match.State.TOSS else {"a": "try", "n": 2})
+		KEY_K:
+			var ki := (World.KICK_CALLS.find(world.kick_play) + 1) % World.KICK_CALLS.size()
+			do_action({"a": "kick_call", "k": World.KICK_CALLS[ki]})
 		KEY_E:
 			do_action({"a": "tackle"})
 		KEY_J:
@@ -1067,7 +1103,13 @@ func _process(delta: float) -> void:
 		phase_name = "%s at %.1f" % [last_whistle, world.dead_ball_spot.y]
 	var situation: String = series.downs.label()
 	if series.state == Match.State.TRY:
-		situation = "TRY for %d (1: from the 3 / 2: from the 10)" % series.try_points
+		situation = "TRY for %d (1: kick / 2: from the 10)" % series.try_points
+	elif series.state == Match.State.KICKOFF:
+		situation = "KICKOFF"
+	elif series.state == Match.State.TOSS:
+		situation = "COIN TOSS: %s wins (1: receive / 2: kick)" % ("HOME" if series.toss_winner == 0 else "AWAY")
+	if world.offense_team == my_team and series.state == Match.State.SCRIMMAGE and not world.is_chaos():
+		side += " | KICK: %s [K]" % {"": "none", "punt": "PUNT", "fg": "FIELD GOAL"}.get(world.kick_play, world.kick_play)
 	banner_t = maxf(0.0, banner_t - delta)
 	if banner_t > 0.0:
 		phase_name = banner + "  " + phase_name
@@ -1103,7 +1145,7 @@ func _process(delta: float) -> void:
 			phase_name += "\n" + xp_line
 	else:
 		phase_name = "HOME %d - AWAY %d | %s | %s | %s | %s" % [series.score[0], series.score[1], clock_txt, situation, side, phase_name]
-	var charge_txt := ("   THROW %d%%" % int(charge * 100)) if charging else ""
+	var charge_txt := ("   %s %d%%" % ["KICK" if kicking() else "THROW", int(charge * 100)]) if charging else ""
 	hud.text = charge_txt + "\n" + "%s   Yard: %.1f  Speed: %.1f yd/s  Stamina: %d%%%s" % [
 		phase_name, m.position.y, m.speed(), int(m.stamina * 100), "  (WINDED)" if m.sprint_locked else ""]
 
