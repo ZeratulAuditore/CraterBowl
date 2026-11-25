@@ -9,6 +9,7 @@ const FIELDS := ["att", "comp", "pass_yds", "pass_td", "int_thrown", "rec", "rec
 var world
 var owner_fn: Callable     # athlete_id -> owner name ("Bot" for AI)
 var lines := {}            # "owner|POS" -> {field: value}
+var athletes := {}         # athlete_id -> {"team", "pos", "owner", field: value} (players of the game)
 var _los := 0.0
 var _passer := -1
 var _receiver := -1
@@ -33,6 +34,23 @@ func _add(aid: int, field: String, v: float = 1.0) -> void:
 		for f in FIELDS:
 			lines[k][f] = 0.0
 	lines[k][field] += v
+	_add_athlete(aid, field, v)
+
+## Same stat, keyed by the athlete itself. The owner is the last human who
+## controlled it (a bot that a human took over is credited to the human).
+func _add_athlete(aid: int, field: String, v: float) -> void:
+	var a = world.get_athlete(aid)
+	if not athletes.has(aid):
+		athletes[aid] = {"team": a.team, "pos": ROLE.get(a.role, "?"), "owner": "Bot"}
+		for f in FIELDS:
+			athletes[aid][f] = 0.0
+	var owner: String = owner_fn.call(aid) if owner_fn.is_valid() else "Bot"
+	if owner != "Bot":
+		athletes[aid]["owner"] = owner
+	if field == "max_td_pts":
+		athletes[aid][field] = maxf(athletes[aid][field], v)
+	else:
+		athletes[aid][field] += v
 
 func _on_event(n: String, d: Dictionary) -> void:
 	match n:
@@ -105,6 +123,7 @@ func _note_td_points(aid: int, pts) -> void:
 	_add(aid, "max_td_pts", 0.0)
 	var k := _key(aid)
 	lines[k]["max_td_pts"] = maxf(lines[k]["max_td_pts"], float(pts))
+	athletes[aid]["max_td_pts"] = maxf(athletes[aid]["max_td_pts"], float(pts))
 
 func get_line(owner: String, pos: String) -> Dictionary:
 	return lines.get("%s|%s" % [owner, pos], {})

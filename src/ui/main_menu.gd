@@ -13,12 +13,44 @@ const InviteCode := preload("res://src/net/invite_code.gd")
 const Browser := preload("res://src/ui/server_browser.gd")
 const PortMapper := preload("res://src/net/port_mapper.gd")
 const NetSession := preload("res://src/net/net_session.gd")
+const Lobby := preload("res://src/ui/lobby_stage.gd")
+const Music := preload("res://src/ui/music_player.gd")
 const QUEUE_HOST_PORT := 24566    # fixed so UPnP can map it before queueing
 const SIZES := [3, 5, 7]
+const TOP_H := 78
+const FOOT_H := 60
+const BUG_URL := "https://github.com/bpenwell/football-game/issues"
+const TABS := [["home", "Play"], ["online", "Online"], ["bots", "Vs bots"], ["practice", "Practice"],
+	["locker", "Locker room"], ["leaders", "Leaderboard"], ["replays", "Replays"]]
+## Home-screen PLAY selector. Keys mirror Launch.start_game options.
+const MODES := [
+	{"id": "bots5", "label": "5v5 vs bots", "size": 5, "mode": "classic", "hint": "Offline match, bots fill every slot"},
+	{"id": "bots3", "label": "3v3 vs bots", "size": 3, "mode": "classic", "hint": "Offline match, bots fill every slot"},
+	{"id": "bots7", "label": "7v7 vs bots", "size": 7, "mode": "classic", "hint": "Offline match, bots fill every slot"},
+	{"id": "chaos", "label": "Chaosball vs bots", "size": 3, "mode": "chaosball", "hint": "3v3, low gravity"},
+	{"id": "quick5", "label": "5v5 quick match", "queue": "casual", "size": 5, "hint": "Online casual matchmaking"},
+	{"id": "quick3", "label": "3v3 quick match", "queue": "casual", "size": 3, "hint": "Online casual matchmaking"},
+	{"id": "quick7", "label": "7v7 quick match", "queue": "casual", "size": 7, "hint": "Online casual matchmaking"},
+	{"id": "ranked5", "label": "5v5 ranked", "queue": "competitive", "size": 5, "hint": "Online ranked matchmaking"},
+	{"id": "scrimmage", "label": "Scrimmage practice", "practice": "scrimmage", "hint": "7v7 with bots, no clock"},
+]
 
 var launch                    # the Launch autoload (or a stand-in in tests)
-var nav: VBoxContainer
 var content: VBoxContainer
+var lobby
+var music
+var panel: PanelContainer
+var news: Button
+var hud_right: HBoxContainer
+var level_ring
+var play_button: Button
+var play_cluster: VBoxContainer
+var mode_button: Button
+var mode_popup: PopupMenu
+var mode_id := "bots5"
+var avatar: Button
+var profile_name: Label
+var profile_sub: Label
 var status_label: Label
 var nav_buttons := {}         # screen id -> Button
 var current := ""
@@ -50,55 +82,264 @@ func settings() -> Settings:
 func build() -> void:
 	theme = UITheme.build()
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var bg := Backdrop.new()
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 48 if side in ["left", "right"] else 36)
-	add_child(margin)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 48)
-	margin.add_child(row)
-	var left := VBoxContainer.new()
-	left.custom_minimum_size = Vector2(340, 0)
-	left.add_theme_constant_override("separation", 10)
-	row.add_child(left)
+	lobby = Lobby.new()
+	lobby.name = "Lobby"
+	lobby.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lobby.invite_pressed.connect(func(): show_screen("online"))
+	add_child(lobby)
+	var shade := Shade.new()
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lobby.add_child(shade)
+	lobby.move_child(shade, 1)   # over the 3D view, under the name/invite pins
+	profile.load_file(profile_path)
+	_build_top_bar()
+	_build_news()
+	_build_play_cluster()
+	_build_level_ring()
+	_build_panel()
+	_build_footer()
+	launch.last_status = ""
+	for m in MODES:
+		if m["id"] == settings().home_mode:
+			mode_id = m["id"]
+	_set_mode(mode_id)
+	if settings().player_name == "":
+		show_screen("welcome")
+	else:
+		show_screen("home")
+		play_button.grab_focus.call_deferred()
+
+## Anchor a control: anchors (l, t, r, b) in 0..1, pixel offsets (l, t, r, b).
+static func _place(c: Control, a: Array, o: Array) -> void:
+	c.anchor_left = a[0]
+	c.anchor_top = a[1]
+	c.anchor_right = a[2]
+	c.anchor_bottom = a[3]
+	c.offset_left = o[0]
+	c.offset_top = o[1]
+	c.offset_right = o[2]
+	c.offset_bottom = o[3]
+
+func _bar_style(top_edge: bool) -> StyleBoxFlat:
+	var s := UITheme.box(Color(UITheme.SPACE, 0.86), Color(UITheme.CYAN, 0.22), 0, 0)
+	if top_edge:
+		s.border_width_top = 1
+	else:
+		s.border_width_bottom = 1
+	s.content_margin_left = 28
+	s.content_margin_right = 28
+	return s
+
+func _build_top_bar() -> void:
+	var bar := PanelContainer.new()
+	bar.name = "TopBar"
+	bar.add_theme_stylebox_override("panel", _bar_style(false))
+	_place(bar, [0, 0, 1, 0], [0, 0, 0, TOP_H])
+	add_child(bar)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 6)
+	bar.add_child(h)
 	var logo := TextureRect.new()
-	logo.texture = UITheme.svg_texture("res://assets/brand/logo_stacked.svg", 0.38)
-	if logo.texture == null:
-		push_error("MENU logo missing (svg not exported?)")
+	logo.texture = UITheme.svg_texture("res://assets/brand/icon.svg", 0.25)
+	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	logo.custom_minimum_size = Vector2(320, 205)
-	left.add_child(logo)
-	nav = VBoxContainer.new()
-	nav.add_theme_constant_override("separation", 6)
-	left.add_child(nav)
-	for item in [["online", "Play online"], ["bots", "Play vs bots"], ["practice", "Practice"],
-			["locker", "Locker"], ["leaders", "Leaderboards"], ["replays", "Replays"],
-			["settings", "Settings"], ["quit", "Quit"]]:
+	logo.custom_minimum_size = Vector2(46, 46)
+	logo.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(logo)
+	h.add_child(_gap(18))
+	for t in TABS:
 		var b := Button.new()
-		b.text = item[1].to_upper()
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.add_theme_font_size_override("font_size", 21)
-		var id: String = item[0]
+		b.text = t[1].to_upper()
+		b.add_theme_font_size_override("font_size", 20)
+		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var id: String = t[0]
 		b.pressed.connect(func(): show_screen(id))
-		b.focus_entered.connect(func(): if id != "quit" and current != "welcome": show_screen(id))
-		nav.add_child(b)
+		h.add_child(b)
 		nav_buttons[id] = b
-	var spacer := Control.new()
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	left.add_child(spacer)
-	var ver := Label.new()
-	ver.text = "v%s" % launch.version()
-	ver.add_theme_color_override("font_color", Color(UITheme.REGOLITH, 0.8))
-	ver.add_theme_font_size_override("font_size", 14)
-	left.add_child(ver)
-	var panel := PanelContainer.new()
-	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	row.add_child(panel)
+		_style_tab(b, false)
+	var fill := Control.new()
+	fill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(fill)
+	# Profile chip: avatar initial (opens the locker room), name, level + rating.
+	avatar = Button.new()
+	avatar.name = "Avatar"
+	avatar.custom_minimum_size = Vector2(46, 46)
+	avatar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	avatar.tooltip_text = "Locker room"
+	avatar.add_theme_font_size_override("font_size", 20)
+	for st in ["normal", "hover", "pressed", "focus"]:
+		var ring := UITheme.box(Color(UITheme.NAVY, 0.9) if st == "normal" else Color(UITheme.CYAN, 0.25), UITheme.CYAN, 2, 23)
+		ring.content_margin_left = 0
+		ring.content_margin_right = 0
+		avatar.add_theme_stylebox_override(st, ring)
+	avatar.pressed.connect(func(): show_screen("locker"))
+	h.add_child(avatar)
+	var who := VBoxContainer.new()
+	who.add_theme_constant_override("separation", -4)
+	who.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(who)
+	profile_name = Label.new()
+	profile_name.add_theme_font_override("font", UITheme.font(700))
+	profile_name.add_theme_font_size_override("font_size", 21)
+	who.add_child(profile_name)
+	profile_sub = Label.new()
+	profile_sub.add_theme_font_size_override("font_size", 13)
+	profile_sub.add_theme_color_override("font_color", UITheme.REGOLITH)
+	who.add_child(profile_sub)
+	h.add_child(_gap(18))
+	var gear := Button.new()
+	gear.name = "Settings"
+	gear.tooltip_text = "Settings"
+	gear.custom_minimum_size = Vector2(44, 44)
+	gear.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_style_tab(gear, false)
+	gear.draw.connect(func(): _draw_gear(gear))
+	gear.pressed.connect(func(): show_screen("settings"))
+	h.add_child(gear)
+	nav_buttons["settings"] = gear
+
+func _build_news() -> void:
+	news = Button.new()
+	news.name = "News"
+	news.focus_mode = Control.FOCUS_NONE
+	news.tooltip_text = "Play ranked"
+	var card := UITheme.box(Color(UITheme.NAVY, 0.92), Color(UITheme.CYAN, 0.4), 1, 10)
+	card.shadow_color = Color(UITheme.CYAN, 0.18)
+	card.shadow_size = 14
+	news.add_theme_stylebox_override("normal", card)
+	var hov := card.duplicate()
+	hov.border_color = UITheme.CYAN
+	news.add_theme_stylebox_override("hover", hov)
+	news.add_theme_stylebox_override("pressed", hov)
+	_place(news, [0, 0, 0, 0], [36, TOP_H + 24, 36 + 380, TOP_H + 24 + 200])
+	news.pressed.connect(func(): show_screen("online"))
+	add_child(news)
+	var v := VBoxContainer.new()
+	v.set_anchors_preset(Control.PRESET_FULL_RECT)
+	v.offset_left = 18
+	v.offset_right = -18
+	v.offset_top = 14
+	v.offset_bottom = -14
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	news.add_child(v)
+	var art := TextureRect.new()
+	art.texture = UITheme.svg_texture("res://assets/brand/logo_wide.svg", 0.5)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	art.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(art)
+	var sid := Ranked.season_id(Time.get_unix_time_from_system())
+	var t := Label.new()
+	t.text = "RANKED SEASON %d · Q%d" % [sid / 4, sid % 4 + 1]
+	t.add_theme_font_override("font", Lobby.italic_font(700))
+	t.add_theme_font_size_override("font_size", 24)
+	v.add_child(t)
+	var s := Label.new()
+	s.text = "QUEUE RANKED TO PLACE · REWARDS AT SEASON END"
+	s.add_theme_font_size_override("font_size", 13)
+	s.add_theme_color_override("font_color", UITheme.CYAN)
+	v.add_child(s)
+
+func _build_play_cluster() -> void:
+	var v := VBoxContainer.new()
+	play_cluster = v
+	v.name = "PlayCluster"
+	v.add_theme_constant_override("separation", 10)
+	v.alignment = BoxContainer.ALIGNMENT_END
+	_place(v, [0, 1, 0, 1], [36, -FOOT_H - 250, 36 + 390, -FOOT_H - 22])
+	add_child(v)
+	var hint := Label.new()
+	hint.text = "ENTER  PLAY  ·  TAB  CHANGE MODE"
+	hint.add_theme_font_size_override("font_size", 13)
+	hint.add_theme_color_override("font_color", Color(UITheme.CREAM, 0.6))
+	v.add_child(hint)
+	mode_button = Button.new()
+	mode_button.name = "ModeButton"
+	mode_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	mode_button.custom_minimum_size = Vector2(0, 52)
+	mode_button.add_theme_font_size_override("font_size", 20)
+	mode_button.add_theme_stylebox_override("normal", UITheme.box(Color(UITheme.SPACE, 0.85), Color(UITheme.CREAM, 0.25), 1, 6))
+	mode_button.pressed.connect(_open_mode_menu)
+	v.add_child(mode_button)
+	var change := Label.new()
+	change.text = "CHANGE"
+	change.add_theme_font_size_override("font_size", 13)
+	change.add_theme_color_override("font_color", Color(UITheme.CREAM, 0.65))
+	change.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+	change.offset_left = -84
+	change.offset_right = -18
+	change.offset_top = -10
+	change.offset_bottom = 10
+	change.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mode_button.add_child(change)
+	mode_popup = PopupMenu.new()
+	mode_popup.add_theme_font_size_override("font_size", 19)
+	for i in MODES.size():
+		mode_popup.add_item(str(MODES[i]["label"]).to_upper(), i)
+	mode_popup.id_pressed.connect(func(i): _set_mode(MODES[i]["id"]))
+	add_child(mode_popup)
+	play_button = Button.new()
+	play_button.name = "PlayButton"
+	play_button.text = "PLAY"
+	play_button.custom_minimum_size = Vector2(0, 96)
+	play_button.add_theme_font_override("font", Lobby.italic_font(700))
+	play_button.add_theme_font_size_override("font_size", 58)
+	for st in ["normal", "hover", "pressed", "focus"]:
+		var c: Color = {"normal": UITheme.CYAN, "hover": UITheme.CYAN.lightened(0.25), "pressed": UITheme.CYAN.darkened(0.2), "focus": Color(0, 0, 0, 0)}[st]
+		var sb := UITheme.box(c, UITheme.CREAM if st == "focus" else c.lightened(0.35), 3 if st == "focus" else 1, 8)
+		sb.skew = Vector2(0.16, 0)
+		if st != "focus":
+			sb.shadow_color = Color(UITheme.CYAN, 0.45 if st == "hover" else 0.3)
+			sb.shadow_size = 22
+		play_button.add_theme_stylebox_override(st, sb)
+	for fc in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+		play_button.add_theme_color_override(fc, UITheme.SPACE)
+	play_button.pressed.connect(play_selected)
+	v.add_child(play_button)
+
+func _build_level_ring() -> void:
+	hud_right = HBoxContainer.new()
+	hud_right.name = "LevelHud"
+	hud_right.add_theme_constant_override("separation", 22)
+	hud_right.alignment = BoxContainer.ALIGNMENT_END
+	_place(hud_right, [1, 1, 1, 1], [-420, -FOOT_H - 210, -36, -FOOT_H - 22])
+	add_child(hud_right)
+	level_ring = LevelRing.new()
+	level_ring.custom_minimum_size = Vector2(160, 188)
+	hud_right.add_child(level_ring)
+	var keys := VBoxContainer.new()
+	keys.alignment = BoxContainer.ALIGNMENT_CENTER
+	keys.add_theme_constant_override("separation", 10)
+	hud_right.add_child(keys)
+	for k in [["ENTER", "Play"], ["TAB", "Mode"], ["ESC", "Back"]]:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		keys.add_child(row)
+		var cap := Label.new()
+		cap.text = k[0]
+		cap.custom_minimum_size = Vector2(64, 0)
+		cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cap.add_theme_font_size_override("font_size", 13)
+		cap.add_theme_stylebox_override("normal", UITheme.box(Color(UITheme.SPACE, 0.8), Color(UITheme.CREAM, 0.4), 1, 4))
+		row.add_child(cap)
+		var l := Label.new()
+		l.text = k[1]
+		l.add_theme_font_override("font", UITheme.font(400))
+		l.add_theme_font_size_override("font_size", 17)
+		row.add_child(l)
+
+func _build_panel() -> void:
+	panel = PanelContainer.new()
+	panel.name = "Panel"
+	var ps := UITheme.box(Color(UITheme.SPACE, 0.9), Color(UITheme.CYAN, 0.3), 1, 10)
+	ps.content_margin_left = 28
+	ps.content_margin_right = 28
+	ps.content_margin_top = 20
+	ps.content_margin_bottom = 20
+	panel.add_theme_stylebox_override("panel", ps)
+	_place(panel, [0.46, 0, 1, 1], [0, TOP_H + 22, -32, -FOOT_H - 22])
+	add_child(panel)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	panel.add_child(scroll)
@@ -106,17 +347,127 @@ func build() -> void:
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.add_theme_constant_override("separation", 12)
 	scroll.add_child(content)
+
+func _build_footer() -> void:
+	var bar := PanelContainer.new()
+	bar.name = "Footer"
+	bar.add_theme_stylebox_override("panel", _bar_style(true))
+	_place(bar, [0, 1, 1, 1], [0, -FOOT_H, 0, 0])
+	add_child(bar)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 26)
+	bar.add_child(h)
+	for l in [["Replays", func(): show_screen("replays")], ["Controls", func(): show_screen("settings")],
+			["Report a bug", func(): OS.shell_open(BUG_URL)], ["Quit", func(): show_screen("quit")]]:
+		var b := Button.new()
+		b.text = str(l[0]).to_upper()
+		b.focus_mode = Control.FOCUS_NONE
+		b.add_theme_font_size_override("font_size", 16)
+		_style_tab(b, false)
+		b.pressed.connect(l[1])
+		h.add_child(b)
 	status_label = Label.new()
+	status_label.name = "Status"
 	status_label.add_theme_color_override("font_color", UITheme.ORANGE)
+	status_label.add_theme_font_size_override("font_size", 16)
+	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status_label.clip_text = true
 	status_label.text = launch.last_status
-	left.add_child(status_label)
-	launch.last_status = ""
-	profile.load_file(profile_path)
-	if settings().player_name == "":
-		show_screen("welcome")
+	h.add_child(status_label)
+	var ver := Label.new()
+	ver.text = "BUILD v%s" % launch.version()
+	ver.add_theme_font_size_override("font_size", 14)
+	ver.add_theme_color_override("font_color", Color(UITheme.REGOLITH, 0.9))
+	h.add_child(ver)
+	music = Music.new()
+	music.name = "Music"
+	music.volume = settings().music_volume
+	h.add_child(music.build_widget())
+	add_child(music)
+
+func _gap(w: int) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(w, 0)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return c
+
+## Tabs are flat text; the selected one is a filled cyan pill.
+func _style_tab(b: Button, selected: bool) -> void:
+	var clear := UITheme.box(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 0, 6)
+	var pill := UITheme.box(UITheme.CYAN, UITheme.CYAN.lightened(0.3), 1, 6)
+	pill.shadow_color = Color(UITheme.CYAN, 0.35)
+	pill.shadow_size = 10
+	var hover := UITheme.box(Color(UITheme.CYAN, 0.12), Color(0, 0, 0, 0), 0, 6)
+	b.add_theme_stylebox_override("normal", pill if selected else clear)
+	b.add_theme_stylebox_override("hover", pill if selected else hover)
+	b.add_theme_stylebox_override("pressed", pill)
+	b.add_theme_stylebox_override("focus", UITheme.box(Color(0, 0, 0, 0), Color(UITheme.CYAN, 0.8), 1, 6))
+	var fc := UITheme.SPACE if selected else Color(UITheme.CREAM, 0.88)
+	b.add_theme_color_override("font_color", fc)
+	b.add_theme_color_override("font_hover_color", UITheme.SPACE if selected else UITheme.CYAN)
+	b.add_theme_color_override("font_focus_color", UITheme.SPACE if selected else UITheme.CYAN)
+	b.add_theme_color_override("font_pressed_color", UITheme.SPACE)
+	b.set_meta("selected", selected)
+
+func _draw_gear(b: Button) -> void:
+	var c := b.size / 2.0
+	var col := UITheme.SPACE if b.get_meta("selected", false) else (UITheme.CYAN if b.is_hovered() else UITheme.CREAM)
+	for i in 8:
+		var d := Vector2.from_angle(TAU * i / 8.0)
+		b.draw_line(c + d * 7.0, c + d * 12.0, col, 4.0)
+	b.draw_arc(c, 8.0, 0, TAU, 24, col, 4.0, true)
+	b.draw_arc(c, 3.0, 0, TAU, 12, col, 2.0, true)
+
+## ------------------------------------------------------------------ home
+func _mode() -> Dictionary:
+	for m in MODES:
+		if m["id"] == mode_id:
+			return m
+	return MODES[0]
+
+func _set_mode(id: String) -> void:
+	mode_id = id
+	var m := _mode()
+	mode_button.text = "   " + str(m["label"]).to_upper()
+	mode_button.tooltip_text = str(m.get("hint", ""))
+	if settings().home_mode != id:
+		settings().home_mode = id
+		launch.save_settings()
+
+func cycle_mode(step: int = 1) -> void:
+	var i := 0
+	for k in MODES.size():
+		if MODES[k]["id"] == mode_id:
+			i = k
+	_set_mode(MODES[(i + step + MODES.size()) % MODES.size()]["id"])
+
+func _open_mode_menu() -> void:
+	var r := mode_button.get_global_rect()
+	mode_popup.reset_size()
+	mode_popup.popup(Rect2i(Vector2i(r.position.x, r.position.y - mode_popup.size.y - 6), Vector2i(r.size.x, 0)))
+
+## The big PLAY button: launch whatever the mode selector says.
+func play_selected() -> void:
+	var m := _mode()
+	if m.has("queue"):
+		pick_size = int(m["size"])
+		_queue(str(m["queue"]))
+	elif m.has("practice"):
+		launch.start_game({"practice": str(m["practice"])})
 	else:
-		show_screen("online")
-		nav_buttons["online"].grab_focus.call_deferred()
+		launch.start_game({"size": str(m["size"]), "mode": str(m["mode"])})
+
+func _refresh_profile() -> void:
+	profile.load_file(profile_path)
+	var n: String = settings().player_name
+	profile_name.text = (n if n != "" else "Rookie").to_upper()
+	avatar.text = (n.left(1) if n != "" else "?").to_upper()
+	profile_sub.text = "LV %d  ·  %s" % [profile.level(), _rating_line().to_upper()] if n != "" else "NEW PLAYER"
+	level_ring.level = profile.level()
+	level_ring.xp = profile.xp % Cosmetics.XP_PER_LEVEL
+	level_ring.need = Cosmetics.XP_PER_LEVEL
+	level_ring.queue_redraw()
+	lobby.set_player(n if n != "" else "Rookie", profile.equipped)
 
 ## ------------------------------------------------------------------ screens
 func show_screen(id: String) -> void:
@@ -133,8 +484,17 @@ func show_screen(id: String) -> void:
 		content.remove_child(c)
 		c.queue_free()
 	for k in nav_buttons:
-		nav_buttons[k].add_theme_color_override("font_color", UITheme.CYAN if k == id else UITheme.CREAM)
-	call("_screen_" + id)
+		_style_tab(nav_buttons[k], k == id)
+		nav_buttons[k].queue_redraw()
+	var home := id == "home"
+	panel.visible = not home
+	news.visible = home
+	hud_right.visible = home
+	play_cluster.visible = id != "welcome"   # pick a name before playing
+	lobby.set_panel_open(not home)
+	_refresh_profile()
+	if not home:
+		call("_screen_" + id)
 
 func _screen_welcome() -> void:
 	content.add_child(UITheme.heading("Welcome to the Crater", 40, UITheme.CYAN))
@@ -149,7 +509,8 @@ func _screen_welcome() -> void:
 		settings().player_name = n
 		launch.save_settings()
 		current = ""
-		show_screen("online"))
+		show_screen("home")
+		play_button.grab_focus.call_deferred())
 	name_edit.text_submitted.connect(func(_t): go.pressed.emit())
 	name_edit.grab_focus.call_deferred()
 
@@ -316,6 +677,7 @@ func _screen_settings() -> void:
 	fh.add_child(fps)
 	content.add_child(UITheme.heading("Audio", 22, UITheme.CYAN))
 	_slider("Master volume", s.master_volume, 0.0, 1.0, 0.05, func(v): s.master_volume = v; launch.save_settings())
+	_slider("Menu music", s.music_volume, 0.0, 1.0, 0.05, func(v): s.music_volume = v; music.set_volume(v); launch.save_settings())
 	content.add_child(UITheme.heading("Online", 22, UITheme.CYAN))
 	var mm := _line("Matchmaker address", s.matchmaker)
 	mm.text_submitted.connect(func(t): s.matchmaker = t.strip_edges(); launch.save_settings(); _status("Matchmaker set"))
@@ -339,9 +701,23 @@ func _screen_settings() -> void:
 		launch.save_settings()
 		current = ""
 		show_screen("settings"))
+	content.add_child(UITheme.heading("Music credits", 22, UITheme.CYAN))
+	for t in Music.load_playlist():
+		_text(str(t.get("credit", "%s - %s" % [t.get("artist", ""), t.get("title", "")]))).add_theme_font_size_override("font_size", 14)
 
 func _unhandled_key_input(e: InputEvent) -> void:
-	if _capture_action == "" or not (e is InputEventKey and e.pressed):
+	if not (e is InputEventKey and e.pressed):
+		return
+	if _capture_action == "":
+		if e.keycode == KEY_ESCAPE and current not in ["home", "welcome"]:
+			get_viewport().set_input_as_handled()
+			show_screen("home")
+		elif current == "home" and e.keycode == KEY_TAB:
+			get_viewport().set_input_as_handled()
+			cycle_mode(-1 if e.shift_pressed else 1)
+		elif current == "home" and e.keycode in [KEY_ENTER, KEY_KP_ENTER]:
+			get_viewport().set_input_as_handled()
+			play_selected()
 		return
 	get_viewport().set_input_as_handled()
 	var act := _capture_action
@@ -508,49 +884,39 @@ func _mode_picker() -> void:
 		b.pressed.connect(func(): pick_mode = id)
 		h.add_child(b)
 
-## Animated lunar backdrop: starfield, Earth, crater horizon with stadium glow.
-class Backdrop extends Control:
-	const C := preload("res://src/ui/ui_theme.gd")
-	var stars: Array = []
-	var t := 0.0
+## Top/bottom darkening so the bars and HUD read over the 3D lobby.
+class Shade extends Control:
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var rng := RandomNumberGenerator.new()
-		rng.seed = 7
-		for i in 220:
-			stars.append([Vector2(rng.randf(), rng.randf() * 0.75), rng.randf_range(0.6, 1.8), rng.randf()])
-	func _process(dt: float) -> void:
-		t += dt
-		queue_redraw()
 	func _draw() -> void:
 		var s := size
-		draw_rect(Rect2(Vector2.ZERO, s), C.SPACE)
-		for st in stars:
-			var a: float = 0.35 + 0.65 * absf(sin(t * 0.7 + st[2] * 20.0))
-			draw_circle(st[0] * s, st[1], Color(C.CREAM, a * 0.8))
-		var earth := Vector2(s.x * 0.84, s.y * 0.2)
-		var r := s.y * 0.075
-		draw_circle(earth, r * 1.25, Color(C.CYAN, 0.06))
-		draw_circle(earth, r, Color("#1E4E8C"))
-		draw_circle(earth + Vector2(-r * 0.3, -r * 0.2), r * 0.45, Color("#2E6E3F", 0.9))
-		draw_circle(earth + Vector2(r * 0.35, r * 0.3), r * 0.3, Color("#2E6E3F", 0.8))
-		draw_circle(earth + Vector2(r * 0.25, -r * 0.1), r * 0.85, Color(C.SPACE, 0.0))
-		var shade := PackedVector2Array()
-		for i in 33:
-			var ang := -PI / 2 + PI * i / 32.0
-			shade.append(earth + Vector2(cos(ang), sin(ang)) * r)
-		for i in 33:
-			var ang := PI / 2 - PI * i / 32.0
-			shade.append(earth + Vector2(cos(ang) * r * 0.35, sin(ang) * r))
-		draw_colored_polygon(shade, Color(C.SPACE, 0.55))
-		# crater rim horizon + stadium glow
-		var hz := s.y * 0.82
-		draw_circle(Vector2(s.x * 0.62, hz + s.y * 0.9), s.y * 0.95, Color(C.CYAN, 0.05 + 0.02 * sin(t)))
-		var ground := PackedVector2Array([Vector2(0, hz)])
-		for i in 41:
-			var x := s.x * i / 40.0
-			ground.append(Vector2(x, hz - sin(i * 0.9) * 6.0 - (s.y * 0.05 if i > 18 and i < 32 else 0.0)))
-		ground.append(Vector2(s.x, s.y))
-		ground.append(Vector2(0, s.y))
-		draw_colored_polygon(ground, Color("#1A1C24"))
-		draw_line(Vector2(s.x * 0.45, hz - s.y * 0.05), Vector2(s.x * 0.8, hz - s.y * 0.05), Color(C.CYAN, 0.7), 2.0)
+		var dark := Color(0.0, 0.0, 0.02, 0.75)
+		var clear := Color(0.0, 0.0, 0.02, 0.0)
+		draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(s.x, 0), Vector2(s.x, 190), Vector2(0, 190)]),
+			PackedColorArray([dark, dark, clear, clear]))
+		var y := s.y - 300.0
+		draw_polygon(PackedVector2Array([Vector2(0, y), Vector2(s.x, y), Vector2(s.x, s.y), Vector2(0, s.y)]),
+			PackedColorArray([clear, clear, dark, dark]))
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_RESIZED:
+			queue_redraw()
+
+## Level badge: XP progress arc around the level number.
+class LevelRing extends Control:
+	const C := preload("res://src/ui/ui_theme.gd")
+	var level := 1
+	var xp := 0
+	var need := 500
+	func _draw() -> void:
+		var r := minf(size.x, size.y - 30.0) / 2.0 - 8.0
+		var c := Vector2(size.x / 2.0, r + 8.0)
+		draw_circle(c, r, Color(C.SPACE, 0.7))
+		draw_arc(c, r, 0, TAU, 64, Color(C.CREAM, 0.12), 9.0, true)
+		var f := clampf(float(xp) / maxf(need, 1), 0.0, 1.0)
+		if f > 0.0:
+			draw_arc(c, r, -PI / 2, -PI / 2 + TAU * f, 64, C.CYAN, 9.0, true)
+		var small := C.font(600)
+		var big := C.font(700)
+		draw_string(small, c + Vector2(-r, -r * 0.3), "LEVEL", HORIZONTAL_ALIGNMENT_CENTER, r * 2, 16, Color(C.CREAM, 0.75))
+		draw_string(big, c + Vector2(-r, r * 0.42), str(level), HORIZONTAL_ALIGNMENT_CENTER, r * 2, 58, C.CREAM)
+		draw_string(small, Vector2(0, size.y - 4), "XP  %d / %d" % [xp, need], HORIZONTAL_ALIGNMENT_CENTER, size.x, 20, C.CYAN)

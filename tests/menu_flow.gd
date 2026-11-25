@@ -77,7 +77,21 @@ func _setup() -> void:
 		[5, func():
 			menu.content.find_child("NameEdit", true, false).text = "Ace"
 			_btn(menu.content, "Continue").pressed.emit()
-			check(menu.current == "online", "name accepted -> online screen")
+			check(menu.current == "home" and not menu.panel.visible, "name accepted -> home lobby")
+			check(menu.lobby.hero != null, "lobby shows the player's athlete")
+			menu.launch = rec
+			menu.cycle_mode()
+			check(menu.mode_id == "bots3" and launch.settings.home_mode == "bots3", "TAB cycles + remembers mode")
+			menu._set_mode("chaos")
+			menu.play_button.pressed.emit()
+			check(rec.opts == {"size": "3", "mode": "chaosball"}, "PLAY launches selected mode %s" % str(rec.opts))
+			menu._set_mode("scrimmage")
+			menu.play_selected()
+			check(rec.opts == {"practice": "scrimmage"}, "PLAY practice mode")
+			menu._set_mode("bots5")
+			menu.launch = launch
+			menu.show_screen("online")
+			check(menu.panel.visible and menu.current == "online", "online tab opens the side panel")
 			check(launch.settings.player_name == "Ace" and FileAccess.file_exists("user://test_menu_settings.cfg"), "name saved")],
 		[6, func():
 			fake_host = MMClient.new()
