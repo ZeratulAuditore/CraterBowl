@@ -23,6 +23,7 @@ var saw_lobby := false
 var lobby_size := 0
 var lobby_code := ""
 var lead_samples := 0
+var defense_call_seen := false
 
 func check(cond: bool, msg: String) -> void:
 	print(("  NET OK   " if cond else "  NET FAIL ") + msg)
@@ -33,6 +34,8 @@ func _on_snap(s: Dictionary) -> void:
 	snaps += 1
 	if aid >= 0:
 		last_server_x = (s["a"] as PackedFloat32Array)[aid * 7]
+	if s.get("dc") == "edge_blitz" and main.world.defensive_call == "edge_blitz":
+		defense_call_seen = true
 	if s["ph"] == 1:
 		saw_live = true
 
@@ -67,6 +70,7 @@ func _physics_process(_dt: float) -> bool:
 		var x: float = main.world.get_athlete(aid).position.x
 		if start_x == INF:
 			start_x = x
+			main.do_action({"a": "defense", "p": "edge_blitz"})
 			main.input_override = Vector2(1, 0)  # strafe right (legal presnap for defense)
 
 		max_dx = maxf(max_dx, x - start_x)
@@ -98,6 +102,7 @@ func _physics_process(_dt: float) -> bool:
 		check(max_dx > 2.0, "own input moved own athlete on server (dx %.1f)" % max_dx)
 		check(lead_samples > 10, "own athlete predicted ahead of server state (%d frames)" % lead_samples)
 		check(saw_live and got_snap_event, "host auto-snap reached client (snapshot LIVE + reliable event)")
+		check(defense_call_seen, "defensive selection reached host and returned in a snapshot")
 		check(bad_snap_rejected, "defense snap rejected by server")
 		check(swapped_to_team0, "team swap request -> server reassigned to team 0")
 		check(main.views[aid].number_text == "88", "my equipped #88 round-tripped through the host (%s)" % main.views[aid].number_text)
