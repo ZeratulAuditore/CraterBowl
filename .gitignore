@@ -1,0 +1,4 @@
+.godot/
+.test-output.log
+.smoke-output.log
+*.import
