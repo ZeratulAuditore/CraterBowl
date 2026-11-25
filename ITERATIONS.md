@@ -194,3 +194,8 @@
 ## 029: D03 Chaosball in matchmaking (2026-11-25)
 - Matchmaker `game` dimension (classic/chaosball, Chaosball forced 3v3) through server/client/main; host lobby opens in the queued game mode. Parity G17 automated.
 - Tests: 191 unit (+1); `MODE=chaos mm_test.sh` in smoke.sh + parity audit.
+
+## 030: C08a Defensive playbook (2026-11-25)
+- Added nine named defensive calls across man, zone and blitz families and base, goal-line and prevent shells. Suggestions use down, yards to gain, yards to goal and time remaining.
+- C08b still owns on-field assignments and play art. B03 still owns the huddle.
+- Tests: 202 unit (+2); full smoke passed with isolated user data after the shared settings file changed during the baseline run.
