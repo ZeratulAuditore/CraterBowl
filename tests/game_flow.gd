@@ -92,6 +92,14 @@ func _initialize() -> void:
 		[4500, func(): main.configure(3)],
 		[4502, func(): check(main.world.athletes.size() == 6 and main.athlete_root.get_child_count() == 6, "3v3: 6 athletes + views"); check(absf(main.field.width - 30.0) < 0.01, "3v3 field width 30"); check(main.hud.text.find("3v3") >= 0, "HUD shows 3v3")],
 		[4503, func(): var qb = main.world.find_role(0, main.Athlete.Role.QB); check(main.world.ball.is_held_by(qb.id), "3v3: QB starts with the ball"); check(main.world.snap(), "3v3 snap")],
+		# Real keyboard path (regression: handler had silently never been updated since iter 002)
+		[4600, func(): main.configure(7)],
+		[4602, func(): var p0: String = main.world.play_name; _key(KEY_Q); check(main.world.play_name != p0, "Q key calls next play (%s)" % main.world.play_name)],
+		[4603, func(): before_id = main.my_id; _key(KEY_TAB); check(main.my_id != before_id, "TAB key changes position")],
+		[4604, func(): var r0 = main.world.route_of.get(main.my_id, ""); _key(KEY_F); check(main.world.route_of.get(main.my_id, "") != r0 and r0 != "", "F key changes my route")],
+		[4605, func(): var t0: int = main.world.get_athlete(main.my_id).team; _key(KEY_T); check(main.world.get_athlete(main.my_id).team == 1 - t0, "T key swaps team")],
+		[4606, func(): _key(KEY_T); check(main.world.get_athlete(main.my_id).team == main.world.offense_team, "T again: back on offense")],
+		[4607, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE, "Space key snaps")],
 	]
 
 ## First receiver not controlled by the human (humans don't auto-run routes).
@@ -108,6 +116,13 @@ func _setup_pick() -> void:
 		if a.id != cb.id and a.position.distance_to(Vector2(50, 60)) < 6.0:
 			a.position.x = 30.0
 	cb.position = Vector2(50, 60)
+
+## Inject a real key press through main's key handler.
+func _key(code: int) -> void:
+	var ev := InputEventKey.new()
+	ev.keycode = code
+	ev.pressed = true
+	main._unhandled_key_input(ev)
 
 func _connect_listeners() -> void:
 	main.series.match_event.connect(func(_n, _d): series_events += 1)

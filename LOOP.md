@@ -13,6 +13,8 @@ Each run is one iteration. Each iteration builds on the last. **Tackle exactly o
    - Game rules/physics math go in `src/sim/` as plain `RefCounted` scripts (no Node/scene deps, deterministic, input-driven). This keeps them unit-testable and ready for server authority.
    - Scenes/visuals/input in `src/game/` + `scenes/`. Presentation reads sim state; it never owns rules.
    - Feel numbers go in `src/sim/tuning.gd` constants.
+   - Scripted multi-line edits must use `tools/patch.py` `sub()` (fails loudly when a pattern doesn't match). Plain `str.replace` silently no-ops; that hid a stale key handler from iter 010 to 017.
+   - Player-facing input must be tested through the real handler (`_key()` in game_flow.gd), not only by calling `do_action()` directly.
    - Use only original or CC0 assets. Never use Gridiron's name, art, UI or audio.
 5. **Test.** Add `tests/test_<area>.gd` covering every acceptance criterion. Then run:
    - `./scripts/test.sh`: all unit tests must pass (previous iterations' tests included).

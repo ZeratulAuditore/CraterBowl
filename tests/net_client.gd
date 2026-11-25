@@ -19,6 +19,9 @@ var aid_before_pick := -1
 var swapped_to_team0 := false
 var pick_rejected := false
 var first_team := -1
+var saw_lobby := false
+var lobby_size := 0
+var lobby_code := ""
 var lead_samples := 0
 
 func check(cond: bool, msg: String) -> void:
@@ -32,6 +35,13 @@ func _on_snap(s: Dictionary) -> void:
 		last_server_x = (s["a"] as PackedFloat32Array)[aid * 7]
 	if s["ph"] == 1:
 		saw_live = true
+
+func _on_lobby(st: Dictionary) -> void:
+	if not saw_lobby and st.get("phase", 1) == 0:
+		saw_lobby = true
+		lobby_size = int(st.get("settings", {}).get("size", 0))
+		lobby_code = str(st.get("code", ""))
+		main.lobby_key(KEY_ENTER)   # ready up through the real lobby key path
 
 func _on_welcome(id: int) -> void:
 	aid = id
@@ -49,6 +59,7 @@ func _initialize() -> void:
 func _physics_process(_dt: float) -> bool:
 	f += 1
 	if f == 2:
+		main.net.lobby_received.connect(_on_lobby)
 		main.net.welcomed.connect(_on_welcome)
 		main.net.snapshot_received.connect(_on_snap)
 		main.net.event_received.connect(_on_event)
@@ -79,7 +90,8 @@ func _physics_process(_dt: float) -> bool:
 	if bad_snap_sent_at > 0 and f == bad_snap_sent_at + 90:
 		pick_rejected = aid == aid_before_pick
 	if f == 1100 or (bad_snap_sent_at > 0 and f == bad_snap_sent_at + 91):
-		check(aid >= 0, "welcomed with athlete %d" % aid)
+		check(saw_lobby and lobby_size == 5 and lobby_code.length() == 11, "joined by code into the private lobby (5v5, code %s)" % lobby_code)
+		check(aid >= 0, "readied up -> match started -> welcomed with athlete %d" % aid)
 		check(first_team == 1, "joiner initially placed on the opponent team")
 		check(main.match_size == 5 and main.world.athletes.size() == 10, "client adopted host's 5v5 (%d athletes)" % main.world.athletes.size())
 		check(snaps > 20, "receiving snapshots (%d)" % snaps)

@@ -6,13 +6,14 @@ const HALVES := 2
 const PLAY_CLOCK := 20.0
 
 var half := 1
+var half_length := HALF_LENGTH
 var remaining := HALF_LENGTH
 var play_clock := PLAY_CLOCK
 var final := false
 
 func reset() -> void:
 	half = 1
-	remaining = HALF_LENGTH
+	remaining = half_length
 	play_clock = PLAY_CLOCK
 	final = false
 
@@ -37,7 +38,7 @@ func new_play() -> void:
 
 func start_next_half() -> void:
 	half += 1
-	remaining = HALF_LENGTH
+	remaining = half_length
 	play_clock = PLAY_CLOCK
 
 func label() -> String:

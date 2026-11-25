@@ -7,6 +7,8 @@ signal snapshot_received(snap: Dictionary)
 signal event_received(n: String, d: Dictionary)
 signal peer_joined(peer_id: int, athlete_id: int)
 signal peer_left(peer_id: int, athlete_id: int)
+signal lobby_received(state: Dictionary)
+signal lobby_changed()
 
 const P := preload("res://src/net/protocol.gd")
 const DEFAULT_PORT := 24565
@@ -25,6 +27,9 @@ var actions: Array = []        # server: [[peer_id, athlete_id, action], ...] pe
 var my_athlete := -1           # client
 var match_size := 7            # server: sent in welcome
 var host_size := 7             # client: host's match size from welcome
+var lobby_mode := false        # server: joiners wait in the lobby (no athlete) until start
+var lobby                      # server: Lobby (set by main)
+var lobby_actions: Array = []  # server: [[peer_id, action], ...]
 var last_snapshot_tick := -1
 
 func _ready() -> void:
@@ -63,6 +68,10 @@ func _send(target: int, msg: Dictionary, reliable: bool) -> void:
 
 # ---- server ----
 func _on_peer_connected(id: int) -> void:
+	if lobby_mode and lobby != null and lobby.phase == lobby.Phase.LOBBY:
+		lobby.add(id)
+		lobby_changed.emit()
+		return
 	var aid: int = assign_fn.call(id)
 	if aid < 0:
 		peer.disconnect_peer(id)
@@ -78,6 +87,9 @@ func set_assignment(id: int, aid: int) -> void:
 	_send(id, {"k": "welcome", "aid": aid, "size": match_size}, true)
 
 func _on_peer_disconnected(id: int) -> void:
+	if lobby != null and lobby.players.has(id):
+		lobby.remove(id)
+		lobby_changed.emit()
 	if peer_athlete.has(id):
 		var aid: int = peer_athlete[id]
 		peer_athlete.erase(id)
@@ -92,6 +104,19 @@ func broadcast_snapshot(snap: Dictionary) -> void:
 func broadcast_event(n: String, d: Dictionary) -> void:
 	if mode == Mode.SERVER and not peer_athlete.is_empty():
 		_send(0, {"k": "ev", "n": n, "d": d}, true)
+
+func broadcast_lobby(state: Dictionary) -> void:
+	if mode == Mode.SERVER and not api.get_peers().is_empty():
+		_send(0, {"k": "lobby", "s": state}, true)
+
+func take_lobby_actions() -> Array:
+	var out := lobby_actions
+	lobby_actions = []
+	return out
+
+func send_lobby_action(action: Dictionary) -> void:
+	if mode == Mode.CLIENT:
+		_send(1, {"k": "lact", "act": action}, true)
 
 func take_actions() -> Array:
 	var out := actions
@@ -130,6 +155,12 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 		"act":
 			if mode == Mode.SERVER and peer_athlete.has(from):
 				actions.append([from, peer_athlete[from], msg.get("act", {})])
+		"lact":
+			if mode == Mode.SERVER and lobby != null and lobby.players.has(from) and msg.get("act") is Dictionary:
+				lobby_actions.append([from, msg["act"]])
+		"lobby":
+			if mode == Mode.CLIENT and from == 1 and msg.get("s") is Dictionary:
+				lobby_received.emit(msg["s"])
 		"welcome":
 			if mode == Mode.CLIENT and from == 1:
 				my_athlete = int(msg.get("aid", -1))

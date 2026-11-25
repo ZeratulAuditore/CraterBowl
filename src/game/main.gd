@@ -19,6 +19,8 @@ const Roster := preload("res://src/sim/roster.gd")
 const LOCAL_PLAYER := 1      # the local human's player id (= host peer id online)
 const Routes := preload("res://src/sim/routes.gd")
 const MatchConfig := preload("res://src/sim/match_config.gd")
+const Lobby := preload("res://src/net/lobby.gd")
+const InviteCode := preload("res://src/net/invite_code.gd")
 const T := preload("res://src/sim/tuning.gd")
 const ARC_DOTS := 24
 
@@ -43,6 +45,8 @@ var banner_t := 0.0
 var series: Match
 var roster := Roster.new()
 var match_size := 7
+var lobby := Lobby.new()      # server: authoritative; client: mirror
+var debug_playclock := -1.0
 var field_root: Node3D
 var athlete_root: Node3D
 var my_id := -1          # the human's athlete (QB on offense, LB on defense)
@@ -251,17 +255,98 @@ func _setup_net() -> void:
 	var port := int(args.get("port", NetSession.DEFAULT_PORT))
 	if args.has("host"):
 		if args.has("playclock"):  # test/debug: shorten the first play clock
-			series.clock.play_clock = float(args["playclock"])
+			debug_playclock = float(args["playclock"])
+			series.clock.play_clock = debug_playclock
 		net.match_size = match_size
 		var err := net.host(port, func(peer): return roster.auto_assign(peer), func(peer): roster.release(peer))
 		print("NET host on %d: %s" % [port, error_string(err)])
+		if not args.has("no-lobby"):
+			lobby = Lobby.new()
+			lobby.host_id = LOCAL_PLAYER
+			lobby.add(LOCAL_PLAYER, "Host")
+			lobby.settings["size"] = match_size
+			lobby.code = InviteCode.encode(str(args.get("advertise", _local_ipv4())), port)
+			if args.has("start-when-ready"):
+				lobby.set_ready(LOCAL_PLAYER, true)
+			net.lobby = lobby
+			net.lobby_mode = true
+			net.lobby_changed.connect(func(): net.broadcast_lobby(lobby.to_dict()))
+			print("NET invite code: %s" % lobby.code)
 	else:
-		var err := net.join(str(args["join"]), port)
-		print("NET join %s:%d: %s" % [args["join"], port, error_string(err)])
+		var target := str(args["join"])
+		if InviteCode.looks_like_code(target):
+			var d := InviteCode.decode(target)
+			target = d["ip"]
+			port = d["port"]
+		var err := net.join(target, port)
+		print("NET join %s:%d: %s" % [target, port, error_string(err)])
 		auto_next = false
 		net.welcomed.connect(_on_assigned)
+		net.lobby_received.connect(func(st): lobby.from_dict(st))
 		net.snapshot_received.connect(_on_snapshot)
 		net.event_received.connect(_on_world_event)
+
+func _local_ipv4() -> String:
+	for a in IP.get_local_addresses():
+		if a.count(".") == 3 and not a.begins_with("127.") and not a.begins_with("169.254."):
+			return a
+	return "127.0.0.1"
+
+## True while the private lobby is open (server) / we haven't been placed yet (client).
+func in_lobby() -> bool:
+	if is_server():
+		return net.lobby_mode and lobby.phase == Lobby.Phase.LOBBY
+	if is_client():
+		return net.my_athlete < 0
+	return false
+
+## Lobby input: Enter = ready; host: 3/5/7 size, H half length.
+func lobby_key(keycode: int) -> void:
+	if is_client():
+		if keycode == KEY_ENTER:
+			net.send_lobby_action({"a": "ready"})
+		return
+	var changed := false
+	match keycode:
+		KEY_ENTER: changed = lobby.toggle_ready(LOCAL_PLAYER)
+		KEY_3: changed = lobby.set_setting(LOCAL_PLAYER, "size", 3)
+		KEY_5: changed = lobby.set_setting(LOCAL_PLAYER, "size", 5)
+		KEY_7: changed = lobby.set_setting(LOCAL_PLAYER, "size", 7)
+		KEY_H:
+			var i := (Lobby.HALF_MINUTES.find(lobby.settings["half_minutes"]) + 1) % Lobby.HALF_MINUTES.size()
+			changed = lobby.set_setting(LOCAL_PLAYER, "half_minutes", Lobby.HALF_MINUTES[i])
+	if changed:
+		net.broadcast_lobby(lobby.to_dict())
+
+## Server: lobby tick — apply client lobby actions, start when everyone is ready.
+func _step_lobby() -> void:
+	var changed := false
+	for la in net.take_lobby_actions():
+		match la[1].get("a", ""):
+			"ready": changed = lobby.toggle_ready(la[0]) or changed
+			"name": changed = lobby.set_name(la[0], str(la[1].get("n", ""))) or changed
+	if changed:
+		net.broadcast_lobby(lobby.to_dict())
+	if lobby.all_ready():
+		_start_from_lobby()
+
+func _start_from_lobby() -> void:
+	if not lobby.start():
+		return
+	configure(lobby.settings["size"])
+	series.clock.half_length = lobby.settings["half_minutes"] * 60.0
+	series.clock.reset()
+	if debug_playclock > 0.0:
+		series.clock.play_clock = debug_playclock
+	net.match_size = match_size
+	for id in lobby.players:
+		if id == LOCAL_PLAYER:
+			continue
+		var aid := roster.auto_assign(id)
+		if aid >= 0:
+			net.set_assignment(id, aid)
+	net.broadcast_lobby(lobby.to_dict())
+	print("NET match started: %s" % lobby.summary())
 
 ## Client: server (re)assigned our athlete (join, position change, team swap).
 func _on_assigned(aid: int) -> void:
@@ -376,24 +461,46 @@ func _input(e: InputEvent) -> void:
 		_set_charging(false)
 
 func _unhandled_key_input(e: InputEvent) -> void:
-	if e is InputEventKey and e.pressed and not e.echo:
-		if e.keycode == KEY_SPACE:
-			world.snap()
-		elif e.keycode == KEY_1:
-			series.choose_try(1)
-		elif e.keycode == KEY_2:
-			series.choose_try(2)
-		elif e.keycode == KEY_E:
-			world.tackle(controlled_id)
-		elif e.keycode == KEY_J:
+	if not (e is InputEventKey and e.pressed and not e.echo):
+		return
+	if in_lobby():
+		lobby_key(e.keycode)
+		return
+	match e.keycode:
+		KEY_SPACE:
+			do_action({"a": "snap"})
+		KEY_1:
+			do_action({"a": "try", "n": 1})
+		KEY_2:
+			do_action({"a": "try", "n": 2})
+		KEY_E:
+			do_action({"a": "tackle"})
+		KEY_J:
 			_set_charging(true)
-		elif e.keycode == KEY_R and world.phase == World.Phase.DEAD:
-			next_play()
+		KEY_Q:
+			var i := (Routes.PLAY_NAMES.find(world.play_name) + 1) % Routes.PLAY_NAMES.size()
+			do_action({"a": "play", "p": Routes.PLAY_NAMES[i]})
+		KEY_F:
+			if world.route_of.has(my_id):
+				var j := (Routes.ROUTE_NAMES.find(world.route_of[my_id]) + 1) % Routes.ROUTE_NAMES.size()
+				do_action({"a": "route", "r": Routes.ROUTE_NAMES[j]})
+		KEY_TAB:
+			do_action({"a": "cycle"})
+		KEY_T:
+			do_action({"a": "team"})
+		KEY_R:
+			if world.phase == World.Phase.DEAD and not is_client():
+				next_play()
 
 func _physics_process(delta: float) -> void:
 	if charging:
 		charge = minf(1.0, charge + delta / T.THROW_CHARGE_TIME)
 	var my_input := {"dir": read_input(), "sprint": Input.is_key_pressed(KEY_SHIFT)}
+	if in_lobby():
+		if is_server():
+			_step_lobby()
+		_render()
+		return
 	if is_client():
 		# Predict own athlete now; server stays authoritative and reconciles via acks.
 		var seq := predictor.record(my_input["dir"], my_input["sprint"], delta)
@@ -486,6 +593,10 @@ func _process(delta: float) -> void:
 	banner_t = maxf(0.0, banner_t - delta)
 	if banner_t > 0.0:
 		phase_name = banner + "  " + phase_name
+	if in_lobby():
+		var who := "host: [3/5/7] size, [H] half length, " if is_server() else ""
+		hud.text = "PRIVATE MATCH LOBBY   Invite code: %s\n%s\n[Enter] ready  (%s starts when everyone is ready)" % [lobby.code, lobby.summary(), who]
+		return
 	var clock_txt: String = "%dv%d %s" % [match_size, match_size, series.clock.label()]
 	if world.phase == World.Phase.PRESNAP:
 		clock_txt += " | PLAY %d" % int(ceil(series.clock.play_clock))

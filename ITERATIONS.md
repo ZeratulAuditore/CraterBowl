@@ -115,3 +115,10 @@
 - Downs/Match now goal-relative: turnover mirror, try LOS (goal−3 / goal−10), kickoff at 25% of field, OWN/OPP labels around midfield.
 - Main: `-- --size=3|5|7`; `configure(size)` rebuilds field/roster/sim/views in place (containers FieldRoot/AthleteRoot); HUD shows "5v5 H1 4:32". Host's welcome carries size; clients rebuild to match.
 - Tests: 118 unit (+7 incl. 3v3/5v5 all-bot games); flow 55 checks (+5: in-place 3v3 rebuild); net test now hosts 5v5 and checks the client adopts it (10 checks). Flow listeners now connect after main._ready (configure() replaces the World).
+
+## 017: A16 Private matches (2026-11-24)
+- `src/net/invite_code.gd`: IPv4+port ⇄ 10-char Crockford base32 `XXXXX-XXXXX` (forgiving O/I/L); `--join=CODE` or IP.
+- `src/net/lobby.gd`: LOBBY/IN_GAME, players + ready, host-only validated settings (size 3/5/7, half 2/5/8 min; settings change clears ready), serialization. Clock half length per match.
+- Host opens a lobby by default (`--no-lobby` for instant start; `--start-when-ready`, `--advertise=IP` for headless/tests); prints the invite code; lobby state broadcast reliably; clients ready via lobby actions; when all ready → configure(size) + half length + roster slots + welcomes; late joiners go straight in. Lobby HUD + keys (Enter ready; host 3/5/7, H).
+- **Found + fixed a latent bug:** the real keyboard handler had never been updated since iter 002 (string-replace patches silently didn't match): Space/E/1/2 bypassed `do_action` (broken online), and TAB/T/Q/F didn't exist. Rewrote it; added real-key-event flow steps; added `tools/patch.py` (strict) + LOOP.md rules.
+- Tests: 125 unit (+7); flow 62 checks (+6 real-key steps); net test joins **by invite code** through lobby ready-up (11 checks), 3/3 passes.
