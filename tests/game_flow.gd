@@ -34,7 +34,7 @@ func _initialize() -> void:
 		[6, func(): check(main.world.snap(), "snap")],
 		[40, func(): check(main.world.ball.is_held_by(main.controlled_id), "QB has ball")],
 		[41, func(): main.aim_point = Vector2(40, 45); main._set_charging(true)],
-		[80, func(): check(main.charge > 0.3, "charge builds (%.2f)" % main.charge); check(main.arc_dots[0].visible, "arc preview shown")],
+		[80, func(): check(main.charge > 0.3, "charge builds (%.2f)" % main.charge); check(main.arc_shown(), "arc preview shown")],
 		[81, func(): main._set_charging(false)],
 		[82, func(): check(main.world.forward_pass_thrown, "pass thrown")],
 		[400, func(): check(main.world.phase == main.World.Phase.DEAD, "incomplete ends play")],
