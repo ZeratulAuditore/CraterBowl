@@ -2,7 +2,25 @@
 
 Ordered by priority, so take items top to bottom. Each item is scoped, not designed; the real design pass happens in `docs/iterations/NNN-*.md` when the loop picks it up. Acceptance criteria are written so they can become tests (`tests/test_*.gd`, `game_flow.gd`, `net_client.gd`). If an item is too big for one iteration, split it here (C01a, C01b) and do the first half.
 
-Source tags: O = original Gridiron, R = Gridiron Remastered, Gx = genre game, PLAN = our PLAN.md. See `GAP_ANALYSIS.md` for the matrix and `reviews/` for URLs.
+Source tags:
+- **O** = original Gridiron
+- **R** = Gridiron Remastered
+- **R-ss** = seen directly in the user's remaster open-beta screenshots (build 6763c93, 2026-11-25)
+- **Gx** = genre game
+- **PLAN** = our PLAN.md
+
+See `GAP_ANALYSIS.md` for the matrix and `reviews/` for URLs.
+
+## Recommended build order (revised 2026-11-25 after the screenshots)
+The screenshots show the remaster's every-snap loop: **play-call screen → break → pre-snap play art on the turf → snap**, with the full scorebug always on screen. Kickoffs are live plays. Ours: press Q to cycle plays → text HUD → snap, with an instant kickoff reset. What a player sees and does before every snap is our biggest gap, so take these first:
+1. **B03 play-call huddle + C08 defensive calls/zones**, built together, so both sides call plays and see their own assignments.
+2. **B09 kickoffs + C02 punts/FGs**, which share the kick meter.
+3. **C01 run game.**
+4. **C04 clock**: quarters, timeouts, running clock.
+5. **C31 nameplates + scorebug checklist** (handed to A26/A27).
+6. **C32 co-op vs bots.**
+
+After that, follow the list order below. B01/B02 (line play, press) come after these, since they deepen mechanics the remaster already has in simpler form.
 
 ---
 
@@ -48,6 +66,9 @@ Source tags: O = original Gridiron, R = Gridiron Remastered, Gx = genre game, PL
   - Mercy rule: the game ends when one team leads by 28 or more (host option).
   - Quarter length is a lobby setting.
   - Spike and kneel actions (stretch).
+  - **Remaster (R-ss):** 4 short quarters (the clock showed 4th 1:19 and 1:11) and 3 timeout pips per team on the scorebug.
+    - Add a quarters option. Halftime stays after Q2, and teams switch direction each quarter.
+    - Timeouts remaining must always be visible.
 - **Touch:** `clock.gd`, `match.gd`, `lobby.gd` settings, HUD.
 
 ### [ ] C05 Competitive rules: eligibility, grounding, blocking zone, QB slowdown
@@ -76,8 +97,16 @@ Source tags: O = original Gridiron, R = Gridiron Remastered, Gx = genre game, PL
   - Contested catches resolve by position plus timing instead of always a breakup.
   - Dive and jump catch animations reuse the C03 moves.
 
-### [ ] C08 Defense: play calls, zone coverage, blitzes, play art for everyone
+### [ ] C08 Defense: play calls, zone coverage, blitzes, play art for everyone ⬆ *top of P0 (screenshot evidence)*
 - **Why:** Gridiron draws every player's assignment on the field: routes, blocks, man or zone, and blitz lane (O 1.0.4.47). Defense has pre-snap free roam (except DL). We have man coverage only, no defensive calls, and play art only for offense. That violates pillar 2 ("everyone matters").
+- **Remaster screenshots (R-ss, 2026-11-25):**
+  - Every defensive snap starts with a play call.
+  - Plays are filtered by Zone / Man / Blitz, and each one is a *call × shell*: "Zone Blitz / Cover 2 Deep", "Run Stop / Goal Line Defense", "Man Zone / Prevent 3 Deep". The shells are situational (goal line, prevent).
+  - Pre-snap, each defender's zone is projected on the turf as an ellipse, drawn in a different color for underneath hook/curl zones than for flat/deep zones. A tether line runs from the player to the zone, and blitzers get red arrows on the turf. On Gridiron this play art is how 7 strangers coordinate without voice.
+- **Accept (added):**
+  - Defensive calls = coverage family (man / zone / blitz) × shell (base, goal line, prevent), with at least 8 calls in total.
+  - The goal-line and prevent shells become the suggested defaults when the down/distance/field position fits.
+  - Zone landmarks are drawn on the turf in 3D, along with the tether and blitz arrows, visible to your own team only.
 - **Accept:**
   - The defense picks from 4 or more calls: Cover 1 man, Cover 2 zone, Cover 3 zone, and a blitz.
   - Zone defenders hold landmarks and break on the throw.
@@ -115,6 +144,7 @@ Source tags: O = original Gridiron, R = Gridiron Remastered, Gx = genre game, PL
   - Covered by `net_test.sh` (kill client → restart → same slot).
 
 ### [ ] C12 Position assignment: QB vote, role preferences
+- **Remaster (R-ss):** the play-call screen shows every teammate's name on their slot in the diagram, and you can "drag a player to swap". Position shuffling happens inside the huddle, not in a lobby. Accept (added): the QB/captain can swap two teammates' slots from the play-call screen, and the swapped players get a one-tap confirm.
 - **Why:** Gridiron had QB voting that showed each candidate's QBR, one re-vote at half-time and a mutual position swap. Its role queue spent role points on popular roles, earned by playing line, and unlocked after 25 games (O 1.0.4.x). Ours is first-come TAB cycling, which in public matches means everyone fights for QB.
 - **Accept:**
   - The lobby shows a role preference per player.
@@ -187,7 +217,7 @@ Source tags: O = original Gridiron, R = Gridiron Remastered, Gx = genre game, PL
 ### [ ] C21 Host tools: mutators, ref console, kick/mute
 - **Why:** Gridiron custom matches had a ref console (O 1.0.3.9), reports, mutes and kicks. Genre: a mutator panel makes private lobbies a toy box (Gx Rocket League; our Chaosball knobs are already constants). B08 makes tuning data-driven, and this item exposes a safe subset per lobby.
 - **Accept:**
-  - The lobby has settings for: gravity, quarter length, score values, pass-clock length, bounce cap, mercy rule, and kicking on/off.
+  - The lobby has settings for: gravity, quarter length, score values, pass-clock length, bounce cap, mercy rule, kicking on/off, and **line to gain** (10 yd default; the remaster plays 1st & 15, per R-ss).
   - Settings sync to clients and are recorded in the replay header.
   - Host commands: kick, mute, pause, spot ball, reset down.
   - Ranked lobbies ignore mutators (test).
@@ -216,9 +246,36 @@ Source tags: O = original Gridiron, R = Gridiron Remastered, Gx = genre game, PL
   - The profile view shows per-position career stats and QBR (formula documented).
   - CLI `--history` prints them.
 
+### [ ] C31 Who's who on the field: nameplates, rings, "you" marker
+- **Why:** In every remaster screenshot (R-ss) each athlete has a floating name and a team-colored ground ring, and your own ring is highlighted. Ours shows only jersey numbers (`player.gd` `number_front/back`). With 7 humans per side, you can't call "hit Ben on the slant" if you can't see who Ben is.
+- **Accept:**
+  - Each athlete shows a name tag from roster/lobby names; bots show their bot name.
+  - Ground rings in the team color, with your own ring distinct.
+  - Opponent names are optional (host setting) and hidden in streamer mode (C19).
+  - Tags fade with distance and never cover the ball carrier.
+  - Verified with `shot.sh` PNGs.
+  - **Coordinate with A26** (graphics session owns `player.gd` visuals). If A26 is still open, hand this to them as a request rather than building it in parallel.
+
+### [ ] C32 Co-op vs bots playlist + bot difficulty
+- **Why:** The remaster's open-beta scorebug reads "7 VS BOTS": a matchmade mode where humans team up against a full bot side. With a small population that's the queue that always fires (our small-population lesson). The opposing bots carry gamer-style generated names, so the mode doesn't feel empty. Ours: co-op only works by hand (team swap in a private lobby, PARITY G24).
+- **Accept:**
+  - The matchmaker offers a `coop` queue. It forms a match from 1 to N humans all on one team and fills the other side with bots, starting without waiting for a full lobby.
+  - Bot difficulty (easy/normal/hard) tunes reaction time, coverage tightness and throw accuracy. A bot sim shows the win-rate ordering is monotonic.
+  - Bots get generated, original names.
+  - Co-op results give XP but never touch ranked.
+
 ---
 
 ## P2: better than Gridiron, and polish
+
+### [ ] C33 Team identity: names, colors, field branding, "ball on <TEAM> 19"
+- **Why:** The remaster (R-ss) has named teams (Coolers vs Bolts) with logos, team-colored end-zone wordmarks and scorebug panels. Field position reads "BALL ON COOLERS 19" instead of "own/opp". The original let players set custom team names and abbreviations (O). Identity is cheap and gives friend groups something to own.
+- **Accept:**
+  - A data file of at least 8 original team identities (name, abbreviation, two colors, a procedural or CC0 logo).
+  - The host picks or randomizes teams, which drive uniforms, end-zone text and HUD.
+  - Spot text uses the team abbreviation ("BALL ON BOL 19").
+  - Private lobbies can set custom names (sanitized).
+  - After A26. Ours must not resemble their teams.
 
 ### [ ] C25 Momentum / "on fire"
 - **Why:** NBA Jam / Blitz "on fire" creates comeback swings and stories (Gx). This is pillar 1.
@@ -274,5 +331,29 @@ Source tags: O = original Gridiron, R = Gridiron Remastered, Gx = genre game, PL
   - It must improve on Gridiron with the timing/leverage minigame in PLAN.
 - **B04 Highlights:** add an auto TD replay with a skip vote, an MVP card at FINAL, a free-cam replay theater, and clip export (a frame range rendered via `shot.sh`-style capture to an image sequence or video). Gridiron promised replays and never shipped them, so this is an easy win.
 - **B09 Kickoffs:** share the kick meter with C02. Onside is a C27 mutator, off by default (Gridiron removed it).
-- **D02 Party:** party members queue together and stay on one team, up to the team size.
-- **D03 Chaosball in matchmaking:** prefer one shared casual queue with a mode vote over a separate playlist (small-population lesson).
+  - Remaster (R-ss): the kickoff is a real live play, with a stepped power meter beside the kicker and the ball on a tee.
+  - The kicking team spreads across the field, and the receivers line up as a front row plus two deep returners. A "KICKOFF" banner replaces down & distance.
+  - Our `_kickoff()` is still an instant reset, so B09 is now confirmed parity (not "better than") and should move ahead of B01/B02.
+- **B03 Play-call huddle:** this is the remaster's *every-snap* screen (R-ss).
+  - **Their layout:** a large overlay with a play list and filter tabs, a "LAST" quick-recall row, and a full-field diagram that puts teammate names on their slots and draws the zones and blitz arrows. It also has a FLIP (mirror) button, a "choose the best play for me" button with a "do this every play" checkbox, a countdown, and a BREAK button. Players stand in a 3D huddle meanwhile.
+  - **Ours:** the QB presses Q to cycle 6 plays, shown as HUD text, so this is now the most visible gap.
+  - **Build ours to beat theirs on speed (pillar: 5 s huddle):**
+    - 6–8 situational cards, not a long scroll list.
+    - A smart default pre-highlighted from down, distance and field position, so one key accepts it.
+    - Last-play recall and flip.
+    - An auto-call opt-in per player, which doubles as an accessibility feature.
+    - The diagram shows *your* assignment large and the others small.
+    - Non-callers see the chosen play as soon as it's picked.
+  - Don't copy their layout or styling (left list + right diagram, purple/neon). Use our own A27 visual language.
+- **A26/A27 scorebug requirements** (owned by the graphics overlay; hand over as a checklist):
+  - possession marker
+  - quarter and clock
+  - play clock
+  - timeouts left per team
+  - down & distance (and KICKOFF/TRY states)
+  - spot text with team name
+  - mode label (e.g. "5v5 CO-OP")
+  - a mini field-position strip showing the LOS and the line to gain
+  - The remaster shows all of these in one compact strip. Ours shows them as a single HUD text label.
+- **D02 Party:** shipped iter 028 (parties matched as units, never split). The remaining gap is to also keep the party together across a rematch (C20).
+- **D03 Chaosball in matchmaking:** shipped iter 029.
