@@ -173,4 +173,4 @@
 - Views: trim band, helmet + stripe, front/back number labels, celebration animation on your TD. Looks never enter the sim (test: identical worlds regardless of looks).
 - Sync: client sends its look after assignment; host sanitizes, stores per peer, broadcasts `looks` (on join, swaps, changes); client shows its look only via the host echo. At FINAL host broadcasts `awards`; each machine credits only its own profile ("XP +182 (Level 1)"); ranked season rewards become badges. CLI `--equip=slot:id,...`, `--profile-file`.
 - **Data-safety fix:** the first smoke run wrote a test XP profile into the real user-data folder (created by this session; deleted). All tests now use temp profile/leaderboard/ranked files and smoke.sh fails if real user data files change.
-- Tests: 182 unit (+6); flow 89 checks (+7); net 12 checks (+1: #88 round-trips via host).
+- Tests: 182 unit (+6); flow 87 checks (+7); net 12 checks (+1: #88 round-trips via host).
