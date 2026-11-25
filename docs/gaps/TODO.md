@@ -97,7 +97,12 @@ After that, follow the list order below. B01/B02 (line play, press) come after t
   - Contested catches resolve by position plus timing instead of always a breakup.
   - Dive and jump catch animations reuse the C03 moves.
 
-### [ ] C08 Defense: play calls, zone coverage, blitzes, play art for everyone ⬆ *top of P0 (screenshot evidence)*
+### [~] C08a Defensive playbook and situational suggestions (claimed: codex 2026-11-25)
+- **Accept:** Define at least eight man, zone and blitz calls across base, goal-line and prevent shells.
+- **Accept:** Suggest a goal-line call near the end zone and a prevent call on long late downs, with a base fallback.
+- This catalog supplies the defensive side of B03. Apply assignments in the sim and expose them in the huddle and on-field art in C08b.
+
+### [ ] C08b Defense: play calls, zone coverage, blitzes, play art for everyone ⬆ *top of P0 (screenshot evidence)*
 - **Why:** Gridiron draws every player's assignment on the field: routes, blocks, man or zone, and blitz lane (O 1.0.4.47). Defense has pre-snap free roam (except DL). We have man coverage only, no defensive calls, and play art only for offense. That violates pillar 2 ("everyone matters").
 - **Remaster screenshots (R-ss, 2026-11-25):**
   - Every defensive snap starts with a play call.
