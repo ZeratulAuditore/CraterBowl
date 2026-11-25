@@ -89,5 +89,5 @@
 - World: `call_play`, `set_route` (eligible receivers only), route paths computed at snap; defaults to Verticals each play. AI receivers follow paths (then continue final direction) with lane avoidance.
 - Protocol: `play`/`route` actions (offense-only, presnap-only, sanitized), snapshots carry play + per-athlete routes.
 - Game: Q cycles play, F cycles your own route; presnap route art for your team only (yours green); HUD shows PLAY/ROUTE.
-- Tests: 91 unit (+5); flow 45 checks (+7: play call, route art shown/hidden, HUD, AI slant breaks inside).
+- Tests: 91 unit (+5); flow 44 checks (+6: play call, route art shown/hidden, HUD, AI slant breaks inside).
 - Known gaps: no defensive coverage schemes yet (bots A14 will add man/zone basics).
