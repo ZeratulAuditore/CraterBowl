@@ -207,3 +207,13 @@
 - Parity: G25 evidence = menu_flow (name, matchmaking, rebinding via real keys, gamepad, Esc overlay) + unit tests; G26 evidence = offscreen real-renderer screenshots (viewed: stadium, rigged players, scorebug, live play).
 - `./scripts/parity_audit.sh` full run: **26/26 PASS, 0 gaps, 0 pending** (7m11s). Built game: `./scripts/export.sh Linux` → CraterBowl-0.1.0-linux.zip, EXPORT BOOT CHECK PASS.
 - Phase A complete. Open follow-ups: D05 return yards; Phase B items (B07 owned by out-of-game session); Phase C TODOs from docs/gaps.
+
+## 030: C08a Defensive playbook (2026-11-25)
+- Added nine named defensive calls across man, zone and blitz families and base, goal-line and prevent shells. Suggestions use down, yards to gain, yards to goal and time remaining.
+- C08b still owns on-field assignments and play art. B03 still owns the huddle.
+- Tests: 202 unit (+2); full smoke passed with isolated user data after the shared settings file changed during the baseline run.
+
+## 031: C08b Defensive play selection and synchronization (2026-11-25)
+- Classic matches seed a defensive call from the game situation each snap. The host accepts catalog calls from defending athletes during presnap and sends the current call in match snapshots.
+- Player controls, assignment behavior and play art remain open in C08c and B03.
+- Tests: 204 unit (+2); full smoke passed, including a remote defender's selection round-tripping through the host.

@@ -9,6 +9,7 @@ const Athlete := preload("res://src/sim/athlete.gd")
 const Ball := preload("res://src/sim/ball.gd")
 const Passing := preload("res://src/sim/passing.gd")
 const Routes := preload("res://src/sim/routes.gd")
+const DefensivePlaybook := preload("res://src/sim/defensive_playbook.gd")
 
 enum Phase { PRESNAP, LIVE, DEAD }
 
@@ -31,6 +32,7 @@ var last_possession := 0
 var dead_ball_team := 0
 var play_time := 0.0
 var play_name := "Verticals"
+var defensive_call := ""
 var route_of := {}      # athlete_id -> route name (eligible offense receivers)
 var route_paths := {}   # athlete_id -> Array[Vector2] absolute, set at snap
 var ruleset := "classic"
@@ -120,6 +122,7 @@ func setup_formation(los: float) -> void:
 	streak = 0
 	hold_t = 0.0
 	call_play("Verticals")
+	defensive_call = ""
 	phase = Phase.PRESNAP
 	_sync_ball()
 
@@ -148,6 +151,12 @@ func call_play(name: String) -> bool:
 	var routes: Array = Routes.PLAYBOOK[name]
 	for i in mini(recv.size(), routes.size()):
 		route_of[recv[i].id] = routes[i]
+	return true
+
+func call_defense(id: String) -> bool:
+	if phase != Phase.PRESNAP or is_chaos() or not DefensivePlaybook.CALLS.has(id):
+		return false
+	defensive_call = id
 	return true
 
 func set_route(id: int, route: String) -> bool:

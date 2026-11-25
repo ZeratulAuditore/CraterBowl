@@ -120,7 +120,20 @@ func _setup() -> void:
 			_btn(menu.content, "Quick match").pressed.emit()
 			check(rec.opts.get("queue") == "casual" and rec.opts.get("mm") == "127.0.0.1:%d" % MM_PORT and rec.opts.get("host-port") == "24566", "quick match -> casual queue %s" % str(rec.opts))
 			_btn(menu.content, "Ranked").pressed.emit()
-			check(rec.opts.get("queue") == "competitive", "ranked -> competitive queue")],
+			check(rec.opts.get("queue") == "competitive", "ranked -> competitive queue")
+			var ps: OptionButton = menu.content.find_child("PartySize", true, false)
+			ps.select(2)
+			ps.item_selected.emit(2)
+			var pc: LineEdit = menu.content.find_child("PartyCode", true, false)
+			check(pc.text.length() == 5 and pc.editable, "party gets a code")
+			pc.text = "abc12"
+			pc.text_changed.emit("abc12")
+			_btn(menu.content, "Chaosball (3v3, low-g)").pressed.emit()
+			_btn(menu.content, "Quick match").pressed.emit()
+			check(rec.opts.get("party") == "ABC12:3" and rec.opts.get("mode") == "chaosball" and rec.opts.get("size") == "3",
+				"party + chaosball queue %s" % str(rec.opts))
+			menu.pick_mode = "classic"
+			menu.party_size = 1],
 		[302, func():
 			menu.show_screen("practice")
 			_btn(menu.content, "Tackling").pressed.emit()

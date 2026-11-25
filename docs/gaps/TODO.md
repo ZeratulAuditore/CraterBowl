@@ -35,7 +35,7 @@ After that, follow the list order below. B01/B02 (line play, press) come after t
   - Bots call run plays some fraction of the time, and the 2-min bot game still finishes with a sane score.
 - **Touch:** `world.gd` (possession transfer), `routes.gd` (plays), `ai.gd`, `stats.gd`, `protocol.gd` (whitelist `handoff`).
 
-### [ ] C02 Kicking game: coin toss, punts, field goals, PAT kicks
+### [~] C02 Kicking game: coin toss, punts, field goals, PAT kicks (claimed: claude 2026-11-25, with B09; branch kicking-game)
 - **Why:** Gridiron had a coin toss, punts with a power meter, punt returns, FGs, PATs, FG blocks, and scoop-and-score on blocked kicks. A missed FG gives the ball to the defense at the kick spot, or at the 20 when the kick was inside it (O 1.0.4.31). We have none of these, so 4th down is always go-for-it. **Kickoffs + returns are B09**; build B09 first or together with this, sharing the kick meter.
 - **Accept:**
   - The match starts with a coin toss whose winner chooses to kick or receive.
@@ -97,17 +97,21 @@ After that, follow the list order below. B01/B02 (line play, press) come after t
   - Contested catches resolve by position plus timing instead of always a breakup.
   - Dive and jump catch animations reuse the C03 moves.
 
-### [~] C08a Defensive playbook and situational suggestions (claimed: codex 2026-11-25)
+### [x] C08a Defensive playbook and situational suggestions
 - **Accept:** Define at least eight man, zone and blitz calls across base, goal-line and prevent shells.
 - **Accept:** Suggest a goal-line call near the end zone and a prevent call on long late downs, with a base fallback.
-- This catalog supplies the defensive side of B03. Apply assignments in the sim and expose them in the huddle and on-field art in C08b.
+- This catalog supplies the defensive side of B03. Apply assignments in the sim and expose them in the huddle and on-field art in the remaining C08 items.
 
-### [ ] C08c Pre-snap defensive roam + LOS barrier (plan: docs/iterations/032-presnap-defense-roam.md)
+### [x] C08b Defensive play selection and synchronization
+- **Accept:** Each classic snap starts with the suggested defensive call. The defending team can select any catalog call during presnap, and the selection is synchronized to clients.
+- The huddle control, on-field assignments and bot behavior follow in C08c.
+
+### [~] C08c Defense and B03 huddle (claimed: codex 2026-11-25)
+
+### [ ] C08d Pre-snap defensive roam + LOS barrier (plan: docs/iterations/032-presnap-defense-roam.md)
 - **Why:** In the reference, defenders spawn in stance and press Space to break it and roam pre-snap. DL stay set. A see-through animated hex wall at the LOS marks the limit. Ours: everyone (DL too) can already move pre-snap, they hit an invisible clamp, and Space on defense does nothing.
 - **Accept:** Defense lines up locked. Space breaks stance for LB/CB/S only. The neutral-zone clamp is shared by host and client prediction. The barrier is visible pre-snap with proximity reveal and contact ripples, and dissolves at the snap.
 - Splits the "non-DL defenders can move freely" bullet out of C08b, so it can ship independently of the playbook work (C08a).
-
-### [ ] C08b Defense: play calls, zone coverage, blitzes, play art for everyone ⬆ *top of P0 (screenshot evidence)*
 - **Why:** Gridiron draws every player's assignment on the field: routes, blocks, man or zone, and blitz lane (O 1.0.4.47). Defense has pre-snap free roam (except DL). We have man coverage only, no defensive calls, and play art only for offense. That violates pillar 2 ("everyone matters").
 - **Remaster screenshots (R-ss, 2026-11-25):**
   - Every defensive snap starts with a play call.

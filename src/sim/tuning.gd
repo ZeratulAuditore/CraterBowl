@@ -96,3 +96,8 @@ const PASS_CLOCK := 5.0              # Chaosball: ball explodes if held this lon
 const STREAK_BASE_POINTS := 2
 const STREAK_MAX_POINTS := 7
 const AI_PASS_CLOCK_MARGIN := 1.2
+
+# Defensive play suggestions
+const DEFENSE_GOAL_LINE_RANGE := 5.0
+const DEFENSE_PREVENT_DISTANCE := 15.0
+const DEFENSE_PREVENT_TIME := 60.0

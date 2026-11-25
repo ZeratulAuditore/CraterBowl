@@ -32,6 +32,9 @@ const MMClient := preload("res://src/net/mm_client.gd")
 const InviteCode := preload("res://src/net/invite_code.gd")
 const T := preload("res://src/sim/tuning.gd")
 const Presentation := preload("res://src/game/presentation.gd")
+const Potg := preload("res://src/sim/potg.gd")
+const PotgStage := preload("res://src/ui/potg_stage.gd")
+const POSTGAME_HOLD := 3.0      # seconds on the FINAL scoreboard before players of the game
 const FieldArt := preload("res://src/game/art/field_art.gd")
 const StadiumArt := preload("res://src/game/art/stadium.gd")
 const ArtMats := preload("res://src/game/art/materials.gd")
@@ -83,6 +86,11 @@ var replay_viewer := false      # --replay=FILE standalone viewer
 var replay_dir := "user://replays"
 var saved_replay := ""
 var my_ranks := ""
+var potg: Array = []            # players of the game (server picks; clients receive)
+var team_totals: Array = []     # per-team box score for the lobby's game overview
+var postgame_t := -1.0          # >= 0: counting down to the players-of-the-game presentation
+var postgame: Control           # the presentation while it plays
+var postgame_done := false
 var field_root: Node3D
 var athlete_root: Node3D
 var my_id := -1          # the human's athlete (QB on offense, LB on defense)
@@ -207,6 +215,10 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	replay.meta = {"size": match_size, "mode": match_mode}
 	replay_active = false
 	summary_lines = []
+	potg = []
+	team_totals = []
+	postgame_t = -1.0
+	postgame_done = false
 	series.match_event.connect(_on_match_event)
 	if drill != null:
 		world.event.connect(drill.on_event)
@@ -471,8 +483,82 @@ func _on_match_event(n: String, _d: Dictionary) -> void:
 				net.broadcast_event("awards", {"xp": awards, "ctx": ctx})
 		summary_lines = stats.summary_lines()
 		print("MATCH SUMMARY:\n  " + "\n  ".join(summary_lines))
+		if drill == null and not is_client():
+			potg = _decorate_potg(Potg.pick(stats.athletes, series.winner()))
+			team_totals = Potg.team_totals(stats.athletes)
+			print("PLAYERS OF THE GAME: %s" % ", ".join(potg.map(func(e): return "%s (%s %s)" % [e["name"], e["pos"], e["score"]])))
+			_queue_postgame()
 		if is_server():
-			net.broadcast_event("summary", {"lines": summary_lines})
+			net.broadcast_event("summary", {"lines": summary_lines, "potg": potg, "teams": team_totals})
+
+## Display name, jersey number and cosmetics for each pick (sent to clients as-is).
+func _decorate_potg(picks: Array) -> Array:
+	for e in picks:
+		var aid: int = e["id"]
+		var lk: Dictionary = looks.get(aid, {})
+		e["name"] = "CPU" if e["owner"] == "Bot" else e["owner"]
+		e["number"] = int(lk.get("number", (aid % 90) + 10))
+		e["look"] = lk.duplicate()
+	return picks
+
+# --- post-game: FINAL hold -> players of the game -> lobby ------------------
+
+func _queue_postgame() -> void:
+	if replay_viewer or postgame_done or postgame_t >= 0.0:
+		return
+	postgame_t = 0.0
+
+func _tick_postgame(delta: float) -> void:
+	if postgame_t < 0.0 or postgame != null:
+		return
+	postgame_t += delta
+	if postgame_t >= POSTGAME_HOLD:
+		start_postgame()
+
+## Show the players-of-the-game presentation (skipped when nobody recorded a stat).
+func start_postgame() -> void:
+	if postgame != null or postgame_done:
+		return
+	if replay_active and not replay_viewer:
+		stop_replay()
+	if potg.is_empty():
+		finish_postgame()
+		return
+	var layer := CanvasLayer.new()
+	layer.name = "Postgame"
+	layer.layer = 60     # over the match HUD, under the Esc menu (90)
+	postgame = PotgStage.new()
+	postgame.setup(potg, {"score": series.score.duplicate(), "winner": series.winner(),
+		"team_colors": TEAM_COLORS, "team_names": Potg.TEAM_NAMES})
+	postgame.finished.connect(finish_postgame)
+	layer.add_child(postgame)
+	add_child(layer)
+
+## Everything the lobby's game overview shows, as plain data.
+func match_overview() -> Dictionary:
+	var me := player_name if is_client() else owner_name(my_id)
+	var mine := summary_lines.filter(func(l): return str(l).begins_with(me + " "))
+	var my_team: int = world.get_athlete(my_id).team if world.get_athlete(my_id) else 0
+	return {"score": series.score.duplicate(), "winner": series.winner(), "my_team": my_team,
+		"team_names": Potg.TEAM_NAMES, "mode": match_mode, "size": match_size, "ranked": ranked_match,
+		"online": net != null, "me": me, "potg": potg, "teams": team_totals,
+		"my_lines": mine.map(func(l): return str(l).trim_prefix(me + " ")),
+		"xp": xp_line, "achievements": achievement_line, "rating": ranked_line, "ranks": my_ranks,
+		"replay": saved_replay, "when": Time.get_datetime_string_from_system(false, true)}
+
+## Presentation over: back to the lobby (menu launches) with the game overview.
+func finish_postgame() -> void:
+	if postgame_done:
+		return
+	postgame_done = true
+	var ov := match_overview()
+	print("POSTGAME done -> lobby overview: %s" % str(ov["score"]))
+	if postgame != null:
+		postgame.get_parent().queue_free()
+		postgame = null
+	var launch := get_node_or_null("/root/Launch")
+	if launch and launch.from_menu:
+		launch.go_to_menu("", ov)
 
 ## Ctrl held on release = lob (high arc; catch your own pass in Chaosball).
 var lob_override = null
@@ -796,6 +882,10 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 			views[cid].celebrate(str(looks.get(cid, {}).get("celebration", "none")))
 	if n == "summary":
 		summary_lines = d.get("lines", []) if d.get("lines") is Array else []
+		potg = d.get("potg", []) if d.get("potg") is Array else []
+		team_totals = d.get("teams", []) if d.get("teams") is Array else []
+		if is_client():
+			_queue_postgame()
 	if n == "snap":
 		last_whistle = ""
 	if n in ["interception", "fumble", "recovery"]:
@@ -1094,6 +1184,7 @@ func _disc(p: Vector2, r: float, c: Color, h: float) -> void:
 		_tri(p, p + Vector2(cos(t0), sin(t0)) * r, p + Vector2(cos(t1), sin(t1)) * r, c, c, c, h)
 
 func _process(delta: float) -> void:
+	_tick_postgame(delta)
 	var target := player.global_position
 	var desired := target + Vector3(0, 6, 9)
 	camera.global_position = camera.global_position.lerp(desired, clampf(delta * 6.0, 0.0, 1.0))
