@@ -7,6 +7,8 @@ const Athlete := preload("res://src/sim/athlete.gd")
 const PlayerNode := preload("res://src/game/player.gd")
 const Passing := preload("res://src/sim/passing.gd")
 const AI := preload("res://src/sim/ai.gd")
+const Match := preload("res://src/sim/match.gd")
+const NEXT_PLAY_DELAY := 2.0
 const T := preload("res://src/sim/tuning.gd")
 const ARC_DOTS := 24
 
@@ -26,6 +28,12 @@ var charge := 0.0
 var aim_point := Vector2(26, 45)
 var ai := AI.new()
 var last_whistle := ""
+var series: Match
+var my_id := -1          # the human's athlete (QB on offense, LB on defense)
+var dead_t := 0.0
+var auto_next := true
+var los_marker: MeshInstance3D
+var fd_marker: MeshInstance3D
 var camera: Camera3D
 var hud: Label
 
@@ -37,8 +45,11 @@ func _ready() -> void:
 	_build_field()
 	_spawn_teams()
 	_build_aim_visuals()
-	world.setup_formation(25.0)
+	series = Match.new(world)
+	series.start(0, 25.0)
 	world.event.connect(_on_world_event)
+	los_marker = _marker(Color(0.2, 0.5, 1.0), "LOSMarker")
+	fd_marker = _marker(Color(1.0, 0.85, 0.1), "FirstDownMarker")
 	for v in views:
 		v.sync()
 	camera = Camera3D.new()
@@ -56,17 +67,19 @@ func _ready() -> void:
 func _spawn_teams() -> void:
 	var cx: float = field.width / 2.0
 	var R := Athlete.Role
-	var offense := [[R.C, 0.0], [R.QB, 0.0], [R.WR, -18.0], [R.WR, 18.0], [R.RB, 4.0], [R.OL, -2.5], [R.OL, 2.5]]
-	var defense := [[R.DL, -1.5], [R.DL, 1.5], [R.LB, 0.0], [R.CB, -18.0], [R.CB, 18.0], [R.S, -8.0], [R.S, 8.0]]
+	# Two-way athletes: [offense role, x offset, defense role, x offset]
+	var pairs := [[R.C, 0.0, R.DL, -1.5], [R.QB, 0.0, R.LB, 0.0], [R.WR, -18.0, R.CB, -18.0], [R.WR, 18.0, R.CB, 18.0],
+		[R.RB, 4.0, R.S, -8.0], [R.OL, -2.5, R.DL, 1.5], [R.OL, 2.5, R.S, 8.0]]
 	for t in 2:
-		for e in (offense if t == 0 else defense):
-			var a := world.add_athlete(t, e[0], Vector2(cx + e[1], 0))
+		for p in pairs:
+			var a := world.add_two_way(t, p[0], cx + p[1], p[2], cx + p[3])
 			var v := PlayerNode.new()
 			v.name = "Athlete%d" % a.id
 			v.setup(a, TEAM_COLORS[t])
 			add_child(v)
 			views.append(v)
-	controlled_id = world.find_role(0, R.QB).id
+	my_id = world.find_role(0, R.QB).id
+	controlled_id = my_id
 	player = views[controlled_id]
 	ball_view = MeshInstance3D.new()
 	ball_view.name = "Ball"
@@ -163,6 +176,25 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 	if n == "catch" and world.get_athlete(d["by"]).team == world.offense_team:
 		set_controlled(d["by"])
 
+func _marker(c: Color, n: String) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(field.width, 0.13, 0.25)
+	var m := StandardMaterial3D.new()
+	m.albedo_color = c
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bm.material = m
+	mi.mesh = bm
+	mi.name = n
+	add_child(mi)
+	return mi
+
+func next_play() -> void:
+	series.next_play()
+	dead_t = 0.0
+	last_whistle = ""
+	set_controlled(my_id)
+
 func set_controlled(id: int) -> void:
 	controlled_id = id
 	player = views[id]
@@ -187,13 +219,16 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			world.tackle(controlled_id)
 		elif e.keycode == KEY_J:
 			_set_charging(true)
-		elif e.keycode == KEY_R:
-			world.setup_formation(world.los_y)
-			set_controlled(world.find_role(world.offense_team, Athlete.Role.QB).id)
+		elif e.keycode == KEY_R and world.phase == World.Phase.DEAD:
+			next_play()
 
 func _physics_process(delta: float) -> void:
 	if charging:
 		charge = minf(1.0, charge + delta / T.THROW_CHARGE_TIME)
+	if world.phase == World.Phase.DEAD and auto_next:
+		dead_t += delta
+		if dead_t >= NEXT_PLAY_DELAY:
+			next_play()
 	var inputs := ai.think(world, [controlled_id])
 	inputs[controlled_id] = {"dir": read_input(), "sprint": Input.is_key_pressed(KEY_SHIFT)}
 	world.step(inputs, delta)
@@ -203,6 +238,9 @@ func _physics_process(delta: float) -> void:
 	ball_view.position = Vector3(b.x, b.z, -b.y)
 	_update_aim()
 	_update_arc()
+	los_marker.position = Vector3(field.width / 2.0, 0.0, -series.downs.los)
+	fd_marker.position = Vector3(field.width / 2.0, 0.0, -series.downs.first_down_y)
+	fd_marker.visible = not series.downs.is_goal_to_go()
 
 func _process(delta: float) -> void:
 	var target := player.global_position
@@ -210,9 +248,13 @@ func _process(delta: float) -> void:
 	camera.global_position = camera.global_position.lerp(desired, clampf(delta * 6.0, 0.0, 1.0))
 	camera.look_at(target + Vector3(0, 1, -4))
 	var m = player.athlete
-	var phase_name: String = ["PRE-SNAP (Space to snap)", "LIVE", "DEAD (R to reset)"][world.phase]
+	var side := "OFFENSE" if world.offense_team == 0 else "DEFENSE (E/RMB to tackle)"
+	var phase_name: String = ["PRE-SNAP (Space to snap)", "LIVE", "DEAD"][world.phase]
+	if world.offense_team != 0 and world.phase == World.Phase.PRESNAP:
+		phase_name = "PRE-SNAP (Space: let them snap)"
 	if world.phase == World.Phase.DEAD and last_whistle != "":
-		phase_name = "%s at %.1f - R to reset" % [last_whistle, world.dead_ball_spot.y]
+		phase_name = "%s at %.1f" % [last_whistle, world.dead_ball_spot.y]
+	phase_name = "%s | %s | %s" % [series.downs.label(), side, phase_name]
 	var charge_txt := ("   THROW %d%%" % int(charge * 100)) if charging else ""
 	hud.text = charge_txt + "\n" + "%s   Yard: %.1f  Speed: %.1f yd/s  Stamina: %d%%%s" % [
 		phase_name, m.position.y, m.speed(), int(m.stamina * 100), "  (WINDED)" if m.sprint_locked else ""]

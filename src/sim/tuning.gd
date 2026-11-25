@@ -55,3 +55,7 @@ const BLOCK_DRIVE := 0.7       # fraction of defender displacement taken from bl
 const BLOCK_HOLD := 1.5
 const BLOCK_IMMUNITY := 0.75
 const BLOCKER_BEATEN := 1.5   # after a shed, the blocker cannot re-engage for this long
+
+# AI QB
+const AI_QB_THROW_TIME := 2.0
+const AI_QB_PRESSURE := 3.0

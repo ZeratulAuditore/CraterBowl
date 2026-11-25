@@ -8,7 +8,11 @@ var team: int = 0
 var role: Role = Role.WR
 var dive_t := 0.0
 var recover_t := 0.0
-var home_x := 0.0          # formation x (spawn x); restored every setup_formation
+var home_x := 0.0          # formation x for the current side
+var off_role: Role = Role.WR
+var def_role: Role = Role.LB
+var off_x := 0.0
+var def_x := 0.0
 var engaged_with := -1   # id of blocker (on defender) or defender (on blocker)
 var engage_t := 0.0
 var immune_t := 0.0
@@ -19,6 +23,15 @@ func _init(p_id: int = 0, p_team: int = 0, p_role: Role = Role.WR, start: Vector
 	team = p_team
 	role = p_role
 	home_x = start.x
+	off_role = p_role
+	def_role = p_role
+	off_x = start.x
+	def_x = start.x
+
+## Switch to this side's role + formation x.
+func set_side(on_offense: bool) -> void:
+	role = off_role if on_offense else def_role
+	home_x = off_x if on_offense else def_x
 
 func is_diving() -> bool:
 	return dive_t > 0.0

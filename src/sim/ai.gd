@@ -4,6 +4,7 @@ extends RefCounted
 
 const T := preload("res://src/sim/tuning.gd")
 const Athlete := preload("res://src/sim/athlete.gd")
+const Passing := preload("res://src/sim/passing.gd")
 
 var defense_enabled := true
 var offense_enabled := true
@@ -19,7 +20,11 @@ func think(world, human_ids: Array) -> Dictionary:
 		if human_ids.has(a.id):
 			continue
 		if a.team == world.offense_team:
-			if not offense_enabled or world.ball.is_held_by(a.id):
+			if not offense_enabled:
+				continue
+			if world.ball.is_held_by(a.id):
+				if a.role == Athlete.Role.QB and not world.forward_pass_thrown:
+					_qb_decide(world, a)
 				continue
 			if a.role == Athlete.Role.WR or a.role == Athlete.Role.RB:
 				out[a.id] = {"dir": _avoid(world, a, Vector2(0, 1)), "sprint": false}
@@ -34,6 +39,33 @@ func think(world, human_ids: Array) -> Dictionary:
 				a.facing = (c.position - a.position).normalized()
 				world.tackle(a.id)
 	return out
+
+## Throw to the most open eligible receiver after QB_THROW_TIME, or early under pressure.
+func _qb_decide(world, qb) -> void:
+	var pressure := INF
+	for d in world.athletes:
+		if d.team != world.offense_team:
+			pressure = minf(pressure, d.position.distance_to(qb.position))
+	if world.play_time < T.AI_QB_THROW_TIME and pressure > T.AI_QB_PRESSURE:
+		return
+	var best = null
+	var best_sep := -INF
+	for r in world.athletes:
+		if r.team != world.offense_team or r.id == qb.id or not world.is_eligible_receiver(r):
+			continue
+		if r.position.y <= world.los_y:
+			continue
+		var sep := INF
+		for d in world.athletes:
+			if d.team != world.offense_team:
+				sep = minf(sep, d.position.distance_to(r.position))
+		if sep > best_sep:
+			best_sep = sep
+			best = r
+	if best == null:
+		return
+	var from := Vector3(qb.position.x, qb.position.y, T.RELEASE_HEIGHT)
+	world.throw(qb.id, Passing.lead_target(from, best.position, best.velocity, 0.85), 0.85)
 
 ## Steer around an opponent standing directly in the running lane.
 func _avoid(world, a, dir: Vector2) -> Vector2:

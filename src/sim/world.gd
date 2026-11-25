@@ -27,10 +27,26 @@ var last_thrower_id := -1
 var dead_ball_spot := Vector2.ZERO
 var play_time := 0.0
 
+## role/pos are for the athlete's current side. Optional two-way setup:
+## off/def roles + x via set_two_way().
 func add_athlete(team: int, role: int, pos: Vector2) -> Athlete:
 	var a := Athlete.new(athletes.size(), team, role, pos, field)
 	athletes.append(a)
 	return a
+
+func add_two_way(team: int, off_role: int, off_x: float, def_role: int, def_x: float) -> Athlete:
+	var a := add_athlete(team, off_role, Vector2(off_x, 0))
+	a.off_role = off_role
+	a.def_role = def_role
+	a.off_x = off_x
+	a.def_x = def_x
+	a.set_side(team == offense_team)
+	return a
+
+func set_offense(team: int) -> void:
+	offense_team = team
+	for a in athletes:
+		a.set_side(a.team == team)
 
 func get_athlete(id: int) -> Athlete:
 	return athletes[id] if id >= 0 and id < athletes.size() else null

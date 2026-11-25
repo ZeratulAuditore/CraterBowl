@@ -43,3 +43,9 @@
 - Measured: full 7v7 pocket holds ~4.0 s before a sack.
 - Tests: 51 unit (+10); test.sh now fails on leaked resources; game flow 13 checks pass with live pass rush.
 - Known gaps: no player-driven shove/shed input (B01 line minigame), no run-blocking schemes until play calling (A12).
+
+## 007: A07 Downs (2026-11-24)
+- Sim: `downs.gd` (offense-frame rules: first down / next down / turnover on downs with mirrored spot, & goal, labels like "2nd & 7 at OWN 28"), `match.gd` (World + Downs; records play results from events, `next_play()` lines up at new LOS and swaps possession). **Two-way athletes** (offense/defense role + x, `World.set_offense`). AI QB throws to most-open receiver after 2.0 s or under pressure.
+- Game: human always plays the same athlete (QB on offense ↔ LB on defense); auto next play 2 s after whistle (R to skip); HUD down & distance + side; blue LOS + yellow first-down turf markers.
+- Tests: 60 unit (+9); game flow 21 checks. Found + fixed a flow-harness hang (setup error → empty steps → infinite error loop); flow now exits on setup failure and smoke.sh wraps Godot in `timeout`.
+- Known gaps: TD/safety (A08) — spots clamp to 1..99 for now; field visuals don't mirror team colors on possession change.
