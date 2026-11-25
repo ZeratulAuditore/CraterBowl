@@ -4,12 +4,17 @@ extends Node
 signal queued(ok: bool, n: int)
 signal host_match(settings: Dictionary)
 signal join_match(code: String)
+signal lobbies(list: Array)
+signal registered(ok: bool)
+signal public_ip(ip: String)
+signal connected
+signal failed
 
 var api: SceneMultiplayer
 var peer: ENetMultiplayerPeer
 var _req := {}
 
-func queue_up(address: String, port: int, mode: String, size: int, rating: float, name: String = "") -> Error:
+func queue_up(address: String, port: int, mode: String, size: int, rating: float, name: String = "", party: String = "", party_size: int = 1, game: String = "classic") -> Error:
 	api = SceneMultiplayer.new()
 	get_tree().set_multiplayer(api, get_path())
 	api.peer_packet.connect(_on_packet)
@@ -18,9 +23,38 @@ func queue_up(address: String, port: int, mode: String, size: int, rating: float
 	if err != OK:
 		return err
 	api.multiplayer_peer = peer
-	_req = {"k": "enq", "mode": mode, "size": size, "rating": rating, "name": name}
+	_req = {"k": "enq", "mode": mode, "size": size, "rating": rating, "name": name, "party": party, "party_size": party_size, "game": game}
 	api.connected_to_server.connect(func(): _send(_req))
 	return OK
+
+## Connect without queueing (server browser / lobby advertising). Emits connected|failed.
+func open(address: String, port: int) -> Error:
+	api = SceneMultiplayer.new()
+	get_tree().set_multiplayer(api, get_path())
+	api.peer_packet.connect(_on_packet)
+	peer = ENetMultiplayerPeer.new()
+	var err := peer.create_client(address, port)
+	if err != OK:
+		return err
+	api.multiplayer_peer = peer
+	api.connected_to_server.connect(func(): connected.emit())
+	api.connection_failed.connect(func(): failed.emit())
+	return OK
+
+func is_open() -> bool:
+	return peer != null and peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
+
+func request_list() -> void:
+	_send({"k": "list"})
+
+func register_lobby(info: Dictionary) -> void:
+	_send({"k": "register", "info": info})
+
+func unregister_lobby() -> void:
+	_send({"k": "unregister"})
+
+func request_ip() -> void:
+	_send({"k": "whoami"})
 
 func send_hosting(code: String) -> void:
 	_send({"k": "hosting", "code": code})
@@ -33,6 +67,13 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 	if from != 1 or not (msg is Dictionary):
 		return
 	match msg.get("k", ""):
+		"lobbies":
+			var l = msg.get("list", [])
+			lobbies.emit(l if l is Array else [])
+		"registered":
+			registered.emit(msg.get("ok", false) == true)
+		"you":
+			public_ip.emit(str(msg.get("ip", "")))
 		"queued":
 			queued.emit(msg.get("ok", false) == true, int(msg.get("n", 0)))
 		"match":

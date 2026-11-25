@@ -15,6 +15,7 @@ var slant_wr = null
 var slant_x := 0.0
 var picked := false
 var xp0 := 0
+var frozen_y := 0.0
 var wr_id := -1
 
 func check(cond: bool, msg: String) -> void:
@@ -143,6 +144,17 @@ func _initialize() -> void:
 		[7032, func(): check(main.views[main.my_id].is_celebrating(), "TD celebration plays")],
 		[7033, func(): xp0 = main.profile.xp; main.next_play(); main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.world.phase = main.World.Phase.DEAD; main.series.last_result = {"type": "incomplete"}; main.next_play()],
 		[7035, func(): check(main.profile.xp > xp0 and main.hud.text.find("XP +") >= 0, "XP awarded at final (%d -> %d)" % [xp0, main.profile.xp]); var saved = main.Cosmetics.new(); saved.load_file(main.profile_path); check(saved.xp == main.profile.xp, "XP saved to (temp) profile"); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.profile_path))],
+		# A25: instant replay with the real V key, saved replay, viewer
+		[7100, func(): main.replay_dir = "user://test_flow_replays"; main.configure(7); main.ai.defense_enabled = false],
+		[7101, func(): _key(KEY_SPACE)],
+		[7200, func(): main.world.carrier().position = Vector2(26, 101.0)],
+		[7203, func(): check(main.world.phase == main.World.Phase.DEAD, "play over"); frozen_y = main.world.athletes[0].position.y; _key(KEY_V); check(main.replay_active, "V starts instant replay")],
+		[7210, func(): var p = main.replay.last_play(); var smp = main.replay.sample(); check(main.views[3].position.distance_to(Vector3(smp["pos"][3].x, 0, -smp["pos"][3].y)) < 0.01, "views show replay frames"); check(main.hud.text.find("REPLAY 0.5x") >= 0, "HUD shows replay"); check(absf(main.world.athletes[0].position.y - frozen_y) < 0.001 and main.world.phase == main.World.Phase.DEAD, "offline sim frozen during replay")],
+		[7500, func(): check(not main.replay_active, "replay ends -> back to live"); main.ai.defense_enabled = true],
+		[7501, func(): main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.series.last_result = {"type": "incomplete"}; main.next_play()],
+		[7502, func(): check(main.saved_replay != "" and FileAccess.file_exists(main.saved_replay), "replay saved at final (%s)" % main.saved_replay)],
+		[7503, func(): check(main.open_replay(main.saved_replay) and main.replay_viewer and main.replay.plays.size() >= 1, "viewer opens the saved replay"); _key(KEY_BRACKETRIGHT); check(main.replay.speed == 2.0, "] speeds up")],
+		[7504, func(): _key(KEY_V); check(not main.replay_active, "V exits viewer"); for f in DirAccess.get_files_at(ProjectSettings.globalize_path("user://test_flow_replays")): DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_flow_replays/" + f))],
 	]
 
 ## First receiver not controlled by the human (humans don't auto-run routes).

@@ -32,9 +32,9 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [x] A22 Leaderboards: per-position top 100 (local/file-backed first)
 - [x] A23 Ranked: skill rating, rank tiers, seasons with season rewards; competitive hosts apply the matchmaker's snake-draft teams (computed in A18, not yet applied)
 - [x] A24 Cosmetics: earnable through play, no gameplay effect, character customization
-- [ ] A25 Replays: record + playback of matches/plays
-- [ ] A26 Presentation: original sci-fi lunar stadium, animations, lighting pass
-- [ ] A27 Menus/HUD/settings: main menu, scoreboard HUD, gamepad + InputMap actions, controls rebinding, audio/video settings
+- [x] A25 Replays: record + playback of matches/plays
+- [~] A26 Presentation (IN PROGRESS in a parallel session: branch graphics-overhaul, worktree ~/Coding/football-game-gfx — loop skips this; checked off when merged): original sci-fi lunar stadium, animations, lighting pass
+- [~] A27 Menus/HUD/settings (IN PROGRESS in a parallel session: branch out-of-game, worktree ~/Coding/football-game-ux — loop skips this; checked off when merged): main menu, (scoreboard HUD = graphics session overlay), gamepad + InputMap actions, controls rebinding, audio/video settings
 - [ ] A28 Parity audit: walk this list end to end in a built game, file bugs as new items
 
 ## Phase B: Better than Gridiron (from PLAN.md)
@@ -44,9 +44,16 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [ ] B04 Instant replay of last play + highlight clips
 - [ ] B05 Friend-group seasons + persistent stats
 - [ ] B06 Juice: hit-stop, screenshake, crowd stingers
-- [ ] B07 Steam relay / NAT traversal
+- [~] B07 Steam relay / NAT traversal (owned by the out-of-game session: UPnP/public matchmaker)
 - [ ] B08 Tuning data file (TUNING) editable by designers without code
 - [ ] B09 Real kickoffs + returns (A08 uses an automatic touchback)
 - [ ] B10 Overtime (sudden death or alternating possessions) for tied games
 
+## Phase C: Gap backlog (docs/gaps/TODO.md)
+After Phase B, take the first unchecked `C##` item in `docs/gaps/TODO.md` (P0 → P1 → P2) and check it off there. The list comes from a gap analysis against Gridiron's patch-note mechanics and the arcade-sports genre (`docs/gaps/GAP_ANALYSIS.md`), and a scheduled job (`tools/gap_review.sh`) re-evaluates it. P0 items C01–C10 (run game, kicking, moves, clock, competitive rules, defense calls) are real Gridiron mechanics that the A-list missed.
+
 ## Discovered (bugs/follow-ups the loop adds here; fixed before new features)
+- [x] D02 Party queue: friends queue together and land in the same match/team (matchmaker backend + CLI; menu UI belongs to the out-of-game session) — parity G09
+- [x] D03 Chaosball in matchmaking: queue mode for Chaosball 3v3 — parity G17
+- [ ] D04 Achievements: milestone unlocks (first TD, 300-yd game, pick-six, 7-pt Chaosball TD, …) with profile persistence — parity G23
+- [ ] D05 Stats: return yards after interceptions/fumble recoveries (gap noted in A21)

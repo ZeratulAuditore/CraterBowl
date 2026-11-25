@@ -2,10 +2,29 @@
 config_version=5
 
 [application]
-config/name="Fourth & Long"
-run/main_scene="res://scenes/main.tscn"
+config/name="Crater Bowl"
+config/description="Arcade online football on the Moon."
+config/version="0.1.0"
+run/main_scene="res://scenes/menu.tscn"
+config/use_custom_user_dir=true
+config/custom_user_dir_name="crater-bowl"
 config/features=PackedStringArray("4.3")
+boot_splash/bg_color=Color(0.027, 0.031, 0.059, 1)
+boot_splash/image="res://assets/brand/logo_stacked.png"
+boot_splash/fullsize=false
+boot_splash/use_filter=true
+config/icon="res://assets/brand/icon_256.png"
+run/flush_stdout_on_print=true
+
+[autoload]
+Launch="*res://src/ui/launch.gd"
 
 [display]
 window/size/viewport_width=1280
 window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[rendering]
+
+textures/vram_compression/import_etc2_astc=true

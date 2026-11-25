@@ -1,0 +1,10 @@
+# Crater Bowl matchmaker + server browser (headless). Build after ./scripts/export.sh Linux:
+#   docker build -f deploy/Dockerfile.matchmaker -t crater-bowl-mm .
+#   docker run -d --restart=always -p 24600:24600/udp crater-bowl-mm
+FROM ubuntu:24.04
+RUN apt-get update && apt-get install -y --no-install-recommends libfontconfig1 ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN useradd -m crater
+COPY build/linux/CraterBowl.x86_64 /opt/crater/CraterBowl.x86_64
+USER crater
+EXPOSE 24600/udp
+ENTRYPOINT ["/opt/crater/CraterBowl.x86_64", "--headless", "--", "--matchmaker", "--port=24600"]
