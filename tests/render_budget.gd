@@ -8,10 +8,14 @@ extends SceneTree
 
 const RC := preload("res://src/game/render_cache.gd")
 
-const MAX_TRIANGLES := 20000        # whole scene, 7v7 (was ~590k before iter perf-01)
-const MAX_GEOMETRY_INSTANCES := 130 # visible MeshInstance3D/MultiMesh/Label3D nodes
-const MAX_SHADOW_CASTERS := 40      # each one is redrawn per shadow split
-const MAX_MATERIALS := 40           # distinct material resources in use
+# Ratchet: current cost + ~25% headroom (measured 2026-11-25 on the CC0 rigged-athlete art,
+# gfx=high crowd density). Lower these when you make things cheaper; raise only with a
+# written reason in docs/optimization/LOG.md.
+const MAX_TRIANGLES := 320000       # measured ~255k (14 Mannequins = 192k of it)
+const MAX_GEOMETRY_INSTANCES := 300 # measured ~248 visible MeshInstance3D/MultiMesh/Label3D
+const MAX_SHADOW_CASTERS := 110     # each one is redrawn per shadow split
+const MAX_MATERIALS := 170          # measured ~137 (per-athlete shader materials for team colors)
+const MAX_SKINNED := 14             # skinned meshes = the expensive part (~8 ms each on WSL d3d12)
 
 var _main: Node
 var _frame := 0
@@ -31,11 +35,14 @@ func _tick() -> void:
 	var inst := 0
 	var casters := 0
 	var mats := {}
+	var skinned := 0
 	var worst := []
 	for n in _walk(_main):
 		if not (n is GeometryInstance3D) or not n.is_visible_in_tree():
 			continue
 		inst += 1
+		if n is MeshInstance3D and n.skin != null or (n is MeshInstance3D and n.get_parent() is Skeleton3D):
+			skinned += 1
 		var t := 0
 		if n is MeshInstance3D and n.mesh:
 			t = int(n.mesh.get_meta("tris")) if n.mesh.has_meta("tris") else _tris(n.mesh)
@@ -52,10 +59,10 @@ func _tick() -> void:
 		tris += t
 		worst.append([t, str(n.get_path()).get_file()])
 	worst.sort_custom(func(a, b): return a[0] > b[0])
-	print("BUDGET triangles=%d/%d instances=%d/%d shadow_casters=%d/%d materials=%d/%d" % [
-		tris, MAX_TRIANGLES, inst, MAX_GEOMETRY_INSTANCES, casters, MAX_SHADOW_CASTERS, mats.size(), MAX_MATERIALS])
+	print("BUDGET triangles=%d/%d instances=%d/%d shadow_casters=%d/%d materials=%d/%d skinned=%d/%d" % [
+		tris, MAX_TRIANGLES, inst, MAX_GEOMETRY_INSTANCES, casters, MAX_SHADOW_CASTERS, mats.size(), MAX_MATERIALS, skinned, MAX_SKINNED])
 	print("BUDGET heaviest: %s" % str(worst.slice(0, 5)))
-	var ok := tris <= MAX_TRIANGLES and inst <= MAX_GEOMETRY_INSTANCES and casters <= MAX_SHADOW_CASTERS and mats.size() <= MAX_MATERIALS
+	var ok := tris <= MAX_TRIANGLES and inst <= MAX_GEOMETRY_INSTANCES and casters <= MAX_SHADOW_CASTERS and mats.size() <= MAX_MATERIALS and skinned <= MAX_SKINNED
 	print("RENDER BUDGET %s" % ("PASS" if ok else "FAIL"))
 	quit(0 if ok else 1)
 

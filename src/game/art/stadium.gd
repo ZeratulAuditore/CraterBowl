@@ -353,7 +353,13 @@ func _crater_rim() -> void:
 	_mesh_node("CraterRim", st.commit(), m).position = center
 
 ## Crowd excitement 0..1 (touchdowns, big plays).
+var _excite := -1.0
+
 func set_excitement(v: float) -> void:
+	# Called every frame; pushing unchanged shader params still dirties the materials.
+	if absf(v - _excite) < 0.002:
+		return
+	_excite = v
 	if crowd_mat:
 		crowd_mat.set_shader_parameter("excite", v)
 	for m in ribbon_mats:

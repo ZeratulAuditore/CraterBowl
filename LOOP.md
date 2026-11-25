@@ -16,14 +16,16 @@ Each run is one iteration. Each iteration builds on the last. **Tackle exactly o
    - Scripted multi-line edits must use `tools/patch.py` `sub()` (fails loudly when a pattern doesn't match). Plain `str.replace` silently no-ops; that hid a stale key handler from iter 010 to 017.
    - Player-facing input must be tested through the real handler (`_key()` in game_flow.gd), not only by calling `do_action()` directly.
    - Use only original or CC0 assets. Never use Gridiron's name, art, UI or audio.
-5. **Test.** Add `tests/test_<area>.gd` covering every acceptance criterion. Then run:
+   - Performance: follow `docs/optimization/README.md`. Visible motion is interpolated in `_process`, not set in `_physics_process`. No default-tessellation meshes, no per-frame text rebuilds or allocations, `cast_shadow` off for small or flat things. New expensive effects go behind `src/game/art/quality.gd`.
+5. **Test.** Add `tests/test_<area>.gd` covering every acceptance criterion. The gate is **`./scripts/check.sh`** (lint + unit + perf + smoke, about 4 min); it must end `CHECK PASS`. It runs:
    - `./scripts/test.sh`: all unit tests must pass (previous iterations' tests included).
    - `./scripts/smoke.sh`: main scene boots headless for ~300 frames with zero script errors, then `tests/game_flow.gd` drives the real scene through a scripted play. **Extend game_flow.gd with a step for each new player-facing feature.**
    - `./scripts/mm_test.sh` (also run by smoke.sh): matchmaker + 2 queued clients → hosted match starts.
    - `./scripts/net_test.sh` (also run by smoke.sh): headless host + client over localhost. Extend `tests/net_client.gd` when a feature changes networked behavior.
    - `./scripts/shot.sh` for any visual change (art, HUD, camera, effects): renders the real scene offscreen (Xvfb + software GL) to PNGs. **View the PNGs before calling it done.** See `docs/TESTING.md`.
-   Iterate until both pass. Do not weaken or delete older tests to go green. **Never launch a windowed game** (`godot --path .`) to check your work; it opens on the user's desktop. Everything in `docs/TESTING.md` runs offscreen.
-6. **Record.** Check off the item in `FEATURES.md` and add any follow-ups under "Discovered". Append to `ITERATIONS.md`: number, item, what was built, test counts, known gaps.
+   - `./scripts/perf.sh` (in check.sh): render budget plus CPU medians. If you made something cheaper, lower its budget (ratchet); if you must raise one, log why in `docs/optimization/LOG.md`.
+   Iterate until check.sh passes. Do not weaken or delete older tests to go green. **Never launch a windowed game** (`godot --path .`) to check your work; it opens on the user's desktop. Everything in `docs/TESTING.md` runs offscreen.
+6. **Record.** Check off the item in `FEATURES.md` and add any follow-ups under "Discovered". Update the docs that own what you changed (`docs/README.md` says which: testing → `docs/TESTING.md`, perf → `docs/optimization/`), in the same commit. Append to `ITERATIONS.md`: number, item, what was built, test counts, known gaps.
 7. **Commit** locally on `main`: `iter NNN: <item>`. Never push or publish. **Stage explicit paths only** (`git add <files you changed>`), never `git add -A`: parallel sessions share this worktree, and `-A` once swept another session's uncommitted files into iter 027. Check `git show --stat` before moving on.
 8. **Report.** Summarize what shipped, the test results, and what's next, ending with a `result:` line.
 

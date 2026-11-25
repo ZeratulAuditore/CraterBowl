@@ -105,10 +105,12 @@ func _ready() -> void:
 	# Helmet: glossy shell, stripe, visor, facemask cage.
 	helmet = _part(head_b, RC.sphere(0.5, 1.0, 20, 12), Mats.glossy(color.darkened(0.15)), Vector3(0, 0.12, -0.01))
 	helmet.scale = Vector3(0.27, 0.27, 0.3)
+	helmet.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	helmet.name = "Helmet"
 	stripe = MeshInstance3D.new()
 	stripe.mesh = _box(Vector3(0.18, 0.06, 1.0))
 	stripe.position = Vector3(0, 0.49, -0.02)
+	stripe.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	helmet.add_child(stripe)
 	_part(head_b, _facemask_mesh(), Mats.metal(Color(0.85, 0.86, 0.9)), Vector3.ZERO).name = "Facemask"
 	var visor := _part(head_b, RC.sphere(0.5, 1.0), Mats.visor(), Vector3(0, 0.1, 0.1))
@@ -150,6 +152,9 @@ func _part(parent: Node3D, mesh: Mesh, mat: Material, at: Vector3, rot := Vector
 	mi.material_override = mat
 	mi.position = at
 	mi.rotation = rot
+	# Small gear sits inside the body's shadow; each caster is redrawn once per shadow
+	# split, so only the body (and the helmet, set below) cast. docs/optimization/README.md
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mi)
 	return mi
 
@@ -193,6 +198,7 @@ func _number_label(parent: Node3D, z: float) -> Label3D:
 	l.pixel_size = 0.0034
 	l.font = Mats.number_font()
 	l.position = Vector3(0, -0.08, z)
+	l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	if z < 0.0:
 		l.rotation.y = PI
 	parent.add_child(l)

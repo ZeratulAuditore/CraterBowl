@@ -10,7 +10,7 @@ cd "$(dirname "$0")/.."
 GODOT="${GODOT:-godot}"
 # Medians (p50): robust to other processes on the box. See docs/optimization/README.md#budgets.
 SIM_TICK_P50_US="${SIM_TICK_P50_US:-800}"       # measured ~130 us (7v7, all bots, idle box)
-SCENE_FRAME_P50_US="${SCENE_FRAME_P50_US:-3000}" # measured ~430 us (whole tick: sim + views + HUD)
+SCENE_FRAME_P50_US="${SCENE_FRAME_P50_US:-8000}" # measured ~2.5-4 ms with rigged athletes (anim ~1.6 ms); half a 60 Hz frame
 ARGS=(-- --profile-file=user://test_perf_profile.json --leaderboard-file=user://test_perf_lb.json
   --ranked-file=user://test_perf_ranked.json --replay-dir=user://test_perf_replays)
 "$GODOT" --headless --path . --import >/dev/null 2>&1 || true
