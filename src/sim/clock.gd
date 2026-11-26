@@ -1,18 +1,24 @@
 extends RefCounted
 ## Game and play clocks, warning and team timeouts. Pure.
+## #130: every match plays four quarters (Q1-Q4); there is no halves format.
 
-const HALF_LENGTH := 300.0
+const QUARTER_LENGTH := 150.0   # 4 x 2:30 = the 10 minutes the old two 5:00 halves ran
 const HALVES := 2
 const PLAY_CLOCK := 20.0
 const WARNING_TIME := 60.0
 const TIMEOUTS_PER_HALF := 3
 const SMALL_MATCH_TIMEOUTS := 2
 
-var half := 1
-var half_length := HALF_LENGTH
+## Derived from `quarter` (Q1-Q2 = 1st half, Q3-Q4 = 2nd), so the two can't disagree.
+## Setting it (an old halves-format snapshot) moves to the first quarter of that half.
+var half: int:
+	get: return 1 if quarter <= 2 else 2
+	set(v): quarter = 1 if v <= 1 else 3
 var quarter := 1
-var quarter_length := 0.0   # zero selects halves
-var remaining := HALF_LENGTH
+## A zero or negative length (an old halves-format host or caller) falls back to the default.
+var quarter_length := QUARTER_LENGTH:
+	set(v): quarter_length = v if v > 0.0 else QUARTER_LENGTH
+var remaining := QUARTER_LENGTH
 var play_clock_length := PLAY_CLOCK
 var play_clock := PLAY_CLOCK
 var final := false
@@ -23,13 +29,9 @@ var _warning_due := false
 var _warned := false
 
 func reset() -> void:
-	half = 1
 	quarter = 1
 	final = false
 	_reset_half()
-
-func uses_quarters() -> bool:
-	return quarter_length > 0.0
 
 func _reset_half() -> void:
 	timeouts = [timeout_limit, timeout_limit]
@@ -38,20 +40,25 @@ func _reset_half() -> void:
 	_reset_period()
 
 func _reset_period() -> void:
-	remaining = quarter_length if uses_quarters() else half_length
+	remaining = quarter_length
 	new_play()
 	running_between_plays = false
 
 func advance_midhalf_quarter() -> bool:
-	if not uses_quarters() or quarter % 2 == 0:
+	if quarter % 2 == 0:
 		return false
 	quarter += 1
 	_reset_period()
 	return true
 
-## 0-based period: quarters Q1..Q4 -> 0..3, halves H1/H2 -> 0/1.
+## 0-based period: Q1..Q4 -> 0..3.
 func period() -> int:
-	return quarter - 1 if uses_quarters() else half - 1
+	return quarter - 1
+
+## Seconds left in the half: the end-of-half situation (prevent defense) is the end of Q2/Q4,
+## not of every quarter (#130).
+func half_remaining() -> float:
+	return remaining + (0.0 if quarter % 2 == 0 else quarter_length)
 
 func expired() -> bool:
 	return remaining <= 0.0
@@ -64,7 +71,7 @@ func tick(dt: float, live: bool, presnap: bool) -> bool:
 	if live or (running_between_plays and not _warning_due):
 		var before := remaining
 		remaining = maxf(0.0, remaining - dt)
-		var last_period_of_half := not uses_quarters() or quarter % 2 == 0
+		var last_period_of_half := quarter % 2 == 0
 		if last_period_of_half and not _warned and before >= WARNING_TIME and remaining < WARNING_TIME:
 			_warning_due = true
 			if not live:
@@ -93,7 +100,6 @@ func new_play() -> void:
 	play_clock = play_clock_length
 
 func start_next_half() -> void:
-	half += 1
 	quarter = 3
 	_reset_half()
 
@@ -101,5 +107,4 @@ func label() -> String:
 	if final:
 		return "FINAL"
 	var s := int(ceil(remaining))
-	var period := "Q%d" % quarter if uses_quarters() else "H%d" % half
-	return "%s %d:%02d" % [period, s / 60, s % 60]
+	return "Q%d %d:%02d" % [clampi(quarter, 1, 4), s / 60, s % 60]

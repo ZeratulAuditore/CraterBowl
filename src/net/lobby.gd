@@ -3,16 +3,17 @@ extends RefCounted
 
 enum Phase { LOBBY, IN_GAME }
 const SIZES := [3, 5, 7]
-const HALF_MINUTES := [2, 5, 8]
-const QUARTER_MINUTES := [1, 2, 3]
-const DEFAULT_QUARTER_MINUTES := 2
+## #130: every match plays four quarters; the host picks only their length. 2.5 min keeps a
+## game at the 10 minutes the old two 5-min halves ran. `quarters` stays in the dict (always
+## true) so a pre-#130 client still reads the format right.
+const QUARTER_MINUTES := [1.0, 2.0, 2.5, 3.0]
+const DEFAULT_QUARTER_MINUTES := 2.5
 const MatchConfig := preload("res://src/sim/match_config.gd")
 
 var phase: Phase = Phase.LOBBY
 var host_id := 1
 var code := ""
-var settings := {"size": 7, "half_minutes": 5, "mode": "classic",
-	"quarters": false, "quarter_minutes": DEFAULT_QUARTER_MINUTES}
+var settings := {"size": 7, "mode": "classic", "quarters": true, "quarter_minutes": DEFAULT_QUARTER_MINUTES}
 var players := {}   # id -> {"name": String, "ready": bool}
 var expected := 0   # queue matches: auto-start only once this many players are present
 var notice := ""    # host-facing: why the last settings change was refused ("" = none)
@@ -64,15 +65,10 @@ func set_setting(by: int, key: String, value) -> bool:
 			if not (value is int and SIZES.has(value)):
 				return false
 			new_size = value
-		"half_minutes":
-			if not (value is int and HALF_MINUTES.has(value)):
-				return false
 		"quarter_minutes":
-			if not (value is int and QUARTER_MINUTES.has(value)):
+			if not valid_quarter_minutes(value):
 				return false
-		"quarters":
-			if not value is bool:
-				return false
+			value = float(value)
 		"mode":
 			if not (value is String and (value == "classic" or value == "chaosball")):
 				return false
@@ -114,12 +110,11 @@ func from_dict(d: Dictionary) -> void:
 	code = str(d.get("code", ""))
 	var s = d.get("settings", {})
 	if s is Dictionary:
-		var quarters = s.get("quarters", false)
+		# A pre-#130 host's halves settings ("quarters": false, "half_minutes") read as quarters.
 		var qmin = s.get("quarter_minutes", DEFAULT_QUARTER_MINUTES)
-		settings = {"size": int(s.get("size", 7)), "half_minutes": int(s.get("half_minutes", 5)),
-			"mode": "chaosball" if s.get("mode", "") == "chaosball" else "classic",
-			"quarters": quarters is bool and quarters,
-			"quarter_minutes": qmin if qmin is int and QUARTER_MINUTES.has(qmin) else DEFAULT_QUARTER_MINUTES}
+		settings = {"size": int(s.get("size", 7)),
+			"mode": "chaosball" if s.get("mode", "") == "chaosball" else "classic", "quarters": true,
+			"quarter_minutes": float(qmin) if valid_quarter_minutes(qmin) else DEFAULT_QUARTER_MINUTES}
 	var p = d.get("players", {})
 	players = p if p is Dictionary else {}
 
@@ -128,6 +123,10 @@ func summary() -> String:
 	for id in players:
 		names.append("%s%s" % [players[id]["name"], " ✓" if players[id]["ready"] else ""])
 	var mode_txt := "Chaosball " if settings.get("mode", "classic") == "chaosball" else ""
-	var period := "%d-min quarters" % settings["quarter_minutes"] if settings["quarters"] else "%d-min halves" % settings["half_minutes"]
-	return "%s%dv%d, %s | %d/%d players | %s" % [mode_txt, settings["size"], settings["size"], period,
+	return "%s%dv%d, %s-min quarters | %d/%d players | %s" % [mode_txt, settings["size"], settings["size"],
+		String.num(settings["quarter_minutes"]),
 		players.size(), capacity(), ", ".join(names)]
+
+## A supported quarter length in minutes (int or float: 2 and 2.0 both count).
+static func valid_quarter_minutes(value) -> bool:
+	return (value is int or value is float) and QUARTER_MINUTES.has(float(value))

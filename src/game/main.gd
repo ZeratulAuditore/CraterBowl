@@ -207,8 +207,8 @@ func _ready() -> void:
 		return
 	configure(MatchConfig.normalize(args.get("size", 7)), str(args.get("practice", "")) if args.has("practice") else "",
 		str(args.get("mode", "classic")))
-	var quarter_minutes := int(args.get("quarter-minutes", 0))
-	if drill == null and Lobby.QUARTER_MINUTES.has(quarter_minutes):
+	var quarter_minutes := str(args.get("quarter-minutes", "0")).to_float()
+	if drill == null and Lobby.valid_quarter_minutes(quarter_minutes):
 		series.clock.quarter_length = quarter_minutes * 60.0
 		series.clock.reset()
 	_setup_net()
@@ -872,9 +872,9 @@ func _host_game(port: int, opts: Dictionary) -> String:
 	lobby.host_id = LOCAL_PLAYER
 	lobby.add(LOCAL_PLAYER, player_name if player_name != "You" else "Host")
 	lobby.settings["size"] = MatchConfig.normalize(opts.get("size", match_size))
-	if series.clock.uses_quarters():
-		lobby.settings["quarters"] = true
-		lobby.settings["quarter_minutes"] = int(series.clock.quarter_length / 60.0)
+	var quarter_minutes := series.clock.quarter_length / 60.0   # e.g. from --quarter-minutes
+	if Lobby.valid_quarter_minutes(quarter_minutes):
+		lobby.settings["quarter_minutes"] = quarter_minutes
 	if opts.get("game", "classic") == "chaosball":
 		lobby.settings["mode"] = "chaosball"
 		lobby.settings["size"] = 3
@@ -967,7 +967,7 @@ func _queue_up(args: Dictionary) -> void:
 		var port := int(args.get("host-port", 25000 + randi() % 5000))
 		var code := _host_game(port, {"start_when_ready": true, "expected": int(m.get("expected", 2)),
 			"size": int(m.get("size", 7)), "advertise": advertise, "game": str(m.get("game", "classic"))})
-		lobby.settings["half_minutes"] = 5
+		lobby.settings["quarter_minutes"] = Lobby.DEFAULT_QUARTER_MINUTES
 		print("QUEUE matched (%s): hosting %s" % [m.get("mode", "?"), code])
 		mm_client.send_hosting(code))
 	mm_client.join_match.connect(func(code):
@@ -987,6 +987,7 @@ func _queue_up(args: Dictionary) -> void:
 		_show_connection_failure.call_deferred(MATCHMAKER_UNREACHABLE_STATUS)
 		return
 	mm_client.failed.connect(_show_connection_failure.bind(MATCHMAKER_UNREACHABLE_STATUS), CONNECT_DEFERRED)
+	mm_client.refused.connect(_show_connection_failure, CONNECT_DEFERRED)   # #165: version mismatch -> menu says why
 	queue_started_ms = Time.get_ticks_msec()
 	# Waiting lobby: warm up on the training ground until the match is found.
 	if not args.has("no-warmup"):
@@ -1035,7 +1036,7 @@ func in_lobby() -> bool:
 		return net.my_athlete < 0
 	return false
 
-## Lobby input: Enter = ready. The host can select the format and period length.
+## Lobby input: Enter = ready. The host can select size, mode and quarter length (#130: always quarters).
 func lobby_key(keycode: int) -> void:
 	if is_client():
 		if keycode == KEY_ENTER:
@@ -1049,14 +1050,10 @@ func lobby_key(keycode: int) -> void:
 		KEY_7: changed = lobby.set_setting(LOCAL_PLAYER, "size", 7)
 		KEY_M:
 			changed = lobby.set_setting(LOCAL_PLAYER, "mode", "chaosball" if lobby.settings.get("mode", "classic") == "classic" else "classic")
-		KEY_Q:
-			changed = lobby.set_setting(LOCAL_PLAYER, "quarters", not lobby.settings["quarters"])
 		KEY_H:
-			var quarters: bool = lobby.settings["quarters"]
-			var choices := Lobby.QUARTER_MINUTES if quarters else Lobby.HALF_MINUTES
-			var setting := "quarter_minutes" if quarters else "half_minutes"
-			var i := (choices.find(lobby.settings[setting]) + 1) % choices.size()
-			changed = lobby.set_setting(LOCAL_PLAYER, setting, choices[i])
+			var choices := Lobby.QUARTER_MINUTES
+			var i := (choices.find(lobby.settings["quarter_minutes"]) + 1) % choices.size()
+			changed = lobby.set_setting(LOCAL_PLAYER, "quarter_minutes", choices[i])
 	if changed:
 		net.broadcast_lobby(lobby.to_dict())
 
@@ -1080,8 +1077,7 @@ func _start_from_lobby() -> void:
 	if not lobby.start():
 		return
 	configure(lobby.settings["size"], "", lobby.settings.get("mode", "classic"))
-	series.clock.half_length = lobby.settings["half_minutes"] * 60.0
-	series.clock.quarter_length = lobby.settings["quarter_minutes"] * 60.0 if lobby.settings["quarters"] else 0.0
+	series.clock.quarter_length = lobby.settings["quarter_minutes"] * 60.0
 	series.clock.reset()
 	net.match_size = match_size
 	net.match_mode = match_mode
@@ -1363,7 +1359,7 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			do_action({"a": "toss", "c": "receive"} if series.state == Match.State.TOSS else {"a": "try", "n": 1})
 		KEY_2:
 			do_action({"a": "toss", "c": "kick"} if series.state == Match.State.TOSS else {"a": "try", "n": 2})
-		# Live play: Q/E spin, F dive, C dash. Before the snap: Q play picker, F cycle route.
+		# Live play: Q/E spin, F dive, R dash. Before the snap: Q play picker, F cycle route.
 		KEY_F:
 			if world.phase == World.Phase.LIVE:
 				do_action({"a": "tackle"})      # dive: tackle on defense, dive for yards with the ball
@@ -1382,9 +1378,9 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			do_action({"a": "spin", "s": 1})
 		KEY_G:
 			do_action({"a": "handoff"})
-		KEY_T:
+		KEY_C:
 			taunt()
-		KEY_U:
+		KEY_T:
 			if drill == null:
 				do_action({"a": "timeout"})
 		KEY_J:
@@ -1392,9 +1388,9 @@ func _unhandled_key_input(e: InputEvent) -> void:
 				_set_charging(true)
 			else:
 				throw_pass()
-		KEY_C:
-			do_action({"a": "dash", "dir": read_input()})
 		KEY_R:
+			do_action({"a": "dash", "dir": read_input()})   # no-op unless live with a charge (HUD circles)
+		KEY_ENTER, KEY_KP_ENTER:
 			if world.phase == World.Phase.DEAD and not is_client():
 				next_play()
 		KEY_BACKSPACE:
@@ -1875,9 +1871,9 @@ func _process(delta: float) -> void:
 		return
 	if in_lobby():
 		if is_client() and net.refused_reason != "":
-			hud.text = "COULDN'T JOIN THE MATCH\n%s\n\nAsk the host for a bigger match, or try again later." % net.refused_reason
+			hud.text = "COULDN'T JOIN THE MATCH\n%s%s" % [net.refused_reason, "" if net.version_refused else "\n\nAsk the host for a bigger match, or try again later."]
 			return
-		var host_keys := "\nHost: [3/5/7] size   [M] mode   [Q] halves/quarters   [H] period length" if is_server() else ""
+		var host_keys := "\nHost: [3/5/7] size   [M] mode   [H] quarter length" if is_server() else ""
 		var lobby_text := "PRIVATE MATCH LOBBY   Invite code: %s\n%s\n[Enter] ready. Starts when everyone is ready.%s" % [lobby.code, lobby.summary(), host_keys]
 		if is_server() and lobby.notice != "":
 			lobby_text += "\n" + lobby.notice

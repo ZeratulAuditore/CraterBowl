@@ -35,7 +35,7 @@ Three portals stand across midfield:
 | Tackling | you are the LB; a bot RB starts live 12 yd away | a tackle (or forced fumble); TD, out of bounds or 6 s (`TACKLE_TIMEOUT`) fails |
 | Scrimmage | full 7v7 vs bots, normal downs | no scoring; no clock |
 
-Reps pause `REP_PAUSE` (1.2 s) after the result, then reset at the drill line (`Drills.LOS`, own 30). Timeouts (U) are ignored in practice.
+Reps pause `REP_PAUSE` (1.2 s) after the result, then reset at the drill line (`Drills.LOS`, own 30). Timeouts (T) are ignored in practice.
 
 ### Progression
 - **Blocking / catching levels:** every 3-rep streak raises the level (`LEVEL_EVERY`), up to 3 (`MAX_LEVEL`). A failed rep drops one level.
