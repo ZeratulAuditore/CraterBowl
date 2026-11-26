@@ -12,7 +12,7 @@ Matches are played in **Crater Bowl**, an original lunar stadium built inside a 
 | Field | Turf, lines, end zones, line-of-scrimmage barrier (see `defense.md`), sideline chains | `src/game/art/field_art.gd`, `los_barrier.gd`, `presentation.gd` |
 | Athletes | Quaternius rig. Your team wears the CC0 mannequin and helmet, and opponents wear a custom uniform. Jersey numbers are `Label3D` on chest and back. Cosmetics are view-only. | `src/game/player.gd`, `art/character_art.gd`, `art/football_uniforms.gd` |
 | Ball | Leather spheroid with laces, spiral, flight trail and a landing marker | `src/game/presentation.gd` |
-| You | A ring and chevron mark the controlled player | `presentation.gd` |
+| You | A ring and a small cyan chevron mark the controlled player. The chevron fades out when the camera is close (over the shoulder, POV). | `presentation.gd` |
 | Camera | Follow camera behind your player. The mouse moves the aim range on the turf. | `src/game/main.gd` `_update_camera`, `_camera_target_yaw` |
 | Effects | Camera shake on big events, tackle dust, touchdown fireworks, crowd excitement, jumbotron | `presentation.gd` |
 | Overlay | Scorebug (possession, score, period and game clock, play clock, down and distance, timeout pips, ball spot, mode and mini field), status line, play-call picker, movement meters, hold-Tab scoreboard, event banners | `src/game/overlay.gd` |
@@ -24,6 +24,15 @@ from the offense’s end toward the goal it attacks. Its cyan marker is the line
 its gold marker is the line to gain. The mini field appears during Classic scrimmage. Kickoffs and
 conversion attempts have distinct labels. The period label follows the match rules, which use
 halves today.
+
+**HUD layout (#116).** The scorebug sits on the bottom edge at one fixed width: down & distance
+takes the slack, so the bug doesn't jump when the play-clock cell hides at the snap. The movement
+meters sit to its left. The status line is a small backed pill on the scorebug's top-left edge, so
+nothing floats over the controlled player. After the whistle it summarizes the play in player words
+(`TACKLED · +3`, `SACK · -5`, `OUT OF BOUNDS · +7`, `INCOMPLETE`, `INTERCEPTION`), not the raw whistle
+code. The play-call picker uses the menu theme and is pinned top-right, over the sky. Replay key
+hints are a backed bar of key + action pairs just above the scorebug. Post-game, only the featured
+player stands on stage while their stat card is up, and the hint is a backed pill in the corner.
 
 **Audio today:** only the menu soundtrack. It plays `assets/music/tracks.json` in order, loops the playlist, and has a "now playing" widget (prev / pause / next). Credits are in `assets/music/CREDITS.md`. Volume follows the music and master settings. A match plays no SFX, crowd or whistle (#22).
 
@@ -44,6 +53,7 @@ halves today.
   - `tests/render_budget.gd` and `tests/test_render_perf.gd` cap tris, instances, shadows, materials and skinned meshes (`./scripts/perf.sh`)
   - Visuals are verified with `./scripts/shot.sh` PNGs (`../TESTING.md`)
   - `tests/game_flow.gd` exercises the live overlay. `./scripts/visual_test.sh` checks and captures the scorebug in scrimmage, kickoff and conversion states.
+  - `tests/visual/hud_polish_test.gd` asserts the fixed scorebug width (presnap, live, whistle), the dead-ball summary, the status pill clearing the scorebug, the themed picker pinned top-right and the meters beside the bug.
 
 ## Open issues
 - #10 C10 Throw readability: landing marker, aim-zoom
