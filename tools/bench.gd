@@ -39,7 +39,7 @@ func _initialize() -> void:
 		return
 	_main = load("res://scenes/main.tscn").instantiate()
 	_main.set("auto_next", true)
-	_main.set("toss_seed", 1)
+	_main.set("opening_kickoff", false)
 	root.add_child(_main)
 	process_frame.connect(_on_frame)
 
@@ -88,7 +88,7 @@ func _on_frame() -> void:
 	if _frame == WARMUP_FRAMES:
 		_objects0 = int(Performance.get_monitor(Performance.OBJECT_COUNT))
 	var now := Time.get_ticks_usec()
-	if _frame > WARMUP_FRAMES:  # let the deterministic opening kickoff warm up presentation
+	if _frame > WARMUP_FRAMES:  # allow the play picker and scene resources to warm up
 		_frame_us.append(now - _last_us)
 	_last_us = now
 	# Keep plays flowing so the scene exercises LIVE/DEAD/PRESNAP, not just presnap.

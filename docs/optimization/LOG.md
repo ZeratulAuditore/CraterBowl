@@ -15,8 +15,9 @@ On the local Godot 4.3 headless 7v7 render-budget check, the merged scene had
 the small decorative chain-crew meshes brought that count to 86. The crew remains
 visible and the on-field marker hardware still casts shadows.
 
-The scene benchmark uses a fixed opening toss and warms up for 180 frames before
-sampling the next 600, so startup allocations vary less across CI runs.
+The scene benchmark starts on a scrimmage and warms up for 180 frames before
+sampling the next 600. The previous kickoff start compared a scene with no play
+picker to one with a populated picker, a one-time increase of 57 objects.
 
 ## 2026-11-25 — perf-01: render pass, interpolation, gates (branch `perf-optimization`)
 
