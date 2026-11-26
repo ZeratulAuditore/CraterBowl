@@ -84,6 +84,7 @@ Full guide: `docs/TESTING.md`.
 | `./scripts/test.sh` | unit tests `tests/test_*.gd` (incl. determinism) | about 10 s |
 | `./scripts/smoke.sh` | headless boot + `game_flow.gd` + `menu_flow.gd` + net + matchmaking | 2–3 min |
 | `./scripts/shot.sh --frames=60,200 --snap=100` | real-renderer PNGs via Xvfb. **View them.** | about 30 s |
+| `./scripts/visual_test.sh` | rendered integration tests in `tests/visual/` (what CI runs). Linux/WSL only | about 2.5 min |
 
 - New player-facing behavior gets a step in `tests/game_flow.gd`, driven through the real input
   handler (`_key()`). New networked behavior extends `tests/net_client.gd`.
@@ -92,6 +93,38 @@ Full guide: `docs/TESTING.md`.
   `XDG_DATA_HOME`), so tests can't touch real saves.
 - Run `./scripts/check.sh` before you commit. (A pre-commit hook exists, `scripts/install-hooks.sh`, but it's off by default
   because commit-everything would let other sessions' WIP block your commit. See `docs/TESTING.md`.)
+
+#### Regressions: every change is asserted or visible
+
+Green CI only proves what someone asserted. Changes nobody asserted slip through (#93, #110, #115,
+#75), and with three developers each reviewing their own slice, nobody notices. These rules close
+that gap. Design and rollout: `docs/design/regression-baselines.md` (#121).
+
+- **Fixing a regression? Add the test that would have caught it.** That means an assertion through
+  the real entry point, plus a `tests/visual` capture if the bug was visible. Plant the bug once and
+  watch the test go red.
+- **Every player-visible state you add or change gets a named capture.** Write a
+  `tests/visual/<scenario>_test.gd` that sets up exact state, makes its `check()` assertions, then
+  calls `capture()`, as `scorebug_test.gd` does. These captures are what CI compares against main.
+  A screen without one can regress silently.
+- **Captures must be reproducible.** Don't depend on wall-clock time or on how many frames have run.
+  Settle camera easing and animations before `capture()`. Most existing captures don't do this
+  yet (#124), so don't add new ones that copy the problem.
+- **Capture names are baseline keys.** Never rename or delete a capture to make a diff go away. A
+  renamed capture shows up as removed + new and loses its comparison.
+- **Declare gameplay changes.** If your change can alter play outcomes (`src/sim`, `tuning.gd`, AI,
+  playbook), say under Testing which outcomes should move and why. *Once `./scripts/golden.sh` lands
+  (#121 phase 1):* it fails on any changed situation line or out-of-range stat. Run
+  `./scripts/golden.sh --update`, commit `tests/golden/situations.golden.txt`, and paste its
+  `GOLDEN:` summary with one reason per group that moved. Never hand-edit the golden file; on a
+  conflict, merge `origin/main` and re-run `--update`. Never widen a range in
+  `tests/golden/stat_ranges.cfg` to go green. A range moves only for a stated balance reason.
+- **Agents never approve their own diffs.** Never run `golden.sh --update` without explaining the
+  resulting diff in the PR. *Once the `visual-diff` check lands (#121 phase 2):* a human maintainer
+  approves visual changes by adding the `visuals-ok` label. Agents never add that label.
+- **On macOS or Windows,** `shot.sh` and `visual_test.sh` can't run (they need Xvfb). Push a draft
+  PR, then look at your captures in the run's `visual-test-evidence` artifact
+  (`gh run download <run-id> -n visual-test-evidence`). `remote_shots.sh` (#121) will replace this.
 
 ### Optimization
 

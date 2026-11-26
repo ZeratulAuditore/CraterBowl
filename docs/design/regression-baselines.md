@@ -33,8 +33,9 @@ soaks, and perf trends (`scripts/perf.sh` owns perf).
 
 Two layers, shipped in this order:
 
-1. **Sim goldens.** Seeded all-bot matches write per-play outcome traces that are committed in the
-   repo. They run headless on any OS in seconds.
+1. **Sim goldens.** About 80 short, independent fixed-setup situations each write one outcome line,
+   committed in the repo. Long seeded bot games add invariants and ranged stats. All of it runs
+   headless on any OS in seconds.
 2. **Visual goldens.** CI renders every visual capture at the PR's merge-base and at the PR head, in
    the same job, and diffs them. No baseline PNGs are stored.
 
@@ -44,73 +45,105 @@ the coin toss comes from a seed, and `tests/test_determinism.gd` proves two bot 
 
 ## Phase 1: sim goldens
 
-### Scenarios
+### Why not one long game
 
-`tests/golden/<scenario>.gd`, each a seeded all-bot run built from the same loop as
-`test_determinism.gd` (World + Roster + Match + AI, `dt = 1/60`, `next_play()` 0.5 s after the whistle).
+The sim is deterministic but chaotic. In a chained game, each play starts where the last one ended,
+so if play 3 gains one more yard, every later play starts from a different spot and plays out
+differently. Any small tweak then rewrites most of the log. A diff that big gets skimmed, agents
+run `--update` just to go green, and real regressions slip through anyway. So exact-match goldens
+come only from **short, independent situations**. Long games are kept for invariants and
+**ranged** stats only.
 
-| Scenario | Covers |
-|---|---|
-| `7v7_full_half` | core offense, defense, downs, spotting, scoring |
-| `3v3` | small-size rosters and formations |
-| `chaosball` | Chaosball ruleset and scoring |
-| `kickoff_and_return` | kicks, returns, touchbacks, onside |
-| `two_minute_drill` | game clock, play clock, timeouts, clock stoppage |
-| `red_zone` | goal-line spotting, touchdowns, field goals |
+### Situations (exact-match lines)
 
-Total run time budget: **≤ 30 s** for all scenarios on the WSL box, so the suite can sit in `check.sh --fast`.
+`tests/golden/situations.gd` holds a table of fixed starting states. Each situation sets up the
+exact state (ruleset and size, offense, down and distance, line of scrimmage, half and clock, the
+offensive play call, and the defensive call where the AI accepts one), then runs headless with
+`dt = 1/60` from the snap to the whistle. Kicks run through the return. Each situation is capped at
+15 s of sim time and produces **one line**. Nothing carries over from one situation to the next.
 
-### Trace format
+| Group | Matrix | About |
+|---|---|---|
+| 7v7 offense | every offensive play in the call menu × {own 25 1&10, midfield 3&4, opp 8 2&goal} | 40 |
+| 3v3 | each 3v3 play × {own 25, opp 10} | 15 |
+| Chaosball | possession starts × arena zones | 10 |
+| Special teams | kickoff, onside, punt, FG from 30/45/55, PAT, 2-pt try | 10 |
+| Clock | short series of at most 4 plays from a fixed state: 2:00 left trailing by 3, 0:40 left with no timeouts (spike, run-off, out of bounds) | 6 |
 
-`tests/golden/<scenario>.golden.txt`, one line per play, chosen to read well in a diff:
+Line format, readable in a diff:
 
 ```
-P014 H1 08:41  HEL 2&6 @HEL34  pass deep_cross  → INT @NEB41 ret 12  | clock -0:07
+7v7 MESH        OWN25 1&10  → catch #13 @OWN33 +8                     | 4.2s
+7v7 DEEP_SHOT   MID   3&4   → INT #22 @NEB41 ret 12                   | 3.1s
+ST  FG45        OPP28 4&6   → good 3pts                               | 2.6s
 ```
 
-Fields: play number, period and clock at the snap, offense, down and distance, line of scrimmage,
-play family and play name, result (type, spot, yards, return yards, points), and clock used.
-
-The file ends with a summary block: final score and the **stat envelope** (completion %, yards per
-play, sacks, turnovers, average air yards, plays per half), rounded to 1 decimal place.
+Situation ids are stable keys (`7v7 MESH OWN25 1&10`). A change to Mesh moves only the Mesh lines.
+A global change, such as player speed, moves many lines, and the summary (below) says so up front.
 
 **Positions and velocities are excluded on purpose.** They change with every movement tweak and
-would turn the file into noise. The trace records outcomes a player would notice.
-`test_determinism.gd` stays the bit-level guard.
+would turn the file into noise. Lines record outcomes a player would notice. `test_determinism.gd`
+stays the bit-level guard.
+
+### Long games (ranges, not exact lines)
+
+Three seeded all-bot games (`7v7_full_half`, `3v3_full_half`, `chaosball`), built from the same loop
+as `test_determinism.gd`, check two things:
+
+- **Tick invariants** on every tick (below).
+- **Stat ranges:** completion %, yards per play, sacks, turnovers, average air yards, points per
+  half, and plays per half. Each is checked against a range in `tests/golden/stat_ranges.cfg`
+  (example: `7v7 completion_pct = 50..75`). The exact values are printed for information and never
+  compared. Each range carries a comment with the reason for its bounds. Moving a range is a
+  deliberate balance change: the PR says so, with the old and new range and why.
 
 ### Tick invariants
 
-The scenario runner asserts these every tick. A breach fails immediately with the scenario, tick
-and play number:
+Both runners assert these every tick. A breach fails immediately, naming the situation or game,
+the tick and the play:
 
 - No NaN or infinite positions or velocities. No athlete or ball outside the world bounds.
 - The ball is in exactly one state: held by one athlete, in flight, or dead.
 - The score changes only on the tick of a scoring event, by that event's points.
 - Down is 1–4, distance > 0, and the line of scrimmage is on the field.
 
-### Commands and workflow
+### Commands and output
 
 | Command | Does |
 |---|---|
-| `./scripts/golden.sh` | Runs every scenario, diffs each trace against its committed `.golden.txt`, prints a unified diff, and exits 1 on any difference or invariant breach |
-| `./scripts/golden.sh --update` | Rewrites the `.golden.txt` files from the current code |
-| `./scripts/golden.sh <scenario>` | Runs one scenario |
+| `./scripts/golden.sh` | Runs every situation and long game. Compares situation lines with `tests/golden/situations.golden.txt` and stats with their ranges. Exits 1 on any changed line, out-of-range stat or invariant breach |
+| `./scripts/golden.sh --update` | Rewrites `situations.golden.txt` from the current code. It never touches `stat_ranges.cfg`: ranges are edited by hand, with a reason |
+| `./scripts/golden.sh <filter>` | Runs only the situations whose id matches the filter, for example `MESH` or `ST` |
+
+**Summary first, then detail.** On a difference, `golden.sh` prints a summary before the diff:
+
+```
+GOLDEN: 9/81 situations changed (7v7 MESH ×3, 7v7 SLANTS ×3, 3v3 SLANTS ×3); stat ranges ok; invariants ok
+```
+
+then a unified diff of the changed lines only. The summary is what a reviewer checks against the
+PR's claim. A PR that says it touched kickoffs and shows `61/81 changed` is the red flag.
+
+Total run time budget: **≤ 30 s** on the WSL box, so it can sit in `check.sh --fast`.
+
+### Workflow
 
 - `golden.sh` joins the `unit` tier of `check.sh`, which `--fast` also runs, so the pre-commit path and CI both run it.
-- A PR that changes gameplay commits the regenerated `.golden.txt` files and explains the diff under
-  `### Testing` → "Golden diff". `.github/pull_request_template.md` gets that prompt.
-- **Never hand-edit a `.golden.txt`.** When two PRs both move a trace, the second one merges
-  `origin/main`, and resolves any `.golden.txt` conflict by running `--update` (it overwrites the
-  conflicted file from the merged code) and committing the result. The `unit` tier fails when
-  regenerated output differs from the committed file, so a skipped or botched `--update` can't land.
-  (No custom `.gitattributes` merge driver: those need per-clone git config the other developers
-  wouldn't have.)
+- A PR that changes gameplay commits the regenerated `situations.golden.txt` and pastes the
+  `GOLDEN:` summary under `### Testing`, with one sentence for each group that moved, saying why.
+  `.github/pull_request_template.md` gets that prompt.
+- **Never hand-edit `situations.golden.txt`.** When two PRs both move it, the second one merges
+  `origin/main`, resolves the conflict by running `--update` (it overwrites the conflicted file from
+  the merged code), and commits the result. The `unit` tier fails when regenerated output differs
+  from the committed file, so a skipped or botched `--update` can't land. (No custom `.gitattributes`
+  merge driver: those need per-clone git config the other developers wouldn't have.)
 
 ### Failure handling
 
-- A scenario that crashes, or runs past its 60 s timeout, fails with its log and the last play number.
-- A missing `.golden.txt` fails with "no baseline: run `./scripts/golden.sh --update`". A new
-  scenario lands together with its baseline.
+- A situation that crashes or hits its 15 s cap fails with its id and log. A long game that crashes
+  or runs past 60 s fails with its log and the last play number.
+- A situation with no line in the golden file fails with "no baseline: run `./scripts/golden.sh --update`".
+  A new situation lands together with its line.
 
 ## Phase 2: visual goldens
 
@@ -140,11 +173,17 @@ Pure GDScript, run with `godot --headless -s`, no new dependencies.
 ### Noise gate (first step of phase 2)
 
 Before the check can block anything, CI renders main **twice** and must report zero changed
-captures. A capture that flickers gets one of these, in order of preference:
+captures. **Measured 2026-11-25 (WSL, Xvfb + llvmpipe, main d824841): only 3 of 23 captures pass.**
+Several differ across 28–84 % of their pixels. In `scorebug-scrimmage` the HUD matches exactly, but
+the game camera is still easing when `capture()` runs, so it sits in a different spot in each run.
+Making captures reproducible (#124) is therefore the main work of this step. Fixes, in order of preference:
 
-1. `VISUAL_FREEZE=1`, honored by the harness and the game. It pauses shader `TIME`, particles and
+1. **Settle before capture.** `capture()` snaps camera smoothing and other `1 - exp(-k*dt)` easing
+   to its target (or waits a fixed frame count), so the frame no longer depends on how many frames
+   ran since setup.
+2. `VISUAL_FREEZE=1`, honored by the harness and the game. It pauses shader `TIME`, particles and
    idle animations at a fixed phase.
-2. A mask rect in `thresholds.cfg`, with a reason.
+3. A mask rect in `thresholds.cfg`, with a reason.
 
 The noise job stays report-only until it has run on main for **5 consecutive days** with zero changed captures.
 
@@ -201,7 +240,7 @@ These are doc changes that ship with the phase that needs them:
 
 | PR | Contents | Usable alone? |
 |---|---|---|
-| 1 | Phase 1 complete: runner, 6 scenarios, invariants, `golden.sh`, `check.sh` hook, PR template, TESTING.md | yes: gameplay drift is caught |
+| 1 | Phase 1 complete: situation table and runner, long games with `stat_ranges.cfg`, invariants, `golden.sh`, `check.sh` hook, PR template, TESTING.md | yes: gameplay drift is caught |
 | 2 | `img_diff.gd`, `VISUAL_FREEZE`, report-only "render main twice" noise job | yes: shows which scenes are unstable |
 | 3 | Render-both-sides with cached base, sticky gallery, `visual-diff` check and `visuals-ok` label, `remote_shots.sh` | yes: the visual gate |
 | 4+ | Catalog scenes, split by area so the three developers can do them in parallel | each scene stands alone |
@@ -212,16 +251,18 @@ Each PR shows its gate going red on a planted bug, then reverts the plant:
 
 | Plant | Expected |
 |---|---|
-| Change one constant in `src/sim/tuning.gd` | `golden.sh` fails with a readable per-play diff |
-| Make a touchdown award 7 points in the sim | the score invariant fires with scenario, tick and play |
+| Shorten the Mesh routes | only `7v7 MESH` and `3v3 MESH` lines change, and the `GOLDEN:` summary names them |
+| Halve sack likelihood | a long game's `sacks` goes out of range, and no exact lines are needed to catch it |
+| Make a touchdown award 7 points in the sim | the score invariant fires, naming the situation or game, the tick and the play |
 | Move a scorebug label 20 px | `visual-diff` flags `scorebug_test/*` and nothing else |
 | Render main twice | zero changed captures |
 
 ## Open risks
 
-- **Rendering determinism under llvmpipe.** Shader `TIME`, particles and skinned idle poses may not
-  be frame-stable. The noise gate (above) measures this before anything blocks.
-- **Golden churn on tuning-heavy weeks.** A tuning PR rewrites several traces at once. That diff is
-  the review, but if it gets too long to read, summarize it with the stat envelope first and the per-play lines second.
+- **Rendering determinism.** It is measured, not hypothetical: 20 of 23 captures are unstable today
+  (#124). Phase 2 blocks nothing until the noise gate is clean.
+- **Global tuning changes.** Player speed or tackle tuning moves many situation lines at once. The
+  `GOLDEN:` summary and the stat ranges are the review. The lines are there to find out *where*,
+  not to be read one by one.
 - **Cache key correctness.** A stale base render would hide or fake diffs. Key on the full
   merge-base SHA plus a hash of `scripts/visual_test.sh` and `tests/visual/harness.gd`.
