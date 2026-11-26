@@ -116,3 +116,31 @@ func test_chaosball_queue_separate_and_3v3() -> void:
 	assert_eq(ms[0]["game"], "chaosball")
 	assert_eq(ms[0]["players"].size(), 2)
 	assert_true(not mm.enqueue(9, "casual", 3, 1000, 0.0, "Z", "", 1, "dodgeball"), "unknown game rejected")
+
+## #59: two players with the same display name get one seat each, on the teams drafted for them.
+func test_duplicate_names_seated_by_token() -> void:
+	var mm := MM.new()
+	mm.enqueue(1, "competitive", 3, 1000, 0.0, "Ann", "", 1, "classic", "tok-a")
+	mm.enqueue(2, "competitive", 3, 1050, 0.0, "Ann", "", 1, "classic", "tok-b")
+	var ms := mm.tick(MM.COMP_WAIT + 0.1)
+	assert_eq(ms.size(), 1)
+	var m: Dictionary = ms[0]
+	assert_eq(m["team_seats"].size(), 2, "one entry per player, not per name")
+	assert_true(m["team_seats"]["tok-a"] != m["team_seats"]["tok-b"], "1v1 split onto opposite teams")
+	assert_eq(m["team_seats"]["tok-a"], m["teams"][1])
+	assert_eq(m["team_seats"]["tok-b"], m["teams"][2])
+	assert_true(not m["team_names"].has("Ann"), "ambiguous name is left out of the legacy map")
+	var ta := MM.drafted_team("tok-a", "Ann", m["team_seats"], m["team_names"])
+	var tb := MM.drafted_team("tok-b", "Ann", m["team_seats"], m["team_names"])
+	assert_true(ta != tb, "host seats same-named players apart")
+
+## Older clients send no token: the host falls back to the (unique) display name.
+func test_seatless_clients_fall_back_to_name() -> void:
+	var mm := MM.new()
+	mm.enqueue(1, "competitive", 3, 1000, 0.0, "Ann")
+	mm.enqueue(2, "competitive", 3, 1050, 0.0, "Ben", "", 1, "classic", "tok-b")
+	var m: Dictionary = mm.tick(MM.COMP_WAIT + 0.1)[0]
+	assert_eq(m["team_seats"].size(), 1)
+	assert_eq(MM.drafted_team("", "Ann", m["team_seats"], m["team_names"]), m["teams"][1])
+	assert_eq(MM.drafted_team("tok-b", "Ben", m["team_seats"], m["team_names"]), m["teams"][2])
+	assert_eq(MM.drafted_team("", "Zed", m["team_seats"], m["team_names"]), -1, "unknown -> auto-assign")
