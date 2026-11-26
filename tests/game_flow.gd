@@ -16,7 +16,9 @@ var slant_x := 0.0
 var picked := false
 var xp0 := 0
 var frozen_y := 0.0
+var auto_replay_default := false
 var wr_id := -1
+var kick_events: Array = []
 
 func check(cond: bool, msg: String) -> void:
 	print(("  FLOW OK   " if cond else "  FLOW FAIL ") + msg)
@@ -36,9 +38,14 @@ func _initialize() -> void:
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 	main.auto_next = false
+	auto_replay_default = main.auto_replay
+	main.auto_replay = false   # scripted timings assume the offline sim never pauses; B04a steps turn it on
 	# scripted steps drive play changes; auto-advance checked at the end
 	steps = [
 		[2, func(): _connect_listeners(); _isolate_user_files()],  # world/series are (re)built in main._ready -> connect after
+		# Random toss at boot: a human winner gets the choice; a bot winner takes the ball at once.
+		[3, func(): var s = main.series; check(s.toss_winner >= 0 and main.world.kick_play == "kickoff", "match opens with a coin toss + kickoff"); check((s.state == main.Match.State.TOSS and main.world.kick_locked and main.hud.text.find("COIN TOSS") >= 0) or (s.state == main.Match.State.KICKOFF and s.toss_choice == "receive" and main.hud.text.find("KICKOFF") >= 0), "toss pending for a human winner, else decided (%s)" % s.toss_choice)],
+		[4, func(): main.opening_kickoff = false; main.series.start(0); main.set_controlled(main.my_id)],  # legacy steps start on a scrimmage snap
 		[5, func(): check(main.world.phase == main.World.Phase.PRESNAP, "starts presnap"); _check_team_uniforms("opening lineup")],
 		[6, func(): check(main.world.snap(), "snap")],
 		[40, func(): check(main.world.ball.is_held_by(main.controlled_id), "QB has ball")],
@@ -76,12 +83,12 @@ func _initialize() -> void:
 		[2435, func(): check(main.series.choose_try(2), "choose 2-pt try"); check(absf(main.world.los_y - 90.0) < 0.01, "2-pt from the 10")],
 		[2436, func(): main.world.snap()],
 		[2470, func(): var c = main.world.carrier(); c.position = Vector2(26, 101.0)],
-		[2472, func(): main.next_play(); check(main.series.score[0] == 8, "try good: 8"); check(main.world.offense_team == 1 and absf(main.world.los_y - 25.0) < 0.01, "kickoff: away ball at its 25")],
+		[2472, func(): main.next_play(); check(main.series.score[0] == 8, "try good: 8"); check(main.series.state == main.Match.State.KICKOFF and main.world.offense_team == 0 and absf(main.world.los_y - 35.0) < 0.01, "kickoff: home kicks from its 35")],
 		# A09: play clock auto-snap, untimed down, halftime
 		[2473, func(): check(main.hud.text.find("H1 ") >= 0 and main.hud.text.find("PLAY ") >= 0, "HUD game + play clock"); main.series.clock.play_clock = 0.3],
 		[2500, func(): check(main.world.phase == main.World.Phase.LIVE, "play clock auto-snapped"); main.series.clock.remaining = 0.2],
 		[2530, func(): check(main.series.clock.expired(), "clock hit 0:00")],
-		[3200, func(): _force_dead_if_live(); main.next_play(); check(main.series.clock.half == 2, "halftime -> 2nd half"); check(main.world.offense_team == 1 - main.series.opening_receiver, "other team receives 2nd half")],
+		[3200, func(): _force_dead_if_live(); main.next_play(); check(main.series.clock.half == 2, "halftime -> 2nd half"); check(main.series.last_outcome.get("receiving", -1) == 1 - main.series.opening_receiver, "other team receives 2nd half")],
 		# Match assignment stays fixed between plays as well as during them.
 		[3201, func(): before_id = main.my_id; check(not main.do_action({"a": "cycle"}), "position change rejected between plays")],
 		[3202, func(): check(not main.do_action({"a": "team"}), "team swap rejected between plays"); check(main.controlled_id == before_id, "assignment unchanged")],
@@ -114,6 +121,15 @@ func _initialize() -> void:
 			check(not main.play_picker_open, "Q toggles the picker")
 			_key(KEY_Q)
 			check(main.play_picker_open, "Q reopens the picker")],
+		# On defense the follow camera turns around to face the offense/ball, and WASD turns with it.
+		[4240, func():
+			var me_z: float = main.player.global_position.z
+			check(absf(angle_difference(main.cam_yaw, PI)) < 0.05, "defense camera swung around (yaw %.2f)" % main.cam_yaw)
+			check(main.camera.global_position.z < me_z - 3.0, "defense camera sits on the far side, looking at the offense")
+			check(-main.camera.global_transform.basis.z.z > 0.5, "defense camera looks back up the field toward the ball")
+			_hold(KEY_W, true)   # read_input polls Input, so the key state must go through Input
+			check(main.read_input().y < -0.9, "W moves a defender toward the ball (up the screen)")
+			_hold(KEY_W, false)],
 		[4171 + int(60 * 5.0) + 10, func(): check(main.world.phase != main.World.Phase.PRESNAP, "bot offense snapped by itself")],
 		# A15: rebuild as 3v3 in place
 		[4500, func(): main.configure(3)],
@@ -249,7 +265,7 @@ func _initialize() -> void:
 		[7974, func():
 			check(main.world.phase == main.World.Phase.DEAD and main.pres.overlay.banner.text == "ONE-MINUTE WARNING", "warning appears after the whistle")],
 		# B04a: auto highlight replay, replay camera + transport keys, highlight reel at FINAL
-		[8000, func(): main.configure(7); main.ai.defense_enabled = false; check(main.auto_replay, "auto replay on by default")],
+		[8000, func(): check(auto_replay_default, "auto replay on by default"); main.auto_replay = true; main.configure(7); main.ai.defense_enabled = false],
 		[8001, func(): _key(KEY_SPACE)],
 		[8100, func(): main.world.carrier().position = Vector2(26, 101.0)],
 		[8105, func(): check(main.world.phase == main.World.Phase.DEAD and not main.replay_active, "TD: no replay before the delay"); check(main.replay.last_play().get("highlight", false), "TD tagged as highlight (%s)" % main.replay.last_play().get("label", ""))],
@@ -261,7 +277,7 @@ func _initialize() -> void:
 		[8250, func(): check(not main.replay_active and main.world.phase == main.World.Phase.DEAD, "a skipped highlight does not replay again"); var o = main.pres.overlay if main.pres else null; check(o == null or o.mode_l.visible, "live overlay widgets restored after replay")],
 		[8251, func(): main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.series.last_result = {"type": "incomplete"}; main.next_play()],
 		[8252, func(): check(main.series.is_final(), "final"); _key(KEY_V); check(main.replay_active and main.replay_reel, "V at FINAL plays the highlight reel")],
-		[8254, func(): check(main.hud.text.find("HIGHLIGHT REEL") >= 0, "HUD: HIGHLIGHT REEL"); check(main.postgame == null, "postgame show waits while the reel plays"); _key(KEY_V); check(not main.replay_active, "V exits the reel"); main.ai.defense_enabled = true; for f in DirAccess.get_files_at(ProjectSettings.globalize_path("user://test_flow_replays")): DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_flow_replays/" + f))],
+		[8254, func(): check(main.hud.text.find("HIGHLIGHT REEL") >= 0, "HUD: HIGHLIGHT REEL"); check(main.postgame == null, "postgame show waits while the reel plays"); _key(KEY_V); check(not main.replay_active, "V exits the reel"); main.auto_replay = false; main.ai.defense_enabled = true; for f in DirAccess.get_files_at(ProjectSettings.globalize_path("user://test_flow_replays")): DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_flow_replays/" + f))],
 		# Training ground: hub portals, blocking station, Backspace home, practice-field targets
 		[8600, func(): main.training_path = "user://test_flow_training.json"; DirAccess.remove_absolute(ProjectSettings.globalize_path(main.training_path)); main.start_practice("hub")],
 		[8602, func(): check(main.drill.kind == "hub" and main.world.phase == main.World.Phase.LIVE, "training ground: free roam with the ball"); check(main.field_root.get_node_or_null("TrainingArt") != null and main.field_root.get_node("TrainingArt").get_children().filter(func(n): return n.name.begins_with("Portal_")).size() == 3, "three portals built"); check(main.pres.overlay.picker_title.text == "PICK A STATION", "overlay coaching card (%s)" % main.pres.overlay.picker_title.text); check(main.pres.overlay.mode_l.text == "TRAINING GROUND", "overlay title")],
@@ -273,6 +289,26 @@ func _initialize() -> void:
 		[9002, func(): var t: Vector2 = main.Drills.target_list(main.field)[0]["pos"]; main.world.get_athlete(main.my_id).position = t - Vector2(0, 10); main.aim_point = t],
 		[9030, func(): _key(KEY_J); check(main.drill.throws == 1, "practice-field throw with the real throw path")],
 		[9200, func(): check(main.drill.hits == 1 and main.drill.points >= 1, "hit the short target (%s)" % main.drill.last_result); check(main.world.ball.is_held_by(main.my_id), "ball back in your hands"); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.training_path))],
+		# B09/C02: coin toss with the real keys -> live kickoff aimed like a pass (J) -> return
+		[9500, func(): main.opening_kickoff = true; main.toss_seed = 0; main.configure(7); kick_events.clear(); main.world.event.connect(func(n, _d): kick_events.append(n))],
+		[9502, func(): check(main.series.state == main.Match.State.TOSS and main.series.toss_winner == 0, "home won the toss"); check(main.hud.text.find("COIN TOSS: HOME wins") >= 0, "HUD offers the choice"); check(main.pres.overlay.status_l.text.begins_with("YOU WON THE TOSS"), "status line offers the choice (%s)" % main.pres.overlay.status_l.text); _key(KEY_2)],
+		[9503, func(): check(main.series.state == main.Match.State.KICKOFF and main.world.offense_team == 0, "2 key: home kicks"); check(main.world.ball.is_held_by(main.controlled_id), "you are the kicker"); main.aim_point = Vector2(main.field.width / 2.0, 92.0)],
+		[9505, func(): check(main.can_kick() and main.arc_dots[0].visible, "kick arc preview on the tee"); check(main.hud.text.find("KICKOFF") >= 0, "HUD: kickoff"); check(not main.pres.overlay.picker.visible, "no play picker on a kickoff")],
+		[9506, func(): _key(KEY_J); check(main.world.kicked and kick_events.has("kick"), "J kicks off at the aim point")],
+		[11100, func(): check(main.world.phase == main.World.Phase.DEAD, "kickoff play over (%s; events %s; ball %d holder %d)" % [main.last_whistle, str(kick_events), main.world.ball.state, main.world.ball.holder_id]); _force_dead_if_live(); main.next_play(); check(main.series.state != main.Match.State.KICKOFF and (main.world.offense_team == 1 or main.series.state == main.Match.State.TRY), "kickoff resolved: return team's ball or a score (%s)" % main.series.last_outcome.get("outcome", "?"))],
+		# 4th down: K calls a punt, Space snaps, J punts toward the aim point
+		[11101, func(): main.series.start(0, 30.0); main.series.downs.down = 4; main.set_controlled(main.my_id); kick_events.clear()],
+		[11102, func(): _key(KEY_K); check(main.world.kick_play == "punt", "K key calls a punt")],
+		[11103, func(): check(main.hud.text.find("KICK: PUNT") >= 0, "HUD shows the punt call"); _key(KEY_SPACE)],
+		[11140, func(): check(main.world.ball.is_held_by(main.controlled_id), "punter has the snap"); main.aim_point = Vector2(main.field.width / 2.0, 70.0)],
+		[11141, func(): _key(KEY_J); check(kick_events.has("kick") and not kick_events.has("throw"), "punted, not thrown")],
+		[11900, func(): _force_dead_if_live(); main.next_play(); check(main.world.offense_team == 1, "punt: possession changes (%s)" % main.series.last_outcome.get("outcome", "?"))],
+		# K twice = field goal; aiming at the posts clears the bar
+		[11901, func(): main.series.start(0, 85.0); main.series.downs.down = 4; main.set_controlled(main.my_id); main.ai.defense_enabled = false],
+		[11902, func(): _key(KEY_K); _key(KEY_K); check(main.world.kick_play == "fg", "K K: field goal"); _key(KEY_SPACE)],
+		[11940, func(): main.aim_point = Vector2(main.field.width / 2.0, main.field.posts_y())],
+		[11941, func(): _key(KEY_J)],
+		[12200, func(): check(main.last_whistle == "FIELD GOAL GOOD", "field goal good (%s)" % main.last_whistle); main.next_play(); check(main.series.score[0] == 3, "+3"); check(main.series.state == main.Match.State.KICKOFF, "then a kickoff"); main.ai.defense_enabled = true],
 	]
 
 ## First receiver not controlled by the human (humans don't auto-run routes).
@@ -314,6 +350,15 @@ func _chase_tick() -> void:
 		_key(KEY_E)
 
 ## Inject a real key press through main's key handler.
+## Press/release a key in Godot's Input state (for code that polls Input.is_key_pressed).
+func _hold(code: int, pressed: bool) -> void:
+	var ev := InputEventKey.new()
+	ev.keycode = code
+	ev.physical_keycode = code
+	ev.pressed = pressed
+	Input.parse_input_event(ev)
+	Input.flush_buffered_events()
+
 func _key(code: int, pressed := true) -> void:
 	var ev := InputEventKey.new()
 	ev.keycode = code

@@ -244,7 +244,7 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	if drill != null:
 		TrainingArt.build(field_root, drill, field)
 	series = Match.new(world)
-	series.start(0, Drills.LOS if drill != null else -1.0)
+	_start_series()
 	world.event.connect(_on_world_event)
 	stats = Stats.new()
 	stats.attach(world, owner_name)
@@ -354,7 +354,7 @@ func _update_aim() -> void:
 
 func _update_arc() -> void:
 	var qb = world.get_athlete(controlled_id)
-	var show := can_pass()
+	var show := can_pass() or can_kick()
 	reticle.visible = show
 	reticle.position = Vector3(aim_point.x, 0.05, -aim_point.y)
 	if not show:
@@ -363,12 +363,52 @@ func _update_arc() -> void:
 		return
 	var from := Vector3(qb.position.x, qb.position.y, T.RELEASE_HEIGHT)
 	var v := Passing.solve_velocity(from, aim_point, T.PLAYER_PASS_POWER, world.gravity(), lob_held())
+	if can_kick():
+		from = Vector3(qb.position.x, qb.position.y, T.KICK_HEIGHT)
+		v = World.kick_velocity(world.kick_play, qb.position, aim_point, kick_power())
 	var tf := Passing.time_to_height(v, from.z, 0.0, world.gravity())
 	for i in ARC_DOTS:
 		var t := tf * float(i + 1) / ARC_DOTS
 		var p := from + v * t + Vector3(0, 0, -0.5 * world.gravity() * t * t)
 		arc_dots[i].position = Vector3(p.x, p.z, -p.y)
 		arc_dots[i].visible = true
+
+## Kicks use the same aim as passes (camera direction + aim distance): punts and
+## kickoffs land on the reticle; field goals clear the crossbar at it.
+func kicking() -> bool:
+	return world.kick_play != "" and not world.kicked
+
+func can_kick() -> bool:
+	var k = world.get_athlete(controlled_id)
+	if not kicking() or k == null or not world.ball.is_held_by(controlled_id) or k.team != world.offense_team:
+		return false
+	return world.phase == (World.Phase.PRESNAP if world.kick_play == "kickoff" else World.Phase.LIVE)
+
+func kick_power() -> float:
+	var k = world.get_athlete(controlled_id)
+	var dist: float = k.position.distance_to(aim_point)
+	var h := T.CROSSBAR_HEIGHT + 1.5 if world.kick_play == "fg" else 0.0
+	return clampf(World.kick_power_for(world.kick_play, dist, h, world.gravity()), 0.0, 1.0)
+
+func kick_ball() -> void:
+	if can_kick():
+		do_action({"a": "kick", "t": aim_point, "p": kick_power()})
+
+## Coin-toss seed: `--toss=N` for a fixed result, else random.
+var toss_seed := -1
+var opening_kickoff := true   # false = start on a scrimmage snap (scripted tests)
+
+func _start_series() -> void:
+	if drill != null or match_mode == "chaosball" or not opening_kickoff or _cli_args().has("no-kickoff"):
+		series.start(0, Drills.LOS if drill != null else -1.0)
+		return
+	var s := toss_seed if toss_seed >= 0 else int(_cli_args().get("toss", randi() % 2))
+	var winner_humans := false
+	for id in [my_id] + roster.humans():
+		var a = world.get_athlete(id)
+		if a and a.team == posmod(s, 2):
+			winner_humans = true
+	series.start_match(s, winner_humans)
 
 ## Display name of whoever controls athlete `aid` right now ("Bot" for AI).
 func owner_name(aid: int) -> String:
@@ -909,8 +949,15 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 		pres.on_event(n, d)
 	if n == "incomplete" and last_whistle == "":
 		last_whistle = "INCOMPLETE"
-	if n in ["tackle", "out_of_bounds", "breakup", "touchdown", "explode"]:
-		last_whistle = n.replace("_", " ").to_upper()
+	if n in ["tackle", "out_of_bounds", "breakup", "touchdown", "explode", "touchback", "kick_out_of_bounds", "kick_downed"]:
+		last_whistle = n.replace("kick_", "").replace("_", " ").to_upper()
+	if n == "field_goal":
+		last_whistle = "FIELD GOAL GOOD" if d.get("good", false) else "FIELD GOAL NO GOOD"
+		banner = "IT'S GOOD!" if d.get("good", false) else "NO GOOD!"
+		banner_t = 2.0
+	if n == "kick_blocked":
+		banner = "BLOCKED!"
+		banner_t = 2.0
 	if n == "ranked":
 		ranked_line = _ranked_text(d)
 	if n == "looks" and d.get("looks") is Dictionary:
@@ -1011,7 +1058,9 @@ func can_pass() -> bool:
 	return world.can_throw(my_id)
 
 func throw_pass() -> void:
-	if can_pass():
+	if can_kick():
+		kick_ball()
+	elif can_pass():
 		do_action({"a": "throw", "t": aim_point, "lob": lob_held()})
 
 func _input(e: InputEvent) -> void:
@@ -1043,9 +1092,12 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		KEY_SPACE:
 			do_action({"a": "snap"})
 		KEY_1:
-			do_action({"a": "try", "n": 1})
+			do_action({"a": "toss", "c": "receive"} if series.state == Match.State.TOSS else {"a": "try", "n": 1})
 		KEY_2:
-			do_action({"a": "try", "n": 2})
+			do_action({"a": "toss", "c": "kick"} if series.state == Match.State.TOSS else {"a": "try", "n": 2})
+		KEY_K:
+			var ki := (World.KICK_CALLS.find(world.kick_play) + 1) % World.KICK_CALLS.size()
+			do_action({"a": "kick_call", "k": World.KICK_CALLS[ki]})
 		KEY_E:
 			do_action({"a": "tackle"})
 		KEY_G:
@@ -1485,6 +1537,12 @@ func _process(delta: float) -> void:
 	var situation: String = series.downs.label()
 	if series.state == Match.State.TRY:
 		situation = "TRY for %d" % series.try_points
+	elif series.state == Match.State.KICKOFF:
+		situation = "KICKOFF"
+	elif series.state == Match.State.TOSS:
+		situation = "COIN TOSS: %s wins (1: receive / 2: kick)" % ("HOME" if series.toss_winner == 0 else "AWAY")
+	if world.offense_team == my_team and series.state == Match.State.SCRIMMAGE and not world.is_chaos():
+		side += " | KICK: %s [K]" % {"": "none", "punt": "PUNT", "fg": "FIELD GOAL"}.get(world.kick_play, world.kick_play)
 	banner_t = maxf(0.0, banner_t - delta)
 	if banner_t > 0.0:
 		phase_name = banner + "  " + phase_name

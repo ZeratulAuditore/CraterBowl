@@ -5,12 +5,20 @@ const World := preload("res://src/sim/world.gd")
 const Downs := preload("res://src/sim/downs.gd")
 const Clock := preload("res://src/sim/clock.gd")
 
+const T := preload("res://src/sim/tuning.gd")
+
 const TD_POINTS := 6
 const SAFETY_POINTS := 2
-const TRY_DIST := {1: 3.0, 2: 10.0}   # 1 pt from the 3, 2 pts from the 10
-const KICKOFF_FRACTION := 0.25        # receive at 25% of the field (own 25 on 100 yd)
+const FG_POINTS := 3
+const TRY_DIST := {1: 15.0, 2: 10.0}  # 1 pt = PAT kick snapped from the 15, 2 pts = scrimmage from the 10
+const KICKOFF_FRACTION := 0.25        # kickoff touchback: receive at 25% of the field (own 25 on 100 yd)
+const KICKOFF_SPOT_FRACTION := 0.35   # kick off from your own 35
+const SAFETY_KICK_FRACTION := 0.2     # free kick after a safety: from your own 20
+const PUNT_TOUCHBACK_FRACTION := 0.2  # punt touchback / missed FG minimum: own 20
+const KICKOFF_OOB_FRACTION := 0.4     # kickoff out of bounds: receive at own 40
+const TOSS_WINDOW := 5.0              # seconds the toss winner has to choose before receive is assumed
 
-enum State { SCRIMMAGE, TRY }
+enum State { SCRIMMAGE, TRY, KICKOFF, TOSS }
 
 signal match_event(name: String, data: Dictionary)
 
@@ -25,6 +33,10 @@ var try_points := 1
 var last_result := {}
 var last_outcome := {}
 var _possession_changed := false
+var toss_winner := -1
+var toss_choice := ""    # "receive" / "kick" once decided
+var _kick_fraction := KICKOFF_SPOT_FRACTION
+var _toss_t := 0.0
 
 func _init(w: World) -> void:
 	world = w
@@ -54,7 +66,42 @@ func start(offense: int = 0, los: float = -1.0) -> void:
 	world.set_offense(offense)
 	_setup_formation()
 
+## Coin toss (B09/C02): deterministic from `seed`. The winner has TOSS_WINDOW seconds
+## to choose kick or receive (choose_toss); bots / no answer = receive.
+func start_match(seed: int, winner_has_humans: bool = true) -> void:
+	start(0)
+	toss_winner = posmod(seed, 2)
+	toss_choice = ""
+	_toss_t = 0.0
+	opening_receiver = toss_winner
+	_kickoff(toss_winner)
+	state = State.TOSS
+	world.set_offense(downs.offense_team)
+	_setup_formation()
+	if not winner_has_humans:
+		choose_toss(toss_winner, "receive")
+	match_event.emit("toss", {"winner": toss_winner})
+
+func choose_toss(team: int, choice: String) -> bool:
+	if state != State.TOSS or team != toss_winner or not choice in ["receive", "kick"] or world.phase != World.Phase.PRESNAP:
+		return false
+	toss_choice = choice
+	opening_receiver = toss_winner if choice == "receive" else 1 - toss_winner
+	_kickoff(opening_receiver)
+	if downs.offense_team != world.offense_team:
+		world.set_offense(downs.offense_team)
+	_setup_formation()
+	match_event.emit("toss_choice", {"team": team, "choice": choice, "receiving": opening_receiver})
+	return true
+
+func kickoff_spot() -> float:
+	return roundf(goal() * _kick_fraction)
+
 func _setup_formation() -> void:
+	if state == State.KICKOFF or state == State.TOSS:
+		world.setup_kickoff(downs.los)
+		world.kick_locked = state == State.TOSS
+		return
 	world.setup_formation(downs.los)
 	if not world.is_chaos():
 		if downs.distance() <= 3.0:
@@ -63,6 +110,8 @@ func _setup_formation() -> void:
 			world.call_play("Deep Shot")
 		else:
 			world.call_play("Mesh")
+	if state == State.TRY and try_points == 1:
+		world.call_kick("fg")
 	world.call_defense(World.DefensivePlaybook.suggest(downs.down, downs.distance(),
 		goal() - downs.los, clock.remaining))
 
@@ -90,6 +139,10 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 		"explode":
 			clock.running_between_plays = false
 			last_result = {"type": "explode", "spot": d["spot"].y, "team": d.get("team", world.offense_team)}
+		"field_goal":
+			last_result = {"type": "field_goal", "good": d["good"], "team": world.offense_team}
+		"touchback", "kick_out_of_bounds", "kick_downed":
+			last_result = {"type": n, "spot": d["spot"].y, "team": world.offense_team}
 
 func _clock_runs_after_tackle(spot: float, team: int) -> bool:
 	return state == State.SCRIMMAGE and not world.is_chaos() and not clock.expired() \
@@ -119,13 +172,65 @@ func _award(team: int, pts: int, why: String) -> void:
 		max_deficit[t] = maxi(max_deficit[t], score[1 - t] - score[t])
 	match_event.emit("score", {"team": team, "points": pts, "why": why, "score": score.duplicate()})
 
-func _kickoff(receiving: int) -> Dictionary:
-	state = State.SCRIMMAGE
-	downs.reset(receiving, kickoff_los())
-	return {"outcome": "kickoff", "los": downs.los, "offense": receiving}
+## Next play is a kickoff to `receiving` (a live play). Chaosball skips kicks:
+## the receiving team just gets the ball at its own 25.
+func _kickoff(receiving: int, fraction: float = KICKOFF_SPOT_FRACTION) -> Dictionary:
+	if world.is_chaos():
+		state = State.SCRIMMAGE
+		downs.reset(receiving, kickoff_los())
+		return {"outcome": "kickoff", "los": downs.los, "offense": receiving}
+	state = State.KICKOFF
+	_kick_fraction = fraction
+	downs.reset(1 - receiving, kickoff_spot())
+	return {"outcome": "kickoff", "los": downs.los, "offense": 1 - receiving, "receiving": receiving}
+
+## Presnap kick call by the offense on a scrimmage down ("", "punt", "fg").
+func call_kick(kind: String) -> bool:
+	if state != State.SCRIMMAGE:
+		return false
+	return world.call_kick(kind)
+
+## Resolve a play in which the ball was kicked and not run back for a score.
+## Returns {} when the normal rules apply (returns, blocked kicks, fumbles).
+func _kick_next(r: Dictionary, off: int) -> Dictionary:
+	var def := 1 - off
+	var kind := world.kick_play
+	match r["type"]:
+		"field_goal":
+			if r["good"]:
+				_award(off, FG_POINTS, "field_goal")
+				var out := _kickoff(def)
+				out["field_goal"] = "good"
+				return out
+			# Miss: defense takes over at the spot of the kick, or its own 20.
+			var at := maxf(goal() - world.kick_spot.y, roundf(goal() * PUNT_TOUCHBACK_FRACTION))
+			downs.reset(def, clampf(at, 1.0, goal() - 1.0))
+			return {"outcome": "missed_field_goal", "los": downs.los, "offense": def}
+		"touchback":
+			var tb := kickoff_los() if kind == "kickoff" else roundf(goal() * PUNT_TOUCHBACK_FRACTION)
+			downs.reset(def, tb)
+			return {"outcome": "touchback", "los": downs.los, "offense": def}
+		"kick_out_of_bounds", "kick_downed":
+			var at := goal() - float(r["spot"])
+			if r["type"] == "kick_out_of_bounds" and kind == "kickoff":
+				at = roundf(goal() * KICKOFF_OOB_FRACTION)
+			downs.reset(def, clampf(at, 1.0, goal() - 1.0))
+			return {"outcome": "punt" if kind == "punt" else ("kickoff_return" if kind == "kickoff" else r["type"]), "los": downs.los, "offense": def}
+	if r.get("team", off) == def and r["type"] in ["tackle", "out_of_bounds"]:
+		# Return team downed: ball at the spot (own end zone = touchback).
+		var spot := goal() - float(r["spot"])
+		if spot <= 0.0:
+			spot = kickoff_los() if kind == "kickoff" else roundf(goal() * PUNT_TOUCHBACK_FRACTION)
+		downs.reset(def, clampf(spot, 1.0, goal() - 1.0))
+		return {"outcome": "kickoff_return" if kind == "kickoff" else "punt_return", "los": downs.los, "offense": def}
+	return {}
 
 ## Advance clocks; auto-snap when the play clock expires.
 func tick(dt: float) -> void:
+	if state == State.TOSS:
+		_toss_t += dt
+		if _toss_t >= TOSS_WINDOW:
+			choose_toss(toss_winner, "receive")
 	var live := world.phase == World.Phase.LIVE
 	var presnap := world.phase == World.Phase.PRESNAP
 	var was_running := clock.running_between_plays
@@ -173,18 +278,24 @@ func next_play() -> Dictionary:
 	var off := downs.offense_team
 	var def := 1 - off
 	var r_team: int = r.get("team", off)
+	var kick_out := {}
+	if world.kicked and not world.is_chaos() and state != State.TRY and r["type"] != "touchdown":
+		kick_out = _kick_next(r, off)
 	if world.is_chaos():
 		last_outcome = _chaos_next(r, r_team, off)
 	elif state == State.TRY:
-		if r["type"] == "touchdown" and r_team == off:
+		if (r["type"] == "touchdown" and r_team == off) or (r["type"] == "field_goal" and r["good"]):
 			_award(off, try_points, "try")
 			last_outcome = _kickoff(def)
 			last_outcome["try"] = "good"
 		else:
 			last_outcome = _kickoff(def)
 			last_outcome["try"] = "no_good"
+	elif not kick_out.is_empty():
+		last_outcome = kick_out
 	elif r["type"] == "touchdown":
-		_award(r_team, TD_POINTS, "touchdown" if r_team == off else "defensive_touchdown")
+		var why := "touchdown" if r_team == off else ("return_touchdown" if world.kicked else "defensive_touchdown")
+		_award(r_team, TD_POINTS, why)
 		downs.offense_team = r_team   # the scoring team attempts the try
 		state = State.TRY
 		try_points = 1
@@ -201,10 +312,14 @@ func next_play() -> Dictionary:
 		last_outcome = {"outcome": "turnover", "los": downs.los, "offense": r_team}
 	elif r["type"] != "incomplete" and r.get("spot", 1.0) < 0.0:
 		_award(def, SAFETY_POINTS, "safety")
-		last_outcome = _kickoff(def)
+		last_outcome = _kickoff(def, SAFETY_KICK_FRACTION)
 		last_outcome["safety"] = true
 	else:
+		if state == State.KICKOFF:
+			state = State.SCRIMMAGE   # onside recovery: kicking team keeps it
 		last_outcome = downs.apply(r)
+	if state == State.KICKOFF and last_outcome.get("outcome", "") != "kickoff":
+		state = State.SCRIMMAGE
 	# Half/game ends once the clock is out and no try is pending.
 	if clock.expired() and state != State.TRY and _advance_expired_half():
 		return last_outcome

@@ -47,7 +47,7 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [ ] B06 Juice: hit-stop, screenshake, crowd stingers
 - [~] B07 Steam relay / NAT traversal (out-of-game session): UPnP + public-IP invite codes + server browser DONE; relay for CGNAT + hosted public matchmaker pending (needs user decision, docs/OUT_OF_GAME.md)
 - [ ] B08 Tuning data file (TUNING) editable by designers without code
-- [~] B09 Real kickoffs + returns (claimed: claude 2026-11-25, with C02; branch kicking-game) (A08 uses an automatic touchback)
+- [x] B09 Real kickoffs + returns (iter 035, with C02)
 - [ ] B10 Overtime (sudden death or alternating possessions) for tied games
 
 ## Phase C: Gap backlog (docs/gaps/TODO.md)
@@ -59,3 +59,6 @@ After Phase B, take the first unchecked `C##` item in `docs/gaps/TODO.md` (P0 �
 - [x] D04 Achievements: milestone unlocks (first TD, 300-yd game, pick-six, 7-pt Chaosball TD, …) with profile persistence — parity G23
 - [ ] D05 Stats: return yards after interceptions/fumble recoveries (gap noted in A21)
 - [x] TRN Training ground (user request 2026-11-25): hub with 3 portals (blocking / practice field / catching), leveled drills + personal bests, and the queue waiting lobby (warm up while matchmaking). See docs/TRAINING.md
+- [ ] D06 Kicking stats: FG made/att + long, punt avg, kick/punt return yards (iter 035 gap)
+- [ ] D07 Kick meter art: stepped power meter beside the kicker + ball on a tee (remaster R-ss); HUD shows only KICK %
+- [ ] D08 Fair catch + bot 2-pt decisions (bots always kick the PAT; returners can't signal a fair catch)
