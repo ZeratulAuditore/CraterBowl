@@ -100,7 +100,9 @@ picker shows). Those are bounded; an 8000-frame run plateaus at the same object 
 gate fails it prints both windows and the node classes that grew in each.
 
 The render budgets are counts, not timings. They're identical on every machine, so they never
-flake. The CPU budgets use medians at about 3–5x the measured cost, so a busy machine doesn't
+flake. That holds only for a fixed scene: `tests/render_budget.gd` pins the coin toss
+(`toss_seed = 1`), as `tools/bench.gd` does, because the two outcomes differ by one instance and
+one material (#180). The CPU budgets use medians at about 3–5x the measured cost, so a busy machine doesn't
 fail them but an order-of-magnitude regression does.
 
 **Ratchet rule:** when you make something cheaper, lower the budget to about 1.25x the new

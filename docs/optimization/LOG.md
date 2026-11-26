@@ -8,7 +8,23 @@ Machine for all entries so far: WSL2 Ubuntu 24.04, i7-11800H (16 threads), RTX 3
 
 ---
 
-## 2026-11-26 — perf-03: object-growth gate was a coin flip (#169)
+## 2026-11-26 — perf-03: flaky object-growth check from play-picker churn (#169)
+
+`perf.sh` failed about half the time on origin/main c50b2ba with "objects grew by >= 51/52 in each of two
+400-frame windows". A per-path node diff in `tools/bench.gd` showed it wasn't a leak: the play picker
+freed and rebuilt its buttons on every possession change, and on some runs it was first built
+during the second window. That is a first-use allocation in window 2 plus other first-use allocations in
+window 1, so both windows grew. The plays are random per run, so it depended on when the bench
+player first saw the picker. Bisect pointed at #155, but that was chance; #155 has no per-frame code.
+Fix: build a fixed pool of picker buttons (the longest list either side shows) when the overlay is
+built, and relabel/hide them per side. Same machine, CPU, 8 runs each: before, 4/8 FAIL (growth 51);
+after, 8/8 PASS (growth 0 or 21, under the 50 threshold). What didn't work: growing the pool lazily
+to its max size on first refresh, because the first refresh can still land in window 2.
+
+## 2026-11-26 — perf-04: pin the bench coin toss so the object-growth gate is deterministic (#169)
+
+Follow-up to perf-03 (#185): pooling the picker removes one of the two one-time builds, but the bench still played a
+different game per run. The measurements below were taken before #185 merged.
 
 `perf.sh` failed about half the time on origin/main @ c50b2ba (`objects grew by >= 52`). Not a leak.
 `tools/bench.gd` plays the real main scene, and its opening coin toss was unseeded `randi() % 2`.
