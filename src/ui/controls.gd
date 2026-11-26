@@ -9,7 +9,8 @@ const ACTIONS := [
 	["move_left", "Move left", KEY_A], ["move_right", "Move right", KEY_D],
 	["sprint", "Sprint", KEY_SHIFT], ["snap", "Snap / hike", KEY_SPACE],
 	["throw", "Throw (hold to charge)", KEY_J], ["lob", "Lob modifier", KEY_CTRL],
-	["tackle", "Tackle", KEY_E], ["play", "Cycle play", KEY_Q], ["route", "Cycle route", KEY_F],
+	["tackle", "Tackle", KEY_E], ["handoff", "Handoff", KEY_G], ["timeout", "Team timeout", KEY_U],
+	["play", "Cycle play", KEY_Q], ["route", "Cycle route", KEY_F],
 	["position", "Switch position", KEY_TAB], ["team", "Switch team", KEY_T],
 	["next", "Next play", KEY_R], ["replay", "Instant replay", KEY_V],
 	["try1", "Extra point", KEY_1], ["try2", "Two-point try", KEY_2],
@@ -21,7 +22,8 @@ const TRIGGER_ON := 0.5
 const PAD_BUTTONS := {
 	JOY_BUTTON_A: "snap", JOY_BUTTON_B: "tackle", JOY_BUTTON_X: "play", JOY_BUTTON_Y: "route",
 	JOY_BUTTON_LEFT_SHOULDER: "position", JOY_BUTTON_RIGHT_SHOULDER: "lob",
-	JOY_BUTTON_LEFT_STICK: "sprint", JOY_BUTTON_BACK: "replay", JOY_BUTTON_DPAD_UP: "next",
+	JOY_BUTTON_LEFT_STICK: "sprint", JOY_BUTTON_RIGHT_STICK: "handoff",
+	JOY_BUTTON_BACK: "replay", JOY_BUTTON_DPAD_UP: "next",
 	JOY_BUTTON_DPAD_LEFT: "try1", JOY_BUTTON_DPAD_RIGHT: "try2", JOY_BUTTON_DPAD_DOWN: "team",
 }
 ## Gamepad trigger axis -> action (held while past TRIGGER_ON)
@@ -93,5 +95,5 @@ static func help_text(bindings: Dictionary) -> String:
 	for a in ACTIONS:
 		lines.append("%-24s %s" % [a[1], key_name(key_for(a[0], bindings))])
 	lines.append("Aim: mouse (left click throw, right click tackle)")
-	lines.append("Gamepad: stick move, A snap, B tackle, RT throw, LT sprint")
+	lines.append("Gamepad: stick move, A snap, B tackle, RT throw, LT sprint, R3 handoff")
 	return "\n".join(lines)

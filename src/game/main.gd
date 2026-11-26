@@ -18,6 +18,7 @@ const INTERP_DELAY := 0.1   # seconds others render in the past
 const Roster := preload("res://src/sim/roster.gd")
 const LOCAL_PLAYER := 1      # the local human's player id (= host peer id online)
 const Routes := preload("res://src/sim/routes.gd")
+const Controls := preload("res://src/ui/controls.gd")
 const MatchConfig := preload("res://src/sim/match_config.gd")
 const Lobby := preload("res://src/net/lobby.gd")
 const Drills := preload("res://src/sim/drills.gd")
@@ -487,7 +488,9 @@ func _apply_award(xp: Dictionary, ctx: Dictionary = {}) -> void:
 	xp_line = "XP +%d (Level %d%s)" % [total, profile.level(), " - LEVEL UP!" if gained > 0 else ""]
 	achievement_line = ("ACHIEVEMENTS: " + ", ".join(unlocked)) if not unlocked.is_empty() else ""
 
-func _on_match_event(n: String, _d: Dictionary) -> void:
+func _on_match_event(n: String, data: Dictionary) -> void:
+	if n in ["timeout", "clock_warning"]:
+		_on_world_event(n, data)
 	if n == "final" and drill == null:
 		saved_replay = _save_replay()
 		print("REPLAY saved: %s" % saved_replay)
@@ -933,6 +936,10 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 	# Offline convenience: follow the ball to the receiver. Online: fixed athlete (Gridiron parity).
 	if net == null and n == "catch" and world.get_athlete(d["by"]).team == world.offense_team:
 		set_controlled(d["by"])
+	if n == "handoff" and d["by"] == controlled_id:
+		charging = false
+		if net == null:
+			set_controlled(d["to"])
 	# Offline: take control of whoever on your team just took the ball away.
 	if net == null and n in ["interception", "recovery", "kick_catch"] and world.get_athlete(d["by"]).team == world.get_athlete(my_id).team:
 		set_controlled(d["by"])
@@ -1015,6 +1022,11 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			do_action({"a": "kick_call", "k": World.KICK_CALLS[ki]})
 		KEY_E:
 			do_action({"a": "tackle"})
+		KEY_G:
+			do_action({"a": "handoff"})
+		KEY_U:
+			if drill == null:
+				do_action({"a": "timeout"})
 		KEY_J:
 			_set_charging(true)
 		KEY_Y:
@@ -1031,8 +1043,9 @@ func _unhandled_key_input(e: InputEvent) -> void:
 				var next := (calls.find(world.defensive_call) + 1) % calls.size()
 				do_action({"a": "defense", "p": calls[next]})
 			else:
-				var i := (Routes.PLAY_NAMES.find(world.play_name) + 1) % Routes.PLAY_NAMES.size()
-				do_action({"a": "play", "p": Routes.PLAY_NAMES[i]})
+				var plays := world.available_plays()
+				var i := (plays.find(world.play_name) + 1) % plays.size()
+				do_action({"a": "play", "p": plays[i]})
 		KEY_F:
 			if world.route_of.has(my_id):
 				var j := (Routes.ROUTE_NAMES.find(world.route_of[my_id]) + 1) % Routes.ROUTE_NAMES.size()
@@ -1189,9 +1202,19 @@ func _draw_routes() -> void:
 	if me.team != world.offense_team:
 		_draw_defense_routes(me.team)
 		return
-	if world.route_of.is_empty():
+	var is_run := world.is_run_play()
+	if world.route_of.is_empty() and not is_run:
 		return
 	route_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	var blocks := {}
+	if is_run:
+		var back := world.find_role(me.team, Athlete.Role.RB)
+		var qb := world.find_role(me.team, Athlete.Role.QB)
+		if back and qb:
+			var mine := back.id == my_id
+			var color: Color = MY_ROUTE_COLOR if mine else ROUTE_COLORS[0]
+			_route_ribbon([back.position, qb.position] + world.run_path(), color, 0.48 if mine else 0.34)
+		blocks = world.run_block_assignments()
 	var k := 0
 	for id in world.route_of:
 		var a = world.get_athlete(id)
@@ -1203,7 +1226,7 @@ func _draw_routes() -> void:
 	for blocker in world.athletes:
 		if blocker.team != me.team or blocker.role not in [Athlete.Role.C, Athlete.Role.OL]:
 			continue
-		var defender = world.protection_target(blocker)
+		var defender = world.get_athlete(blocks.get(blocker.id, -1)) if is_run else world.protection_target(blocker)
 		if defender != null:
 			var mine: bool = blocker.id == my_id
 			_route_ribbon([blocker.position, defender.position], MY_ROUTE_COLOR if mine else Color(0.76, 0.82, 0.90), 0.42 if mine else 0.22)
@@ -1279,10 +1302,23 @@ func huddle_remaining() -> int:
 		return 0
 	return maxi(0, int(ceil(series.clock.play_clock - (Match.Clock.PLAY_CLOCK - T.HUDDLE_SECONDS))))
 
+func bound_key_name(action: String) -> String:
+	var launch := get_node_or_null("/root/Launch")
+	var bindings: Dictionary = launch.settings.bindings if launch else {}
+	return Controls.key_name(Controls.key_for(action, bindings)).to_upper()
+
+func handoff_hint() -> String:
+	if world.handoff_receiver(controlled_id) != null:
+		return "%s HANDOFF" % bound_key_name("handoff")
+	var holder := world.carrier()
+	if world.phase == World.Phase.LIVE and world.is_run_play() and holder and holder.id == controlled_id and holder.role == Athlete.Role.QB and holder.position.y <= world.los_y:
+		return "MEET THE BACK"
+	return ""
+
 func huddle_calls(team: int) -> String:
 	var cards := PackedStringArray()
 	if team == world.offense_team:
-		for name in Routes.PLAY_NAMES:
+		for name in world.available_plays():
 			cards.append("[%s]" % name if name == world.play_name else name)
 	else:
 		var ids := World.DefensivePlaybook.CALLS.keys()

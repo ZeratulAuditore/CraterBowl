@@ -26,6 +26,20 @@ const PLAYBOOK := {
 }
 const PLAY_NAMES := ["Verticals", "Slants", "Mesh", "Curls", "Flood", "Deep Shot"]
 
+## Waypoints from the middle of the line of scrimmage.
+const RUN_PLAYS := {
+	"Inside Zone": [Vector2(2.5, 1), Vector2(3.5, 7), Vector2(3.5, 16)],
+	"Outside Sweep": [Vector2(8, -2), Vector2(13, 3), Vector2(14, 9), Vector2(14, 16)],
+}
+const RUN_NAMES := ["Inside Zone", "Outside Sweep"]
+
+static func run_path(name: String, los: float, width: float, flipped: bool) -> Array:
+	var waypoints := []
+	var side := -1.0 if flipped else 1.0
+	for offset in RUN_PLAYS[name]:
+		waypoints.append(Vector2(clampf(width * 0.5 + offset.x * side, 1.0, width - 1.0), los + offset.y))
+	return waypoints
+
 static func route_index(name: String) -> int:
 	return ROUTE_NAMES.find(name)
 

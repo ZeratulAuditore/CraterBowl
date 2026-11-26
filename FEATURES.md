@@ -46,7 +46,7 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [ ] B06 Juice: hit-stop, screenshake, crowd stingers
 - [~] B07 Steam relay / NAT traversal (out-of-game session): UPnP + public-IP invite codes + server browser DONE; relay for CGNAT + hosted public matchmaker pending (needs user decision, docs/OUT_OF_GAME.md)
 - [ ] B08 Tuning data file (TUNING) editable by designers without code
-- [x] B09 Real kickoffs + returns (iter 033, with C02)
+- [x] B09 Real kickoffs + returns (iter 035, with C02)
 - [ ] B10 Overtime (sudden death or alternating possessions) for tied games
 
 ## Phase C: Gap backlog (docs/gaps/TODO.md)
@@ -57,6 +57,6 @@ After Phase B, take the first unchecked `C##` item in `docs/gaps/TODO.md` (P0 �
 - [x] D03 Chaosball in matchmaking: queue mode for Chaosball 3v3 — parity G17
 - [x] D04 Achievements: milestone unlocks (first TD, 300-yd game, pick-six, 7-pt Chaosball TD, …) with profile persistence — parity G23
 - [ ] D05 Stats: return yards after interceptions/fumble recoveries (gap noted in A21)
-- [ ] D06 Kicking stats: FG made/att + long, punt avg, kick/punt return yards (iter 033 gap)
+- [ ] D06 Kicking stats: FG made/att + long, punt avg, kick/punt return yards (iter 035 gap)
 - [ ] D07 Kick meter art: stepped power meter beside the kicker + ball on a tee (remaster R-ss); HUD shows only KICK %
 - [ ] D08 Fair catch + bot 2-pt decisions (bots always kick the PAT; returners can't signal a fair catch)

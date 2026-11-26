@@ -14,6 +14,8 @@ var _los := 0.0
 var _passer := -1
 var _receiver := -1
 var _thrown := false
+var _handoff_runner := -1
+var _rushing_fumble := false
 
 func attach(w, owner: Callable) -> void:
 	world = w
@@ -59,6 +61,10 @@ func _on_event(n: String, d: Dictionary) -> void:
 			_passer = -1
 			_receiver = -1
 			_thrown = false
+			_handoff_runner = -1
+			_rushing_fumble = false
+		"handoff":
+			_handoff_runner = d["to"]
 		"throw":
 			if not _thrown:
 				_passer = d["by"]
@@ -79,6 +85,10 @@ func _on_event(n: String, d: Dictionary) -> void:
 			_add(d["blocker"], "blk")
 		"fumble":
 			_add(d["by"], "ff")
+			if _handoff_runner == d["carrier"] and not _rushing_fumble and not _thrown:
+				_rushing_fumble = true
+				_add(_handoff_runner, "car")
+				_add(_handoff_runner, "rush_yds", d["at"].y - _los)
 		"recovery":
 			_add(d["by"], "fr")
 		"tackle", "out_of_bounds", "touchdown":
@@ -110,7 +120,7 @@ func _end_play(n: String, d: Dictionary) -> void:
 		if n == "touchdown":
 			_add(_passer, "pass_td")
 			_add(_receiver, "rec_td")
-	elif not _thrown:
+	elif not _thrown and not _rushing_fumble:
 		_add(carrier, "car")
 		_add(carrier, "rush_yds", gain)
 		if n == "touchdown":

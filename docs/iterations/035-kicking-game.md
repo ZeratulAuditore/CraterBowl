@@ -1,4 +1,4 @@
-# 033: B09 + C02 Kicking game (coin toss, live kickoffs, punts, field goals, PATs)
+# 035: B09 + C02 Kicking game (coin toss, live kickoffs, punts, field goals, PATs)
 
 ## Goal
 Make the kicking game real. A coin toss decides who kicks first. Kickoffs and punts are live plays with returns, field goals and PATs are kicked through actual uprights, and kicks can be blocked. Before this, every kickoff was an instant "ball at the 25", 4th down was always go-for-it, and the 1-point try was a run from the 3.

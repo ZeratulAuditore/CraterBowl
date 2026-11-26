@@ -22,6 +22,12 @@ const OOB_MARGIN := 2.0
 const SNAP_TIME := 0.35        # seconds for snap flight C -> QB
 const BALL_CARRY_HEIGHT := 1.1 # yards above turf when held
 
+# Run game
+const HANDOFF_REACH := 1.6
+const HANDOFF_COOLDOWN := 0.8
+const AI_HANDOFF_WINDOW := 1.5
+const RUN_BLOCK_LANE_WEIGHT := 0.55
+
 # Passing
 const GRAVITY := 10.73          # yd/s^2
 const RELEASE_HEIGHT := 2.0

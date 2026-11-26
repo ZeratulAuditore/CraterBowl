@@ -224,7 +224,18 @@
 - Cover 2 allowed 1 deep completion across 24 matched bot snaps versus 8 with legacy coverage. Deep attempts fell from 10 to 1.
 - Tests: 208 unit (+4) and full smoke passed, including remote recall. Checked offense and defense screenshots offscreen. An initial smoke attempt hit a matchmaker port bind error and passed on retry.
 
-## 033: B09 + C02 Kicking game (2026-11-25)
+## 033: C01 Run game (2026-11-25)
+- Added Inside Zone and Outside Sweep for classic 5v5 and 7v7. The huddle and turf show the RB path and linemen's targets. X mirrors the run.
+- The QB uses G or gamepad R3 to hand off to an adjacent RB behind the line. The host validates the exchange and its cooldown. Offline control follows the RB. Online players keep their assigned slots.
+- Bots mix runs with passes and block for the chosen lane. The RB gets the carry and yards at the whistle or fumble spot. The two-minute bot match finished 0–2 with 12 handoffs and 33 throws.
+- Verified 238 unit tests and full headless smoke, including a remote QB handoff. Viewed offscreen captures of the sweep, the exchange prompt and the controlled RB. The smoke guard now checks the active XDG data directory so other checkouts' replay files cannot invalidate an isolated run.
+
+## 034: C04a Running clock and team timeouts (2026-11-25)
+- The game clock runs between plays after a short in-bounds tackle. First downs, possession changes, sideline stops, incompletions and scores stop the clock. Tries are untimed.
+- Each half has a one-minute warning. A live play can finish before the warning. A half can also end between snaps.
+- U spends a team timeout between plays. The scorebug shows three per team, or two in 3v3. The host validates the caller, and halftime restores the counts.
+- Verified 245 unit tests and full headless smoke, including a remote timeout. Viewed offscreen captures of the timeout banner and visible pips before and after the snap. Quarters and the mercy rule remain in C04b.
+## 035: B09 + C02 Kicking game (2026-11-25)
 - Coin toss (`Match.start_match`): deterministic from a seed (`--toss=N`), winner has 5 s to press 1 receive / 2 kick (bots and no answer = receive), other team receives the 2nd half.
 - Live kickoffs from the 35 (20 after a safety): kicker on the tee, coverage spread, front row + two deep returners. Space/play clock = default kick; J/LMB = aimed kick with the throw meter (arc preview shows the kick). Returns, touchbacks (25), out of bounds (40), rolled/downed spots. Onside recovery exists as an opt-in mutator (`world.onside`, off by default per the gap notes; C27 owns turning it on).
 - K cycles the kick call on any scrimmage down: punt (punter 10 deep, returner drops back; touchback 20, return/downed spots, fake punts play normal downs) or field goal (holder 7 deep; good = between the uprights above the 3.3 yd crossbar at the end line; miss = defense at the kick spot or its 20). 1-pt try = PAT kick from the 15; 2-pt stays scrimmage from the 10.

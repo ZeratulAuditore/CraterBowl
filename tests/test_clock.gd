@@ -3,6 +3,8 @@ extends "res://tests/test_case.gd"
 const World := preload("res://src/sim/world.gd")
 const Match := preload("res://src/sim/match.gd")
 const Clock := preload("res://src/sim/clock.gd")
+const Protocol := preload("res://src/net/protocol.gd")
+const Roster := preload("res://src/sim/roster.gd")
 const Athlete := preload("res://src/sim/athlete.gd")
 const DT := 1.0 / 60.0
 const R := Athlete.Role
@@ -94,3 +96,142 @@ func test_try_after_last_second_td() -> void:
 	out = m.next_play()
 	assert_eq(out["outcome"], "final", "then final")
 	assert_eq(m.score[0], 7)
+
+func _snap_with_holder(m: Match) -> Athlete:
+	m.world.snap()
+	_tick(m, 0.5)
+	return m.world.carrier()
+
+func _end_tackle(m: Match, spot_y: float, team: int = 0) -> void:
+	var carrier := m.world.carrier()
+	carrier.position.y = spot_y
+	m.world._whistle("tackle", {"carrier": carrier.id, "team": team})
+
+func test_clock_continues_across_short_tackle_and_next_presnap() -> void:
+	var m := _match()
+	_snap_with_holder(m)
+	_end_tackle(m, 28.0)
+	var at_whistle := m.clock.remaining
+	_tick(m, 1.0)
+	assert_near(m.clock.remaining, at_whistle - 1.0, 0.001, "running between whistle and lineup")
+	assert_eq(m.next_play()["outcome"], "next_down")
+	_tick(m, 1.0)
+	assert_near(m.clock.remaining, at_whistle - 2.0, 0.001, "running in presnap")
+
+func test_dead_ball_results_that_stop_game_clock() -> void:
+	for outcome in ["incomplete", "out_of_bounds", "touchdown", "safety", "first_down", "takeaway", "turnover_on_downs"]:
+		var m := _match()
+		if outcome == "turnover_on_downs":
+			m.downs.down = 4
+		var carrier := _snap_with_holder(m)
+		match outcome:
+			"incomplete":
+				m.world._end_incomplete("ground", {})
+			"out_of_bounds", "touchdown":
+				m.world._whistle(outcome, {"carrier": carrier.id, "team": 0})
+			"safety": _end_tackle(m, -1.0)
+			"first_down": _end_tackle(m, 35.0)
+			"takeaway": _end_tackle(m, 28.0, 1)
+			"turnover_on_downs": _end_tackle(m, 28.0)
+		var at_whistle := m.clock.remaining
+		_tick(m, 1.0)
+		assert_near(m.clock.remaining, at_whistle, 0.001, "%s stops the clock when dead" % outcome)
+		m.next_play()
+		_tick(m, 1.0)
+		assert_near(m.clock.remaining, at_whistle, 0.001, "%s keeps the clock stopped before next snap" % outcome)
+		if outcome == "touchdown":
+			_snap_with_holder(m)
+			assert_near(m.clock.remaining, at_whistle, 0.001, "the try is untimed")
+
+func test_possession_change_midplay_stops_clock_even_if_offense_recovers() -> void:
+	var m := _match()
+	_snap_with_holder(m)
+	m.world.event.emit("recovery", {"turnover": true})
+	_end_tackle(m, 28.0)
+	assert_true(not m.clock.running_between_plays)
+
+func test_warning_waits_for_whistle_and_resets_at_halftime() -> void:
+	var m := _match()
+	_snap_with_holder(m)
+	m.clock.remaining = 60.1
+	_tick(m, 0.25)
+	assert_true(not mevents.has("clock_warning"), "live play continues after 1:00")
+	_end_tackle(m, 28.0)
+	m.tick(DT)
+	assert_eq(mevents.count("clock_warning"), 1)
+	var at_warning := m.clock.remaining
+	_tick(m, 1.0)
+	assert_near(m.clock.remaining, at_warning, 0.001, "warning stopped the clock")
+	m.next_play()
+	_snap_with_holder(m)
+	_end_tackle(m, 30.0)
+	m.tick(DT)
+	assert_eq(mevents.count("clock_warning"), 1, "only one warning per half")
+	m.clock.remaining = 0.0
+	m.next_play()
+	assert_eq(m.clock.half, 2)
+	_snap_with_holder(m)
+	m.clock.remaining = 60.1
+	_tick(m, 0.25)
+	_end_tackle(m, 28.0, 1)
+	m.tick(DT)
+	assert_eq(mevents.count("clock_warning"), 2, "second half has its own warning")
+
+func test_running_presnap_stops_at_warning_and_can_expire_after_warning() -> void:
+	var m := _match()
+	_snap_with_holder(m)
+	m.clock.remaining = 60.1
+	_end_tackle(m, 28.0)
+	m.next_play()
+	m.tick(0.25)
+	assert_eq(mevents.count("clock_warning"), 1)
+	assert_near(m.clock.remaining, 60.0, 0.001)
+	assert_near(m.clock.play_clock, Clock.PLAY_CLOCK)
+	_snap_with_holder(m)
+	_end_tackle(m, 30.0)
+	m.next_play()
+	m.clock.remaining = 0.25
+	m.clock.play_clock = 0.1
+	m.tick(0.3)
+	assert_true(not mevents.has("auto_snap"), "half expiry takes precedence over the play clock")
+	assert_eq(m.last_outcome["outcome"], "halftime")
+	assert_eq(m.clock.half, 2)
+	assert_eq(m.world.phase, World.Phase.PRESNAP)
+	assert_eq(m.world.offense_team, 1)
+
+func test_timeouts_stop_clock_use_actor_team_and_reset_at_half() -> void:
+	var m := _match()
+	_snap_with_holder(m)
+	var defender := m.world.find_role(1, R.CB)
+	assert_true(not Protocol.apply_action(m, defender.id, {"a": "timeout"}), "live request rejected")
+	assert_eq(m.clock.timeouts, [3, 3])
+	_end_tackle(m, 28.0)
+	assert_true(Protocol.apply_action(m, defender.id, {"a": "timeout", "team": 0}), "any slot can call timeout for their own team")
+	assert_eq(m.clock.timeouts, [3, 2])
+	var remaining := m.clock.remaining
+	_tick(m, 1.0)
+	assert_near(m.clock.remaining, remaining, 0.001)
+	m.next_play()
+	_tick(m, 1.0)
+	assert_true(m.call_timeout(1))
+	assert_near(m.clock.play_clock, Clock.PLAY_CLOCK, 0.001, "timeout resets presnap countdown")
+	assert_true(m.call_timeout(1))
+	assert_true(not m.call_timeout(1), "spent timeouts cannot be reused")
+	assert_true(not m.call_timeout(-1), "invalid team rejected")
+	assert_eq(mevents.count("timeout"), 3)
+	m.clock.remaining = 0.0
+	m.next_play()
+	assert_eq(m.clock.timeouts, [3, 3])
+
+func test_3v3_has_two_timeouts_and_snapshot_carries_counts() -> void:
+	var w := World.new()
+	Roster.new().build(w, 3)
+	var m := Match.new(w)
+	m.start()
+	assert_eq(m.clock.timeouts, [2, 2])
+	assert_true(m.call_timeout(0))
+	assert_eq(m.clock.timeouts, [1, 2])
+	assert_eq(Protocol.encode_snapshot(m, 10)["to"], PackedInt32Array([1, 2]))
+	var copy := _match()
+	Protocol.apply_snapshot(copy, Protocol.encode_snapshot(m, 10))
+	assert_eq(copy.clock.timeouts, [1, 2])
