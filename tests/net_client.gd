@@ -17,6 +17,8 @@ var start_x := INF
 var max_dx := 0.0
 var got_snap_event := false
 var saw_live := false
+var opening_play_clock := -1.0
+var next_play_clock := -1.0
 var bad_snap_sent_at := -1
 var bad_snap_rejected := false
 var last_server_x := INF
@@ -71,6 +73,11 @@ func _on_snap(s: Dictionary) -> void:
 		quarter_clock_seen = true
 	if s["ph"] == 1:
 		saw_live = true
+	elif s["ph"] == 0:
+		if not saw_live and opening_play_clock < 0.0:
+			opening_play_clock = s["c"][2]
+		elif saw_live and next_play_clock < 0.0:
+			next_play_clock = s["c"][2]
 
 func _on_lobby(st: Dictionary) -> void:
 	if not saw_lobby and st.get("phase", 1) == 0:
@@ -167,6 +174,10 @@ func _physics_process(_dt: float) -> bool:
 		check(not crossed_line, "predicted defender never past the neutral zone")
 		check(lead_samples > 10, "own athlete predicted ahead of server state (%d frames)" % lead_samples)
 		check(saw_live and got_snap_event, "host auto-snap reached client (snapshot LIVE + reliable event)")
+		check(opening_play_clock > 0.0 and opening_play_clock <= 4.0,
+			"lobby match opens with the host's short play clock (%.2f s)" % opening_play_clock)
+		check(next_play_clock >= 3.0 and next_play_clock <= 4.0,
+			"client sees the short play clock reset on the next down (%.2f s)" % next_play_clock)
 		check(defense_recall_seen, "remote defender recalled the previous snap's call")
 		check(defense_call_seen, "defensive selection reached host and returned in a snapshot")
 		check(bad_snap_rejected, "defense snap rejected by server")
