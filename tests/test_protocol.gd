@@ -53,6 +53,16 @@ func test_snapshot_round_trip() -> void:
 	assert_eq(b.downs.down, 3, "down")
 	assert_true(bytes.size() < 1400, "fits one MTU-ish packet (%d bytes)" % bytes.size())
 
+func test_legacy_snapshot_defaults_to_halves() -> void:
+	var m := _match()
+	var snapshot := P.encode_snapshot(m, 1)
+	snapshot["c"] = PackedFloat32Array([2.0, 57.0, 12.0, 0.0])
+	m.clock.quarter_length = 120.0
+	m.clock.quarter = 2
+	P.apply_snapshot(m, snapshot)
+	assert_true(not m.clock.uses_quarters())
+	assert_eq(m.clock.label(), "H2 0:57")
+
 func test_sanitize_input() -> void:
 	assert_eq(P.sanitize_input("garbage"), {}, "non-dict rejected")
 	var i := P.sanitize_input({"dir": Vector2(10, 0), "spr": true, "block": true})

@@ -74,7 +74,7 @@ The host re-broadcasts every world event from `main.gd:_on_world_event`, plus ma
 | `r` | `PackedInt32Array`, 3 per athlete: role, flags (DIVE 1, GROUND 2, LOCK 4, BLOCK 8, SPIN 16), team |
 | `moves` | 2 per athlete: `move_charge`, `move_t` |
 | `b` | ball: state, holder, pos xyz, vel xyz |
-| `d`, `s`, `c`, `to` | downs (offense, down, los, first-down y), score, clock (half, remaining, play clock, final), timeouts |
+| `d`, `s`, `c`, `to` | downs (offense, down, los, first-down y), score, clock (half, remaining, play clock, final, quarter, quarter length in seconds), timeouts |
 | `ph`, `off`, `los`, `fpt`, `pt`, `ms`, `tp` | world phase, offense team, LOS, forward pass thrown, last possession, match state, try points |
 | `pl`, `rt`, `dc`, `rf`, `hc`, `cs` | play name, route index per athlete (-1 none), defensive call, run flipped, handoff cooldown, Chaosball streak/hold |
 | `ack` | athlete id → last input `seq` the server stored (`NetSession.acks()`) |
@@ -83,6 +83,7 @@ It's a full snapshot every time (no deltas). `apply_snapshot` writes straight in
 `World`/`Match`; dive/ground flags become token timers (`0.01`). Newer keys are read with `.get()`
 defaults; the core keys (`ph`, `a`, `r`, `b`, `d`, `s`, `c`, `ms`, `tp`) are indexed directly, so the
 client trusts the host's shape. New sim state: add to both functions and `tests/test_protocol.gd`.
+The quarter fields extend the clock array after its four original entries. If they are absent, the client uses halves.
 
 ## Client prediction (`client_predictor.gd`)
 
@@ -110,12 +111,13 @@ client trusts the host's shape. New sim state: add to both functions and `tests/
 
 1. Host: `_host_game` makes a `Lobby` (`host_id = 1`), sets `code` (invite code), `expected` (queue
    matches), and `NetSession.lobby_mode = true`. Host keys (`main.gd:lobby_key`): Enter ready, 3/5/7 size,
-   M classic/chaosball (forces size 3), H half length (2/5/8 min). Any setting change un-readies everyone but the host.
+   M classic/chaosball (forces size 3), Q halves/quarters, H duration (2/5/8 min halves or 1/2/3 min quarters).
+   Any setting change clears the guests' ready state.
 2. Client: `_join_game` decodes the code, connects; on the first `lobby` state it sends `name` and, for
    queue joins (`auto_ready`), `ready`. Clients mirror via `lobby.from_dict`.
 3. `main.gd:_step_lobby` (host, each tick): apply `lact`s, broadcast on change, and when
    `lobby.all_ready()` (≥ max(2, `expected`) players, all ready) → `_start_from_lobby`: `configure`, set
-   half length, seat everyone, `welcome` each peer. A client whose `welcome` size/mode differs re-runs `configure`.
+   period format and duration, seat everyone, `welcome` each peer. A client whose `welcome` size/mode differs re-runs `configure`.
 
 ## Matchmaker (`mm_server.gd`, `mm_client.gd`, `matchmaker.gd`)
 

@@ -241,7 +241,7 @@ func tick(dt: float) -> void:
 		match_event.emit("clock_warning", {"half": clock.half})
 		return
 	if presnap and was_running and clock.expired():
-		if not _advance_expired_half():
+		if not _advance_expired_period():
 			_line_up_next_play()
 		return
 	if snap_now and world.snap():
@@ -320,14 +320,17 @@ func next_play() -> Dictionary:
 		last_outcome = downs.apply(r)
 	if state == State.KICKOFF and last_outcome.get("outcome", "") != "kickoff":
 		state = State.SCRIMMAGE
-	# Half/game ends once the clock is out and no try is pending.
-	if clock.expired() and state != State.TRY and _advance_expired_half():
+	# The period ends once the clock is out and no try is pending.
+	if clock.expired() and state != State.TRY and _advance_expired_period():
 		return last_outcome
 	_line_up_next_play()
 	return last_outcome
 
 ## Returns true when there is no next play.
-func _advance_expired_half() -> bool:
+func _advance_expired_period() -> bool:
+	if clock.advance_midhalf_quarter():
+		last_outcome = {"outcome": "quarter", "quarter": clock.quarter, "los": downs.los, "offense": downs.offense_team}
+		return false
 	if clock.half < Clock.HALVES:
 		clock.start_next_half()
 		last_outcome = _kickoff(1 - opening_receiver)

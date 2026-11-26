@@ -28,7 +28,8 @@ static func encode_snapshot(m, tick: int, acks: Dictionary = {}) -> Dictionary:
 		"b": PackedFloat32Array([b.state, b.holder_id, b.position.x, b.position.y, b.position.z, b.velocity.x, b.velocity.y, b.velocity.z]),
 		"d": PackedFloat32Array([m.downs.offense_team, m.downs.down, m.downs.los, m.downs.first_down_y]),
 		"s": PackedInt32Array(m.score),
-		"c": PackedFloat32Array([m.clock.half, m.clock.remaining, m.clock.play_clock, 1.0 if m.clock.final else 0.0]),
+		"c": PackedFloat32Array([m.clock.half, m.clock.remaining, m.clock.play_clock,
+			1.0 if m.clock.final else 0.0, m.clock.quarter, m.clock.quarter_length]),
 		"to": PackedInt32Array(m.clock.timeouts),
 		"ms": m.state, "tp": m.try_points, "ack": acks, "pl": w.play_name, "rt": _routes_array(w),
 		"dc": w.defensive_call, "rf": w.run_flipped, "hc": w.handoff_cooldown,
@@ -87,6 +88,8 @@ static func apply_snapshot(m, s: Dictionary) -> void:
 	m.clock.remaining = c[1]
 	m.clock.play_clock = c[2]
 	m.clock.final = c[3] > 0.5
+	m.clock.quarter = int(c[4]) if c.size() > 4 else 1
+	m.clock.quarter_length = c[5] if c.size() > 5 else 0.0
 	if s.has("to"):
 		m.clock.timeouts = Array(s["to"])
 	m.state = s["ms"]

@@ -23,9 +23,9 @@ Bots fill every empty slot. Everything runs peer-hosted: there are no dedicated 
 
 ### Private lobby (in the match scene, text HUD)
 - HUD: `PRIVATE MATCH LOBBY  Invite code: …`, settings and names (✓ = ready).
-- **Enter** = toggle ready (everyone). Host only: **3/5/7** size, **M** classic/Chaosball (Chaosball forces 3v3), **H** half length 2 → 5 → 8 min. Defaults: 7v7, 5-min halves.
+- **Enter** toggles ready. The host can press **3/5/7** for team size, **M** for classic/Chaosball, **Q** for halves/quarters and **H** for the duration. Defaults are 7v7 and five-minute halves. See [clock rules](rules.md#clock-srcsimclockgd) for the duration choices.
 - Any settings change un-readies everyone except the host.
-- Hosting from the menu with Chaosball rules opens the lobby at 3v3 but on **classic** rules (the menu's mode never reaches the lobby settings). The host has to press M.
+- Hosting from the menu with Chaosball selected opens a classic 3v3 lobby. Press **M** to switch to Chaosball (#74).
 - Starts automatically when **every player is ready and at least 2 are present**. A host alone can't start a private match.
 - Players who join after kickoff go straight into a free slot. Up to 13 clients (14 humans).
 
@@ -115,3 +115,5 @@ Bots fill every empty slot. Everything runs peer-hosted: there are no dedicated 
 - #57 UPnP port mapping is never removed after hosting
 - #58 Dead matchmaker code: whoami/you path and snake_teams
 - #59 Competitive team seating is keyed by display name
+- #74 Private host lobby ignores the menu's Chaosball selection
+- #75 Stadium screen shows a running-match clock in the private lobby

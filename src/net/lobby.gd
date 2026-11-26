@@ -4,11 +4,14 @@ extends RefCounted
 enum Phase { LOBBY, IN_GAME }
 const SIZES := [3, 5, 7]
 const HALF_MINUTES := [2, 5, 8]
+const QUARTER_MINUTES := [1, 2, 3]
+const DEFAULT_QUARTER_MINUTES := 2
 
 var phase: Phase = Phase.LOBBY
 var host_id := 1
 var code := ""
-var settings := {"size": 7, "half_minutes": 5, "mode": "classic"}
+var settings := {"size": 7, "half_minutes": 5, "mode": "classic",
+	"quarters": false, "quarter_minutes": DEFAULT_QUARTER_MINUTES}
 var players := {}   # id -> {"name": String, "ready": bool}
 var expected := 0   # queue matches: auto-start only once this many players are present
 
@@ -48,6 +51,12 @@ func set_setting(by: int, key: String, value) -> bool:
 		"half_minutes":
 			if not (value is int and HALF_MINUTES.has(value)):
 				return false
+		"quarter_minutes":
+			if not (value is int and QUARTER_MINUTES.has(value)):
+				return false
+		"quarters":
+			if not value is bool:
+				return false
 		"mode":
 			if not (value is String and (value == "classic" or value == "chaosball")):
 				return false
@@ -83,8 +92,12 @@ func from_dict(d: Dictionary) -> void:
 	code = str(d.get("code", ""))
 	var s = d.get("settings", {})
 	if s is Dictionary:
+		var quarters = s.get("quarters", false)
+		var qmin = s.get("quarter_minutes", DEFAULT_QUARTER_MINUTES)
 		settings = {"size": int(s.get("size", 7)), "half_minutes": int(s.get("half_minutes", 5)),
-			"mode": "chaosball" if s.get("mode", "") == "chaosball" else "classic"}
+			"mode": "chaosball" if s.get("mode", "") == "chaosball" else "classic",
+			"quarters": quarters is bool and quarters,
+			"quarter_minutes": qmin if qmin is int and QUARTER_MINUTES.has(qmin) else DEFAULT_QUARTER_MINUTES}
 	var p = d.get("players", {})
 	players = p if p is Dictionary else {}
 
@@ -93,4 +106,5 @@ func summary() -> String:
 	for id in players:
 		names.append("%s%s" % [players[id]["name"], " ✓" if players[id]["ready"] else ""])
 	var mode_txt := "Chaosball " if settings.get("mode", "classic") == "chaosball" else ""
-	return "%s%dv%d, %d-min halves | %s" % [mode_txt, settings["size"], settings["size"], settings["half_minutes"], ", ".join(names)]
+	var period := "%d-min quarters" % settings["quarter_minutes"] if settings["quarters"] else "%d-min halves" % settings["half_minutes"]
+	return "%s%dv%d, %s | %s" % [mode_txt, settings["size"], settings["size"], period, ", ".join(names)]

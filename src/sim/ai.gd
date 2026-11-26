@@ -17,12 +17,15 @@ var _calls := 0           # plays called so far: deterministic variety
 var _man := {}            # defender id -> receiver id (set at snap)
 var _man_ref = null
 
+func reset_presnap() -> void:
+	_presnap_t = 0.0
+	_presnap_called = false
+
 ## Presnap bot behavior: an AI-run offense calls a situational play and snaps.
 ## `down`/`distance` describe the situation (pass downs.down / downs.distance()).
 func presnap_tick(world, human_ids: Array, dt: float, down: int = 1, distance: float = 10.0, snap_delay: float = T.AI_SNAP_DELAY) -> void:
 	if world.phase != world.Phase.PRESNAP:
-		_presnap_t = 0.0
-		_presnap_called = false
+		reset_presnap()
 		return
 	_presnap_t += dt
 	var humans_on_offense := false

@@ -309,6 +309,25 @@ func _initialize() -> void:
 		[11940, func(): main.aim_point = Vector2(main.field.width / 2.0, main.field.posts_y())],
 		[11941, func(): _key(KEY_J)],
 		[12200, func(): check(main.last_whistle == "FIELD GOAL GOOD", "field goal good (%s)" % main.last_whistle); main.next_play(); check(main.series.score[0] == 3, "+3"); check(main.series.state == main.Match.State.KICKOFF, "then a kickoff"); main.ai.defense_enabled = true],
+		# C04b: change quarters on the normal dead-ball advance.
+		[12210, func():
+			main.opening_kickoff = false
+			main.configure(3)
+			main.ai.defense_enabled = false
+			main.series.clock.quarter_length = 120.0
+			main.series.clock.reset()],
+		[12212, func():
+			check(main.pres.overlay.clock_l.text == "Q1 2:00", "scorebug opens in Q1")
+			_key(KEY_SPACE)],
+		[12225, func():
+			check(main.world.phase == main.World.Phase.LIVE, "Space starts the last play of Q1")
+			main.series.clock.remaining = 0.0
+			main.world.carrier().position.x = -0.5],
+		[12228, func(): _key(KEY_R)],
+		[12238, func():
+			check(main.series.clock.quarter == 2 and main.series.downs.down == 2 and main.world.offense_team == 0, "R advances to Q2 and preserves the drive")
+			check(main.pres.overlay.clock_l.text == "Q2 2:00", "scorebug updates to Q2")
+			main.ai.defense_enabled = true],
 	]
 
 ## First receiver not controlled by the human (humans don't auto-run routes).

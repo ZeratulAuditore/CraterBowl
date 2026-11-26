@@ -177,6 +177,10 @@ func _ready() -> void:
 		return
 	configure(MatchConfig.normalize(args.get("size", 7)), str(args.get("practice", "")) if args.has("practice") else "",
 		str(args.get("mode", "classic")))
+	var quarter_minutes := int(args.get("quarter-minutes", 0))
+	if drill == null and Lobby.QUARTER_MINUTES.has(quarter_minutes):
+		series.clock.quarter_length = quarter_minutes * 60.0
+		series.clock.reset()
 	_setup_net()
 	if args.has("replay"):
 		open_replay(str(args["replay"]))
@@ -530,6 +534,8 @@ func _apply_award(xp: Dictionary, ctx: Dictionary = {}) -> void:
 func _on_match_event(n: String, data: Dictionary) -> void:
 	if n in ["timeout", "clock_warning"]:
 		_on_world_event(n, data)
+	if n in ["quarter", "halftime"]:
+		ai.reset_presnap()
 	if n == "final" and drill == null:
 		saved_replay = _save_replay()
 		print("REPLAY saved: %s" % saved_replay)
@@ -705,6 +711,9 @@ func _host_game(port: int, opts: Dictionary) -> String:
 	lobby.host_id = LOCAL_PLAYER
 	lobby.add(LOCAL_PLAYER, player_name if player_name != "You" else "Host")
 	lobby.settings["size"] = MatchConfig.normalize(opts.get("size", match_size))
+	if series.clock.uses_quarters():
+		lobby.settings["quarters"] = true
+		lobby.settings["quarter_minutes"] = int(series.clock.quarter_length / 60.0)
 	if opts.get("game", "classic") == "chaosball":
 		lobby.settings["mode"] = "chaosball"
 		lobby.settings["size"] = 3
@@ -828,7 +837,7 @@ func in_lobby() -> bool:
 		return net.my_athlete < 0
 	return false
 
-## Lobby input: Enter = ready; host: 3/5/7 size, H half length.
+## Lobby input: Enter = ready. The host can select the format and period length.
 func lobby_key(keycode: int) -> void:
 	if is_client():
 		if keycode == KEY_ENTER:
@@ -842,9 +851,14 @@ func lobby_key(keycode: int) -> void:
 		KEY_7: changed = lobby.set_setting(LOCAL_PLAYER, "size", 7)
 		KEY_M:
 			changed = lobby.set_setting(LOCAL_PLAYER, "mode", "chaosball" if lobby.settings.get("mode", "classic") == "classic" else "classic")
+		KEY_Q:
+			changed = lobby.set_setting(LOCAL_PLAYER, "quarters", not lobby.settings["quarters"])
 		KEY_H:
-			var i := (Lobby.HALF_MINUTES.find(lobby.settings["half_minutes"]) + 1) % Lobby.HALF_MINUTES.size()
-			changed = lobby.set_setting(LOCAL_PLAYER, "half_minutes", Lobby.HALF_MINUTES[i])
+			var quarters: bool = lobby.settings["quarters"]
+			var choices := Lobby.QUARTER_MINUTES if quarters else Lobby.HALF_MINUTES
+			var setting := "quarter_minutes" if quarters else "half_minutes"
+			var i := (choices.find(lobby.settings[setting]) + 1) % choices.size()
+			changed = lobby.set_setting(LOCAL_PLAYER, setting, choices[i])
 	if changed:
 		net.broadcast_lobby(lobby.to_dict())
 
@@ -865,6 +879,7 @@ func _start_from_lobby() -> void:
 		return
 	configure(lobby.settings["size"], "", lobby.settings.get("mode", "classic"))
 	series.clock.half_length = lobby.settings["half_minutes"] * 60.0
+	series.clock.quarter_length = lobby.settings["quarter_minutes"] * 60.0 if lobby.settings["quarters"] else 0.0
 	series.clock.reset()
 	if debug_playclock > 0.0:
 		series.clock.play_clock = debug_playclock
@@ -1557,8 +1572,8 @@ func _process(delta: float) -> void:
 		hud.text = replay_hud_text()
 		return
 	if in_lobby():
-		var who := "host: [3/5/7] size, [M] mode, [H] half length, " if is_server() else ""
-		hud.text = "PRIVATE MATCH LOBBY   Invite code: %s\n%s\n[Enter] ready  (%s starts when everyone is ready)" % [lobby.code, lobby.summary(), who]
+		var host_keys := "\nHost: [3/5/7] size   [M] mode   [Q] halves/quarters   [H] period length" if is_server() else ""
+		hud.text = "PRIVATE MATCH LOBBY   Invite code: %s\n%s\n[Enter] ready. Starts when everyone is ready.%s" % [lobby.code, lobby.summary(), host_keys]
 		return
 	var clock_txt: String = "%s%dv%d %s" % ["CHAOSBALL " if match_mode == "chaosball" else "", match_size, match_size, series.clock.label()]
 	if world.is_chaos():
