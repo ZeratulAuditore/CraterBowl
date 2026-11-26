@@ -1,7 +1,7 @@
 # Crater Bowl: out-of-game experience
 
 This covers everything outside a match: name, brand, menus, settings, finding games, internet play and distribution.
-The in-match game is in `PLAN.md` / `FEATURES.md`. This doc is maintained by the out-of-game session (branch `out-of-game`, merged to `main`).
+Feature-level doc: how this works **today** on `main`. The in-match game is in the other `docs/features/` docs, the vision in `../vision.md`. Networking internals: `../design/netcode.md`. Open work: GitHub issues labelled `area:ui`, `area:infra` and `area:accessibility` (listed below).
 
 ## Identity
 - **Name: Crater Bowl.** The stadium is built inside a lunar crater, which matches the graphics pass (lunar dome stadium, HELIOS vs NEBULA).
@@ -46,14 +46,15 @@ The in-match game is in `PLAN.md` / `FEATURES.md`. This doc is maintained by the
 ### Store copy (draft)
 > **Crater Bowl.** Arcade football under a dome on the Moon. 3v3 to 7v7 online with friends, bots in every empty slot, precision passing, live play calling and routes, plus Chaosball: low gravity, anyone can throw, walls are in play, and pass streaks raise your touchdown value. Quick match, ranked seasons, private lobbies with invite codes, practice drills, replays and earnable cosmetics with no pay-to-win.
 
-## Open decisions (owner: the user)
-1. **Host the public matchmaker.** Until it's live, the default address is `127.0.0.1:24600`, so Quick match, Ranked and the browser only work if someone runs `--matchmaker` and players enter its address in Settings → Online. Cheapest option: one small VPS or AWS instance (~$4–8/mo) plus a DNS name; then set `SettingsStore.DEFAULT_MM`.
-2. **Storefront.** Recommended: itch.io first (free, butler script ready; needs your itch account). Steam costs $100 per app; its benefit is Steam Networking relay, which solves NAT for good.
-3. **Signing.** Windows builds are unsigned (SmartScreen warning). macOS builds are not notarized (right-click → Open); notarizing needs an Apple Developer account ($99/yr).
-
-## Known gaps / next
-- **NAT relay:** when UPnP fails (carrier-grade NAT, strict routers), friends on other networks can't connect. Next step is a relay mode in the matchmaker server, or Steam relay if we go to Steam.
-- **Gamepad aiming:** the stick moves and triggers throw, but the aim point is still mouse-driven. Right-stick aim needs a hook in `main.gd`'s aim code.
-- **Windows exe icon:** needs `rcedit` (`application/modify_resources=false` today). The window and taskbar icon at runtime is correct.
-- **No audio assets yet:** the volume setting drives the Master bus, ready for when sound lands.
-- **UPnP failure notice** appears on the menu after the match, not during the lobby.
+## Open issues
+Open owner decisions and known gaps moved to GitHub issues on 2026-11-25 (#1):
+- #48 Decide: host the public matchmaker (VPS/AWS + DNS)?
+- #49 Decide: storefront (itch.io first vs Steam)
+- #50 Decide: code signing / notarization
+- #32 B07 NAT relay for CGNAT/strict routers + hosted public matchmaker
+- #33 Gamepad: right-stick aiming
+- #46 Windows exe icon (rcedit)
+- #47 UPnP failure notice appears after the match instead of in the lobby
+- #24 C18 Guided tutorial
+- #25 C19 Accessibility & camera options
+- #22 C16 Audio foundation + live play feed (no in-match audio yet; the menu soundtrack exists)
