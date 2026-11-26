@@ -67,7 +67,7 @@ catch rules). There is one difficulty level. A player who disconnects frees thei
 - Bot simulations found rule bugs: rushers batted every throw at release (fixed with `MIN_PASS_TRAVEL`), interceptions
   were too easy (now `INT_RADIUS` at closest approach), and man defenders walked through unreleased receivers.
 - Play choice is deterministic (rotating `variant`), so bot games are reproducible.
-- Known weakness from iteration 015: deep passing is easy against bots; zone calls (030–032) were added partly for this.
+- Zone calls were added partly because deep passing was too easy against man-only bots.
 
 ## Code and tests
 - `src/sim/ai.gd` — all bot inputs, play calling, QB reads, coverage, pursuit.
@@ -77,13 +77,6 @@ catch rules). There is one difficulty level. A player who disconnects frees thei
 - `tools/bot_stats.gd`, `tools/play_stats.gd` — all-bot outcome stats.
 - Tests: `tests/test_bots.gd` (incl. a full all-bot game), `tests/test_defensive_playbook.gd`, `tests/test_run_game.gd`,
   `tests/test_chaos_scoring.gd` (`test_ai_passes_before_clock`), `tests/test_match_sizes.gd` (3v3/5v5 bot games).
-
-## History
-- 015 [Bots](../iterations/015-bots.md)
-- 030 [Defensive playbook](../iterations/030-defensive-playbook.md)
-- 031 [Defensive selection](../iterations/031-defensive-selection.md)
-- 032 [Defensive assignments and huddle](../iterations/032-defensive-huddle.md)
-- 033 [Run game](../iterations/033-run-game.md)
 
 ## Open issues
 - #14 C32 Co-op vs bots playlist + bot difficulty

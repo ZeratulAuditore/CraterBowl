@@ -67,10 +67,6 @@ pairs you, `main._end_warmup()` rebuilds the queued match's world and the normal
 - Tests: `tests/test_training.gd` and `tests/test_drills.gd` (unit); `tests/game_flow.gd` steps 4700–5300 (classic drills)
   and 8600–9200 (training ground, real keys); `scripts/mm_test.sh` asserts both queued clients warm up and leave the training ground when matched.
 
-## History
-- 018 [Offline practice mode](../iterations/018-practice.md)
-- Training ground and queue warm-up shipped without an iteration doc (commit `c55ddb6`).
-
 ## Open issues
 - #23 C17 1v1 Catching mode
 - #24 C18 Guided tutorial

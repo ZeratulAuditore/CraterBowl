@@ -4,7 +4,7 @@ Feature-level doc: how this works for players **today** on `main`. Open work: Gi
 
 ## Summary
 Classic Crater Bowl is two-way football with four downs to gain 10 yards, a PAT kick or 2-point scrimmage try,
-and two timed halves by default. Private hosts can choose four quarters. Kickoffs, punts and field goals are live kicking plays (iter 035, [kicking.md](kicking.md)). Fields shrink with match size so 3v3 and 5v5 use the same rules engine as 7v7.
+and two timed halves by default. Private hosts can choose four quarters. Kickoffs, punts and field goals are live kicking plays ([kicking.md](kicking.md)). Fields shrink with match size so 3v3 and 5v5 use the same rules engine as 7v7.
 Chaosball changes most of this: see [chaosball.md](chaosball.md).
 
 ## How it plays
@@ -68,7 +68,7 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 - At the end of Q1 and Q3, the next period starts with the same possession, down, spot and remaining timeouts.
 - The coin toss winner chooses to receive or kick the opening kickoff. At halftime after H1 or Q2, the other team receives.
 - After H2 or Q4 the higher score wins. A tie stands.
-- **Switching ends** (iter 040, #89): teams switch the goal they attack every period, after Q1, Q2 and Q3 (and at
+- **Switching ends** (#89): teams switch the goal they attack every period, after Q1, Q2 and Q3 (and at
   halftime in the halves format). Possession, spot, down and line to gain carry over unchanged. Because the view is
   offense-relative, the switch shows on the field: the end zone behind the offense is painted and named for the end
   it defends this period (HELIOS defends the HELIOS end in odd periods), and a **SWITCH ENDS** banner shows at each
@@ -82,10 +82,13 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
   change-driven from `presentation.gd`) is the whole cue.
 - The scrimmage try reuses the regular downs engine. The PAT uses the field goal kick.
 - Play-clock expiry auto-snaps, so an AFK player can't stall a lobby.
-- The clock first ran only during live plays (iteration 009) for predictable pacing; iteration 034 added the running
-  clock after short in-bounds tackles so reaching the sideline matters. Timeouts reuse existing dead-ball phases
-  instead of a separate timeout state.
-- Iteration 014 introduced the rear strip. The current fumble risk also considers stamina and impact, with a near-certain rear strip.
+- Fields scale with match size so 3v3 isn't played on a lonely 100-yard field.
+- The clock once ran only during live plays, for predictable pacing. It now also runs after short in-bounds tackles
+  so reaching the sideline matters. Timeouts reuse existing dead-ball phases instead of a separate timeout state,
+  which would be one more state for every client.
+- Quarters are a counter inside the halves, which stay the unit for rules. Reusing halftime at Q1 and Q3 would reset
+  the drive and hand out extra timeouts, so those boundaries only reset the clock.
+- The rear strip is near-certain so fumbles stay readable: don't sprint with a defender closing from behind.
 
 ## Code and tests
 - `src/sim/match.gd` — series flow: scoring, tries, kickoffs, turnovers, safeties, halves, timeouts.
@@ -97,17 +100,6 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 - Tests: `tests/test_downs.gd`, `tests/test_scoring.gd`, `tests/test_match.gd`, `tests/test_clock.gd`,
   `tests/test_turnovers.gd`, `tests/test_tackling.gd`, `tests/test_match_sizes.gd`, `tests/test_field.gd`, `tests/test_switch_ends.gd`, `tests/game_flow.gd`,
   `tests/visual/switch_ends_test.gd`.
-
-## History
-- 007 [Downs](../iterations/007-downs.md)
-- 008 [Scoring](../iterations/008-scoring.md)
-- 009 [Match flow](../iterations/009-match-flow.md)
-- 014 [Interceptions + fumbles](../iterations/014-turnovers.md)
-- 016 [Match sizes](../iterations/016-match-sizes.md)
-- 017 [Private matches](../iterations/017-private-matches.md) (half length setting)
-- 034 [Running clock and timeouts](../iterations/034-clock-management.md)
-- 038 [Four-quarter format](../iterations/038-quarter-format.md)
-- 040 [Switching ends](../iterations/040-switch-ends.md)
 
 ## Open issues
 - #6 C04c Switching ends, mercy rule and clock actions (parent; #89 switching ends in review)

@@ -108,6 +108,7 @@ func go_to_menu(status: String = "", overview: Dictionary = {}) -> void:
 	options = {}
 	_close_overlay()
 	_close_game_network()
+	preload("res://src/net/port_mapper.gd").release_all_async()   # hosting ended: unmap (#57)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	get_tree().paused = false
 	get_tree().change_scene_to_file.call_deferred(MENU_SCENE)

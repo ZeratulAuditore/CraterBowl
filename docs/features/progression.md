@@ -21,6 +21,7 @@ Everything is stored in JSON files on each player's own machine, keyed by displa
 ### Stats (`src/sim/stats.gd`)
 - Lines are keyed `name|POSITION`, so switching positions splits your stats. Bots are recorded as `Bot` and excluded from leaderboards and XP.
 - Fields: passing att/comp/yds/TD/INT thrown, receptions/yds/TD, carries/rush yds/TD, tackles, sacks, INTs, PBUs, forced and recovered fumbles, points, block engagements, defensive TDs, best Chaosball TD value.
+- A sack is a QB tackled behind the LOS before he throws. A defensive TD is a touchdown scored by a carrier from the team on defense.
 - Yards are measured from the snap LOS. Return yards are not tracked (#8).
 
 ### Leaderboard (`src/sim/leaderboard.gd`)
@@ -31,6 +32,8 @@ Everything is stored in JSON files on each player's own machine, keyed by displa
 | RB | rush yds + rec yds + 20·(rush TD + rec TD) |
 | C / OL | 2·blocks + 5·games |
 | defense (LB/CB/S/DL) | 10·tkl + 25·sack + 40·INT + 10·PBU + 25·FF + 25·FR |
+
+- Ties rank the player with fewer games first. Linemen rank on block engagements so they get a real leaderboard.
 - Only the host (or the offline player) records the match. Online clients never update their own leaderboard file.
 
 ### Ranked (`src/sim/ranked.gd`)
@@ -84,6 +87,7 @@ User data dir `crater-bowl` (see [out-of-game.md](out-of-game.md)). Tests pass t
 
 ## Design decisions
 - **Pure rules, JSON stores.** Stats, scoring, Elo, XP and achievements are pure `src/sim` code with unit tests. Persistence is a plain file per concern.
+- **Local files over an online service.** A service needs accounts and anti-cheat; for a friend group the host is the league office.
 - **Host is the authority for the match result.** Clients trust the host's XP and achievement context. That's fine among friends but not tamper-proof, and names aren't authenticated (#28).
 - **No pay-to-win:** cosmetics are view-only and checked by a determinism test (identical worlds regardless of looks).
 - **Original achievement set** (12 milestones), not copied from any other game.
@@ -95,13 +99,6 @@ User data dir `crater-bowl` (see [out-of-game.md](out-of-game.md)). Tests pass t
 - `src/game/main.gd` (`_on_match_event` "final", `_record_leaderboard`, `_record_ranked`, `_match_awards`, `_match_contexts`, `_apply_award`).
 - `src/ui/main_menu.gd` (`_screen_locker`, `_screen_leaders`, profile chip), `src/ui/game_overview.gd`.
 - Tests: `tests/test_stats.gd`, `tests/test_leaderboard.gd`, `tests/test_ranked.gd`, `tests/test_cosmetics.gd`, `tests/test_achievements.gd`, `tests/test_potg.gd`, `tests/game_flow.gd` (final records files, HUD rank/rating/XP lines), `tests/net_client.gd` (look round-trips via host), `scripts/mm_test.sh` `MODE=competitive`.
-
-## History
-- 022 [Stats](../iterations/022-stats.md)
-- 023 [Leaderboards](../iterations/023-leaderboards.md)
-- 024 [Ranked](../iterations/024-ranked.md)
-- 025 [Cosmetics](../iterations/025-cosmetics.md)
-- 030 [Achievements](../iterations/030-achievements.md)
 
 ## Open issues
 - #8 C06 Spotting: forward progress, return yards, fumble variety
