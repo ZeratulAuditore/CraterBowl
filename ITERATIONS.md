@@ -283,3 +283,8 @@
 - The network flow still sends both requests and checks that the client keeps its host-assigned athlete and team.
 - Verified 312 unit tests and 21 network checks. Deliberately allowing the legacy requests or bypassing the occupied-slot guard caused the corresponding unit checks to fail.
 - Documented the match assignment policy and the three kicking actions in the protocol guide (#76). Pre-match role selection remains tracked in #18.
+
+## Fix: Validate match action types on the host (#77)
+- The host now drops `act` messages that aren't a Dictionary with a String `a` before they reach its action queue (`Protocol.is_action`). `apply_action` takes an untyped action and rejects junk instead of aborting the caller. `lob`/`spr`/`block` flags are type-checked rather than compared with `== true`.
+- Before the fix, one malformed action raised a script error in `_step_authoritative`. That aborted the host tick and dropped any valid action queued behind it in the same tick.
+- Verified with 4 new unit tests (`test_action_validation.gd`) and a rendered host test (`tests/visual/invalid_actions_test.gd`). Restoring the old `protocol.gd`/`net_session.gd` made both fail: the unit queue test because 16 entries were queued instead of 1, and the visual test because of a script error and a dropped play call. Design notes are in `docs/design/netcode.md` under Validation.

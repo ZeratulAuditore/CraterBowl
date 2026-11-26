@@ -128,10 +128,23 @@ static func sanitize_input(msg) -> Dictionary:
 	var seq = msg.get("seq", 0)
 	if not (seq is int) or seq < 0:
 		seq = 0
-	return {"dir": (dir as Vector2).limit_length(1.0), "sprint": msg.get("spr", false) == true, "seq": seq, "block": msg.get("block", false) == true}
+	return {"dir": (dir as Vector2).limit_length(1.0), "sprint": _flag(msg, "spr"), "seq": seq, "block": _flag(msg, "block")}
+
+## True only for a real bool `true`. `v == true` raises a script error when a peer sends a
+## String/int there, so wire flags are type-checked first.
+static func _flag(d: Dictionary, key: String) -> bool:
+	var v = d.get(key, false)
+	return v is bool and v
+
+## Shape gate for anything entering the host's action queue (#77): a Dictionary whose
+## "a" is a String. Field-level checks stay in sanitize_action; this only guarantees
+## the dispatcher can read act["a"] without a script error (comparing an int, Array...
+## to a String with == aborts the host tick in Godot 4).
+static func is_action(act) -> bool:
+	return act is Dictionary and (act.get("a") is String or act.get("a") is StringName)
 
 static func sanitize_action(act) -> Dictionary:
-	if not (act is Dictionary):
+	if not is_action(act):
 		return {}
 	match act.get("a", ""):
 		"snap", "tackle", "recall_call", "flip_play", "handoff", "timeout":
@@ -156,7 +169,7 @@ static func sanitize_action(act) -> Dictionary:
 			var t = act.get("t", Vector2.ZERO)
 			if not _finite_v(t):
 				return {}
-			return {"a": act["a"], "t": t, "p": clampf(float(p), 0.0, 1.0), "lob": act.get("lob", false) == true}
+			return {"a": act["a"], "t": t, "p": clampf(float(p), 0.0, 1.0), "lob": _flag(act, "lob")}
 		"emote":
 			var e = act.get("e", "")
 			return {"a": "emote", "e": e} if e is String and Emotes.has(e) else {}
@@ -187,7 +200,8 @@ static func sanitize_action(act) -> Dictionary:
 	return {}
 
 ## Authoritative: perform `action` on behalf of `athlete_id`. Returns success.
-static func apply_action(m, athlete_id: int, action: Dictionary) -> bool:
+## `action` is untyped on purpose: a non-Dictionary is rejected here instead of aborting the caller.
+static func apply_action(m, athlete_id: int, action) -> bool:
 	var act := sanitize_action(action)
 	if act.is_empty():
 		return false
