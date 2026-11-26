@@ -9,6 +9,7 @@ const SettingsStore := preload("res://src/ui/settings_store.gd")
 const UITheme := preload("res://src/ui/ui_theme.gd")
 const Controls := preload("res://src/ui/controls.gd")
 const Advertiser := preload("res://src/net/lobby_advertiser.gd")
+const HeadlessMeshGuard := preload("res://src/game/headless_mesh_guard.gd")
 const MENU_SCENE := "res://scenes/menu.tscn"
 const GAME_SCENE := "res://scenes/main.tscn"
 const LEGACY_DIRS := ["godot/app_userdata/Fourth & Long"]   # relative to OS.get_data_dir()
@@ -46,6 +47,8 @@ func _ready() -> void:
 	settings.apply(get_window())
 	_xlate = Controls.translation(settings.bindings)
 	get_tree().node_added.connect(_on_node_added)
+	if HeadlessMeshGuard.needed():   # dummy renderer only: silences mesh_storage.h:120 spam (#92)
+		add_child(HeadlessMeshGuard.new())
 
 static func version() -> String:
 	var v := FileAccess.get_file_as_string(VERSION_FILE).strip_edges()

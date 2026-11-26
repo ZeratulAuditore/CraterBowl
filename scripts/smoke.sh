@@ -10,10 +10,10 @@ FRAMES="${FRAMES:-300}"
 "$GODOT" --headless --path . --import >/dev/null 2>&1 || true
 timeout 60 "$GODOT" --headless --path . --quit-after "$FRAMES" > .smoke-output.log 2>&1
 cat .smoke-output.log
-# Known headless-only engine noise (Godot 4.3 dummy renderer has no mesh storage):
-# any MeshInstance3D logs this. Verified with a 1-mesh repro project in iter 001.
-ALLOW='Parameter "m" is null\.|mesh_storage\.h'
-if grep -E "SCRIPT ERROR|Parse Error|ERROR:|at: " .smoke-output.log | grep -vE "$ALLOW" | grep -q .; then
+# Dummy-renderer mesh spam (`Parameter "m" is null`, mesh_storage.h) used to be allowed
+# here; src/game/headless_mesh_guard.gd removes it (#92), so every run below fails on it.
+MESH_NULL='Parameter "m" is null'
+if grep -E "SCRIPT ERROR|Parse Error|ERROR:|at: " .smoke-output.log | grep -q .; then
   echo "SMOKE FAIL: errors during boot"; exit 1
 fi
 echo "SMOKE PASS ($FRAMES frames)"
@@ -21,15 +21,15 @@ echo "SMOKE PASS ($FRAMES frames)"
 timeout 150 "$GODOT" --headless --path . --fixed-fps 60 -s res://tests/game_flow.gd > .flow-output.log 2>&1
 flow=$?
 grep -E "FLOW|GAME FLOW" .flow-output.log
-if [ $flow -ne 0 ] || grep -E "SCRIPT ERROR|Parse Error" .flow-output.log | grep -q .; then
-  grep -E "SCRIPT ERROR|Parse Error|at: " .flow-output.log | head; echo "GAME FLOW FAIL"; exit 1
+if [ $flow -ne 0 ] || grep -E "SCRIPT ERROR|Parse Error|$MESH_NULL" .flow-output.log | grep -q .; then
+  grep -E "SCRIPT ERROR|Parse Error|$MESH_NULL|at: " .flow-output.log | head; echo "GAME FLOW FAIL"; exit 1
 fi
 # Out-of-game flow: real menu scene + Launch autoload + in-process matchmaker
 timeout 90 "$GODOT" --headless --path . --fixed-fps 60 -s res://tests/menu_flow.gd -- --settings-file=user://test_menu_settings.cfg > .menu-flow.log 2>&1
 menu=$?
 grep -E "MENU (OK|FAIL|FLOW)" .menu-flow.log | grep -vE "MENU OK" ; echo "menu checks ok: $(grep -c 'MENU OK' .menu-flow.log)"
-if [ $menu -ne 0 ] || grep -E "SCRIPT ERROR|Parse Error" .menu-flow.log | grep -q .; then
-  grep -E "SCRIPT ERROR|Parse Error|at: " .menu-flow.log | grep -v mesh_storage | head; echo "MENU FLOW FAIL"; exit 1
+if [ $menu -ne 0 ] || grep -E "SCRIPT ERROR|Parse Error|$MESH_NULL" .menu-flow.log | grep -q .; then
+  grep -E "SCRIPT ERROR|Parse Error|$MESH_NULL|at: " .menu-flow.log | head; echo "MENU FLOW FAIL"; exit 1
 fi
 # Two-process online test (host + client over localhost)
 ./scripts/net_test.sh || exit 1
