@@ -463,6 +463,9 @@ func _update_arc() -> void:
 		arc_dots[i].visible = true
 
 func _set_charging(on: bool) -> void:
+	if on and can_kick():
+		kick_ball()   # kicks fire on press; passes charge
+		return
 	if on and world.ball.is_held_by(controlled_id) and not charging:
 		charging = true
 		charge = 0.0
@@ -1251,9 +1254,6 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			do_action({"a": "toss", "c": "receive"} if series.state == Match.State.TOSS else {"a": "try", "n": 1})
 		KEY_2:
 			do_action({"a": "toss", "c": "kick"} if series.state == Match.State.TOSS else {"a": "try", "n": 2})
-		KEY_K:
-			var ki := (World.KICK_CALLS.find(world.kick_play) + 1) % World.KICK_CALLS.size()
-			do_action({"a": "kick_call", "k": World.KICK_CALLS[ki]})
 		# Live play: Q/E spin, F dive, C dash. Before the snap: Q play picker, F cycle route.
 		KEY_F:
 			if world.phase == World.Phase.LIVE:
@@ -1266,6 +1266,9 @@ func _unhandled_key_input(e: InputEvent) -> void:
 				do_action({"a": "spin", "s": -1})
 			elif world.phase == World.Phase.PRESNAP:
 				play_picker_open = not play_picker_open
+		KEY_K:
+			var ki := (World.KICK_CALLS.find(world.kick_play) + 1) % World.KICK_CALLS.size()
+			do_action({"a": "kick_call", "k": World.KICK_CALLS[ki]})
 		KEY_E:
 			do_action({"a": "spin", "s": 1})
 		KEY_G:

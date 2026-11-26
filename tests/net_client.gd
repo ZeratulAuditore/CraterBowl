@@ -123,9 +123,9 @@ func _physics_process(_dt: float) -> bool:
 	if bad_snap_sent_at > 0 and f == bad_snap_sent_at + 60:
 		team_swap_rejected = aid == aid_before_swap and main.world.get_athlete(aid).team == first_team
 		aid_before_pick = aid
-		main.do_action({"a": "pick", "slot": 0})  # host's QB/LB slot: must be rejected
+		main.do_action({"a": "pick", "slot": 0})
 	if bad_snap_sent_at > 0 and f == bad_snap_sent_at + 90:
-		pick_rejected = aid == aid_before_pick
+		pick_rejected = aid == aid_before_pick and main.world.get_athlete(aid).team == first_team
 		equipped_number = main.views[aid].number_text
 	if bad_snap_sent_at > 0 and f > bad_snap_sent_at + 90:
 		_test_remote_handoff()
@@ -145,9 +145,9 @@ func _physics_process(_dt: float) -> bool:
 		check(defense_recall_seen, "remote defender recalled the previous snap's call")
 		check(defense_call_seen, "defensive selection reached host and returned in a snapshot")
 		check(bad_snap_rejected, "defense snap rejected by server")
-		check(team_swap_rejected, "server rejected in-match team swap")
+		check(team_swap_rejected, "legacy team request preserves the host assignment")
 		check(equipped_number == "88", "my equipped #88 round-tripped through the host (%s)" % equipped_number)
-		check(pick_rejected, "picking the host's occupied slot rejected")
+		check(pick_rejected, "legacy slot request preserves the host assignment")
 		check(timeout_confirmed and got_timeout_event, "remote U decrements only its team's timeouts and broadcasts the event")
 		check(remote_handoff_confirmed, "client QB hands off through G and sees the host's RB possession")
 		check(remote_handoff_confirmed and main.controlled_id == aid, "online QB keeps the same athlete after the handoff")

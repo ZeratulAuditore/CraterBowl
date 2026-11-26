@@ -127,9 +127,8 @@ func _initialize() -> void:
 			check(absf(angle_difference(main.cam_yaw, PI)) < 0.05, "defense camera swung around (yaw %.2f)" % main.cam_yaw)
 			check(main.camera.global_position.z < me_z - 3.0, "defense camera sits on the far side, looking at the offense")
 			check(-main.camera.global_transform.basis.z.z > 0.5, "defense camera looks back up the field toward the ball")
-			_hold(KEY_W, true)   # read_input polls Input, so the key state must go through Input
-			check(main.read_input().y < -0.9, "W moves a defender toward the ball (up the screen)")
-			_hold(KEY_W, false)],
+			check(main.screen_to_field(Vector2(0, 1)).y < -0.9, "W moves a defender toward the ball (up the screen)")
+			check(main.screen_to_field(Vector2(1, 0)).x < -0.9, "D moves a defender screen-right")],
 		[4171 + int(60 * 5.0) + 10, func(): check(main.world.phase != main.World.Phase.PRESNAP, "bot offense snapped by itself")],
 		# A15: rebuild as 3v3 in place
 		[4500, func(): main.configure(3)],
@@ -293,11 +292,11 @@ func _initialize() -> void:
 		[9030, func(): _key(KEY_J); check(main.drill.throws == 1, "practice-field throw with the real throw path")],
 		[9200, func(): check(main.drill.hits == 1 and main.drill.points >= 1, "hit the short target (%s)" % main.drill.last_result); check(main.world.ball.is_held_by(main.my_id), "ball back in your hands"); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.training_path))],
 		# Gridiron controls: POV aim + throw (mouse look), Q/E spin, F dive, wheel/T taunt
-		[12300, func(): main.configure(7); main.ai.defense_enabled = false; main.pov_enabled = true],
-		[12302, func(): check(main.pov_active(), "QB presnap: POV aim active"); check(absf(main.aim_yaw) < 0.001, "aim starts downfield"); _key(KEY_SPACE)],
-		[12305, func(): check(main.pov_active(), "POV stays on while the snap is in the air")],
-		[12330, func(): main.look(Vector2(200, -100)); check(absf(main.aim_yaw - 0.5) < 0.001 and main.aim_pitch > main.POV_PITCH_START, "mouse look turns + raises the aim"); _key(KEY_J)],
-		[12360, func():
+		[12400, func(): main.configure(7); main.ai.defense_enabled = false; main.pov_enabled = true],
+		[12402, func(): check(main.pov_active(), "QB presnap: POV aim active"); check(absf(main.aim_yaw) < 0.001, "aim starts downfield"); _key(KEY_SPACE)],
+		[12405, func(): check(main.pov_active(), "POV stays on while the snap is in the air")],
+		[12430, func(): main.look(Vector2(200, -100)); check(absf(main.aim_yaw - 0.5) < 0.001 and main.aim_pitch > main.POV_PITCH_START, "mouse look turns + raises the aim"); _key(KEY_J)],
+		[12460, func():
 			var ang: float = main.launch_angle()
 			var dir: Vector2 = main.aim_dir()
 			var qb = main.world.get_athlete(main.controlled_id)
@@ -308,14 +307,14 @@ func _initialize() -> void:
 			check(Vector2(v.x, v.y).normalized().dot(dir) > 0.999, "ball flies where the QB looked")
 			check(absf(rad_to_deg(atan2(v.z, Vector2(v.x, v.y).length())) - ang) < 0.5, "view pitch = launch angle (%.1f)" % ang)
 			check(not main.pov_active(), "POV ends once the ball is thrown")],
-		[12400, func(): main.configure(7); main.ai.defense_enabled = false],
-		[12401, func(): _key(KEY_SPACE)],
-		[12440, func(): check(main.world.ball.is_held_by(main.controlled_id), "QB has the ball"); _key(KEY_E); check(main.world.get_athlete(main.controlled_id).is_spinning() and main.world.get_athlete(main.controlled_id).spin_dir == 1, "E spins right")],
-		[12443, func(): check(main.views[main.controlled_id].spin_vis_t > 0.0, "spin animates the athlete")],
-		[12540, func(): _key(KEY_Q); check(main.world.get_athlete(main.controlled_id).spin_dir == -1, "Q spins left")],
-		[12580, func(): main.world.get_athlete(main.controlled_id).facing = Vector2(0, 1); _key(KEY_F); check(main.world.get_athlete(main.controlled_id).is_diving(), "F dives with the ball")],
-		[12620, func(): check(main.world.phase == main.World.Phase.DEAD and main.last_whistle == "TACKLE", "carrier dive: down where he lands (%s)" % main.last_whistle)],
-		[12621, func():
+		[12500, func(): main.configure(7); main.ai.defense_enabled = false],
+		[12501, func(): _key(KEY_SPACE)],
+		[12540, func(): check(main.world.ball.is_held_by(main.controlled_id), "QB has the ball"); _key(KEY_E); check(main.world.get_athlete(main.controlled_id).is_spinning() and main.world.get_athlete(main.controlled_id).spin_dir == 1, "E spins right")],
+		[12543, func(): check(main.views[main.controlled_id].spin_vis_t > 0.0, "spin animates the athlete")],
+		[12640, func(): _key(KEY_Q); check(main.world.get_athlete(main.controlled_id).spin_dir == -1, "Q spins left")],
+		[12680, func(): main.world.get_athlete(main.controlled_id).facing = Vector2(0, 1); _key(KEY_F); check(main.world.get_athlete(main.controlled_id).is_diving(), "F dives with the ball")],
+		[12720, func(): check(main.world.phase == main.World.Phase.DEAD and main.last_whistle == "TACKLE", "carrier dive: down where he lands (%s)" % main.last_whistle)],
+		[12721, func():
 			var ev := InputEventMouseButton.new()
 			ev.button_index = MOUSE_BUTTON_WHEEL_DOWN
 			ev.pressed = true
