@@ -32,7 +32,7 @@ var dead_ball_spot := Vector2.ZERO
 var last_possession := 0
 var dead_ball_team := 0
 var play_time := 0.0
-var _impact_rng := RandomNumberGenerator.new()
+var _impact_state := 1837   # fumble-roll LCG state: deterministic, no engine RNG (src/sim lint rule)
 var play_name := "Verticals"
 var run_flipped := false
 var run_blocks := {}    # blocker id -> defender id (set at snap)
@@ -49,7 +49,7 @@ var streak := 0          # Chaosball: completed teammate passes this possession
 var hold_t := 0.0        # Chaosball: how long the current holder has had the ball
 
 func _init() -> void:
-	_impact_rng.seed = 1837
+	_impact_state = 1837
 
 ## role/pos are for the athlete's current side. Optional two-way setup:
 ## off/def roles + x via set_two_way().
@@ -666,7 +666,12 @@ func _is_strip(diver: Athlete, c: Athlete) -> bool:
 	var risk := fumble_risk(impact, c.stamina)
 	if rear_strip:
 		risk = maxf(risk, 0.97)
-	return _impact_rng.randf() < risk
+	return _impact_roll() < risk
+
+## Deterministic 0..1 roll (31-bit LCG).
+func _impact_roll() -> float:
+	_impact_state = (_impact_state * 1103515245 + 12345) & 0x7fffffff
+	return float(_impact_state) / 2147483648.0
 
 static func fumble_risk(impact: float, stamina: float) -> float:
 	var force := clampf(impact / (T.DIVE_SPEED + T.SPRINT_SPEED), 0.0, 1.0)

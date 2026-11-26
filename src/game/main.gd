@@ -408,6 +408,8 @@ func _update_aim() -> void:
 		var tf := Passing.time_to_height(v, from.z, T.CATCH_HEIGHT, world.gravity())
 		aim_point = Vector2(from.x + v.x * tf, from.y + v.y * tf)
 		return
+	if camera == null or not is_inside_tree() or DisplayServer.get_name() == "headless":
+		return
 	var forward := Vector2.DOWN.rotated(cam_yaw)
 	aim_point = player.athlete.position + forward * aim_distance
 
