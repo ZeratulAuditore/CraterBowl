@@ -1,6 +1,6 @@
 # Team logo prompt (#233)
 
-Run from a scratch directory outside the repo: `codex exec --skip-git-repo-check -s workspace-write "$(cat tools/brand/team_logos_prompt.md)"`, then process the raw PNGs with `tools/brand/team_logos.gd`. Prompt as used:
+Run from a scratch directory outside the repo: `codex exec --skip-git-repo-check -s workspace-write "$(cat tools/brand/team_logos_prompt.md)"`, then process the raw PNGs with `tools/brand/team_logos.gd`. Prompt as used (2026-11-26, codex-cli 0.172, built-in `image_generation`). Codex produced 13 drafts and kept the eight below. SELENE's first crescent-and-star read like a flag or religious symbol, so it was regenerated alone with the helios logo attached as a style reference and this concept: "a bold silver crescent moon with a sweeping orbit arc crossing in front of it and a few small round craters on the crescent. Do NOT include any star".
 
 ---
 
