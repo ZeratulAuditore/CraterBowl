@@ -21,7 +21,7 @@ const SIZES := [3, 5, 7]
 const TOP_H := 78
 const FOOT_H := 60
 const BUG_URL := "https://github.com/bpenwell/football-game/issues"
-const TABS := [["home", "Play"], ["online", "Online"], ["bots", "Vs bots"], ["practice", "Practice"],
+const TABS := [["home", "Play"], ["online", "Online"], ["bots", "Vs bots"], ["practice", "Training"],
 	["locker", "Locker room"], ["leaders", "Leaderboard"], ["replays", "Replays"]]
 ## Home-screen PLAY selector. Keys mirror Launch.start_game options.
 const MODES := [
@@ -38,6 +38,7 @@ const MODES := [
 
 var launch                    # the Launch autoload (or a stand-in in tests)
 var content: VBoxContainer
+var content_scroll: ScrollContainer
 var lobby
 var music
 var panel: PanelContainer
@@ -346,13 +347,14 @@ func _build_panel() -> void:
 	panel.add_theme_stylebox_override("panel", ps)
 	_place(panel, [0.46, 0, 1, 1], [0, TOP_H + 22, -32, -FOOT_H - 22])
 	add_child(panel)
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	panel.add_child(scroll)
+	content_scroll = ScrollContainer.new()
+	content_scroll.name = "PanelScroll"
+	content_scroll.follow_focus = true
+	panel.add_child(content_scroll)
 	content = VBoxContainer.new()
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.add_theme_constant_override("separation", 12)
-	scroll.add_child(content)
+	content_scroll.add_child(content)
 
 func _build_footer() -> void:
 	var bar := PanelContainer.new()
@@ -503,7 +505,10 @@ func show_screen(id: String) -> void:
 	lobby.set_panel_open(not home)
 	_refresh_profile()
 	if not home:
+		content.add_theme_constant_override("separation", 8 if id == "online" else 12)
 		call("_screen_" + id)
+		content_scroll.scroll_vertical = 0
+		content_scroll.scroll_horizontal = 0
 
 ## Last match: result, players of the game, team stats, your line (src/ui/game_overview.gd).
 func _screen_overview() -> void:
@@ -541,7 +546,6 @@ func _screen_welcome() -> void:
 
 func _screen_online() -> void:
 	content.add_child(UITheme.heading("Play online"))
-	_text("Playing as %s  ·  %s" % [settings().player_name, _rating_line()])
 	content.add_child(UITheme.heading("Matchmaking", 22, UITheme.CYAN))
 	_mode_picker()
 	_size_picker(false)
@@ -552,12 +556,16 @@ func _screen_online() -> void:
 	_button("Quick match", func(): _queue("casual"), q)
 	_button("Ranked", func(): _queue("competitive"), q)
 	content.add_child(UITheme.heading("Private match", 22, UITheme.CYAN))
+	var host_row := HBoxContainer.new()
+	host_row.add_theme_constant_override("separation", 10)
+	content.add_child(host_row)
 	var pub := CheckButton.new()
 	pub.text = "List publicly in the match browser"
+	pub.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pub.button_pressed = list_public
 	pub.toggled.connect(func(v): list_public = v)
-	content.add_child(pub)
-	_button("Host a match", func(): host_match())
+	host_row.add_child(pub)
+	_button("Host a match", func(): host_match(), host_row)
 	var j := HBoxContainer.new()
 	j.add_theme_constant_override("separation", 10)
 	content.add_child(j)
@@ -580,17 +588,25 @@ func _screen_bots() -> void:
 	_button("Kick off", func(): launch.start_game({"size": str(pick_size), "mode": pick_mode}))
 
 func _screen_practice() -> void:
-	content.add_child(UITheme.heading("Practice"))
-	var desc := {"passing": "You're the QB. Hit receivers running the playbook.",
-		"catching": "You're the WR against a live corner in man coverage.",
+	content.add_child(UITheme.heading("Training"))
+	var desc := {"hub": "Free-roam field with a portal to each station. It's also where you wait while queued online.",
+		"blocking": "You're the center. Keep the QB clean against up to 3 rushers.",
+		"field": "Throw at 1/2/3-point targets and run a timed 40-yard dash.",
+		"catching": "Jugs drill: a new route every rep, tighter coverage as you streak. Race to 15 catches.",
+		"passing": "You're the QB. Hit receivers running the playbook.",
 		"tackling": "You're the linebacker. Bring down a live runner.",
 		"scrimmage": "Full 7v7 with bots. No clock, no pressure."}
-	for k in Drills.KINDS:
+	var names := {"hub": "Training ground", "field": "Practice field"}
+	var order: Array = ["hub"] + Drills.STATIONS + ["passing", "tackling", "scrimmage"]
+	for i in order.size():
+		var k: String = order[i]
+		if i == 4:
+			content.add_child(UITheme.heading("Classic drills", 18, UITheme.CYAN))
 		var h := HBoxContainer.new()
 		h.add_theme_constant_override("separation", 16)
 		content.add_child(h)
-		var b := _button(k.capitalize(), func(): launch.start_game({"practice": k}), h)
-		b.custom_minimum_size = Vector2(170, 0)
+		var b := _button(names.get(k, k.capitalize()), func(): launch.start_game({"practice": k}), h)
+		b.custom_minimum_size = Vector2(190, 0)
 		_text(desc.get(k, ""), h).size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 func _screen_locker() -> void:
@@ -689,7 +705,19 @@ func _screen_settings() -> void:
 	ne.text_submitted.connect(func(t): _set_name(t))
 	ne.focus_exited.connect(func(): _set_name(ne.text))
 	content.add_child(UITheme.heading("Video", 22, UITheme.CYAN))
-	_check("Fullscreen", s.fullscreen, func(v): s.fullscreen = v; launch.save_settings())
+	var display_row := HBoxContainer.new()
+	content.add_child(display_row)
+	_text("Display mode", display_row).custom_minimum_size.x = 200
+	var mode := OptionButton.new()
+	mode.name = "DisplayMode"
+	var modes := Settings.DISPLAY_MODES.keys()
+	for id in modes:
+		mode.add_item(Settings.DISPLAY_MODES[id]["label"])
+	mode.select(modes.find(s.display_mode))
+	mode.item_selected.connect(func(i):
+		s.display_mode = modes[i]
+		launch.save_settings())
+	display_row.add_child(mode)
 	_check("V-Sync", s.vsync, func(v): s.vsync = v; launch.save_settings())
 	_slider("3D resolution", s.render_scale, 0.5, 1.0, 0.05, func(v): s.render_scale = v; launch.save_settings())
 	var fh := HBoxContainer.new()
@@ -805,14 +833,17 @@ func _party_row() -> void:
 		party_code = new_party_code()
 		code.text = party_code, h)
 	gen.disabled = party_size < 2
+	var hint := _text("Everyone in the party picks the same size + code, then queues.")
+	hint.add_theme_color_override("font_color", Color(UITheme.REGOLITH, 0.9))
+	hint.visible = party_size >= 2
 	size_ob.item_selected.connect(func(i):
 		party_size = i + 1
 		code.editable = party_size >= 2
 		gen.disabled = party_size < 2
+		hint.visible = party_size >= 2
 		if party_size >= 2 and party_code == "":
 			party_code = new_party_code()
 			code.text = party_code)
-	_text("Everyone in the party picks the same size + code, then queues.", content).add_theme_color_override("font_color", Color(UITheme.REGOLITH, 0.9))
 
 func host_match() -> void:
 	_with_port(host_port, func(ip):

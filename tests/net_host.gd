@@ -3,22 +3,22 @@ extends SceneTree
 ## so the client can exercise a handoff as the quarterback.
 
 var main
-var joined_host_team := false
+var saw_live := false
+var presnap_time := 0.0
 var prepared_handoff := false
 
 func _initialize() -> void:
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 
-func _physics_process(_dt: float) -> bool:
+func _physics_process(dt: float) -> bool:
 	if prepared_handoff or not main.is_server() or main.in_lobby():
 		return false
-	for slot in main.roster.slots:
-		if slot.owner <= main.LOCAL_PLAYER:
-			continue
-		if slot.team == 0:
-			joined_host_team = true
-		elif joined_host_team and slot.off_role == main.Athlete.Role.QB:
+	if main.world.phase == main.World.Phase.LIVE:
+		saw_live = true
+	if saw_live and main.world.phase == main.World.Phase.PRESNAP:
+		presnap_time += dt
+		if presnap_time >= 2.0:
 			main.series.start(1)
 			main.ai.defense_enabled = false
 			prepared_handoff = true

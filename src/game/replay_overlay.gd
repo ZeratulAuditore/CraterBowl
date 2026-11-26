@@ -9,6 +9,8 @@ const NAVY := Color(0.055, 0.078, 0.14, 0.9)
 const ACCENT := Color(0.36, 0.88, 1.0)
 const REC := Color(1.0, 0.26, 0.22)
 const GOLD := Color(1.0, 0.86, 0.3)
+## Live-only match-overlay widgets hidden during a replay (missing names are skipped).
+const LIVE_WIDGETS := ["card", "picker", "coaching_text", "me_panel", "hints", "throw_panel", "mode_l"]
 
 var main
 var root: Control
@@ -122,12 +124,15 @@ func _process(delta: float) -> void:
 		main.hud.visible = false
 	if main.pres and main.pres.overlay:
 		var o = main.pres.overlay
-		for n in [o.card, o.me_panel, o.hints, o.throw_panel, o.mode_l]:
-			if n and n.visible:
+		# Looked up by name: the match overlay is owned (and reworked) by other sessions.
+		for wname in LIVE_WIDGETS:
+			var n = o.get(wname)
+			if n is CanvasItem and n.visible:
 				n.visible = false
 				_hidden.append(n)
-		if o.status_l:
-			o.status_l.text = ""
+		var st = o.get("status_l")
+		if st is Label:
+			st.text = ""
 	var r = main.replay
 	var p: int = r.current_play()
 	var play: Dictionary = r.plays[p] if p < r.plays.size() else {}
