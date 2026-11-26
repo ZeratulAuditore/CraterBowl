@@ -36,6 +36,10 @@ see when hosting, joining, queueing) lives in `docs/features/` (online play). La
   keyed by the player's seat token, display name only as a fallback; else `auto_assign`; #59).
 - `_on_peer_disconnected`: removes from lobby, frees the athlete (`release_fn`), drops its input. The
   slot goes back to a bot. There is no rejoin (#17).
+- Client side, `join()` hooks `SceneMultiplayer.server_disconnected`. If the client wasn't refused (a refused
+  client hangs up on purpose), `NetSession` emits `host_lost`, and `main.gd:_on_host_lost` calls
+  `Launch.go_to_menu("Host disconnected")`. It keeps the match overview if the post-game had already started (#56).
+  A crash is noticed only at ENet's peer timeout (#86). `connection_failed` is still unhandled (#85).
 
 ## Messages — game session (`net_session.gd:_on_packet`)
 

@@ -10,6 +10,7 @@ signal peer_left(peer_id: int, athlete_id: int)
 signal lobby_received(state: Dictionary)
 signal lobby_changed()
 signal refused(reason: String)
+signal host_lost()             # client: the host went away (quit, crashed, timed out) mid-session
 
 const P := preload("res://src/net/protocol.gd")
 const DEFAULT_PORT := 24565
@@ -62,8 +63,17 @@ func join(address: String, port: int) -> Error:
 	if err != OK:
 		return err
 	api.multiplayer_peer = peer
+	if not api.server_disconnected.is_connected(_on_server_disconnected):
+		api.server_disconnected.connect(_on_server_disconnected)
 	mode = Mode.CLIENT
 	return OK
+
+## Client: the connection to the host dropped. A refused client hung up on purpose
+## (and already shows why), so only an unexpected loss counts.
+func _on_server_disconnected() -> void:
+	if mode == Mode.CLIENT and refused_reason == "":
+		print("NET host lost")
+		host_lost.emit()
 
 func human_athletes() -> Array:
 	return peer_athlete.values()
