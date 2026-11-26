@@ -21,7 +21,7 @@ fail=0
 rb=$(timeout 60 "$GODOT" --headless --path . -s res://tests/render_budget.gd "${ARGS[@]}" 2>&1)
 echo "$rb" | grep -E "^BUDGET|RENDER BUDGET|SCRIPT ERROR"
 echo "$rb" | grep -q "RENDER BUDGET PASS" || fail=1
-b=$(timeout 120 "$GODOT" --headless --fixed-fps 60 --path . -s res://tools/bench.gd "${ARGS[@]}" --minutes=2 --frames=1200 2>&1)
+b=$(timeout 120 "$GODOT" --headless --fixed-fps 60 --path . -s res://tools/bench.gd "${ARGS[@]}" --minutes=2 --frames=2400 2>&1)
 echo "$b" | grep -E "^BENCH .*(p50|p99)" | sed 's/^/  /'
 val() { echo "$b" | grep -E "^BENCH $1=" | head -1 | cut -d= -f2 | cut -d. -f1; }
 check() {  # name measured budget
@@ -32,7 +32,11 @@ check() {  # name measured budget
 check sim_tick_p50 "$(val sim_tick_p50_us)" "$SIM_TICK_P50_US"
 check scene_frame_p50 "$(val scene_frame_p50_us)" "$SCENE_FRAME_P50_US"
 growth=$(echo "$b" | grep -E "^BENCH scene_object_growth=" | cut -d= -f2)
-# Leak = growth in BOTH of two consecutive 400-frame windows (first-use allocations hit only one).
-if [ "${growth:-0}" -gt 50 ]; then echo "PERF FAIL: objects grew by >= $growth in each of two 400-frame windows (per-frame allocation?)"; fail=1; else echo "PERF OK   object growth = ${growth:-?} (min of two 400-frame windows)"; fi
+# Leak = growth in BOTH of two consecutive 600-frame windows after a 1200-frame warm-up (bench pins
+# the coin toss, so the scenario and its first-use allocations are the same every run: #169).
+if [ "${growth:-0}" -gt 50 ]; then
+  echo "PERF FAIL: objects grew by >= $growth in each of two 600-frame windows (per-frame allocation?)"; fail=1
+  echo "$b" | grep -E "^BENCH (scene_object_windows|leak_window)" | sed 's/^/  /'
+else echo "PERF OK   object growth = ${growth:-?} (min of two 600-frame windows)"; fi
 [ $fail -eq 0 ] && echo "PERF PASS" || echo "PERF FAIL"
 exit $fail

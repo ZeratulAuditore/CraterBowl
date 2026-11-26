@@ -8,7 +8,7 @@ Every classic match opens with a coin toss. Kickoffs are live plays with coverag
 ## How it plays
 | Situation | What happens |
 |---|---|
-| Coin toss | Deterministic from a seed (`--toss=N`). The winner has 5 s to press **1** (receive) or **2** (kick). Bots, or no answer, choose receive. The other team receives the second half. |
+| Coin toss | Deterministic from a seed (`--toss=N`). The winner has 5 s to press **1** (receive) or **2** (kick). Bots, or no answer, choose receive. The HUD pill says only `YOU WON THE TOSS` (no key hints, #131); the keys are in the controls list until the toss cutscene (#129). The other team receives the second half. |
 | Kickoff | From your own 35 (`KICKOFF_SPOT_FRACTION`), or the 20 after a safety. The kicker is on the tee, coverage spreads out, and the receivers form a front row plus two deep returners (`KICKOFF_RETURNER_DEPTH`, their own 10). **Space** or the play clock gives a default kick (`KICKOFF_DEFAULT_POWER` 0.85). **J**/LMB fires an aimed kick on press. The arc previews the kick before you fire. |
 | Kickoff results | Return, touchback → own 25 (`KICKOFF_FRACTION`), out of bounds → own 40 (`KICKOFF_OOB_FRACTION`), or a rolled/downed spot. An unfielded ball that stops for `KICK_REST_TIME` is downed. |
 | Onside | Recovery past `ONSIDE_MIN_TRAVEL` (10 yd) exists as the `world.onside` mutator, **off by default**. Turning it on belongs to #42. |
@@ -39,16 +39,18 @@ Kick flight is a ballistic solve: `world.kick_velocity(kind, from, target, power
 - `src/sim/ai.gd`: `_kick_protect`, `_bot_kick`, `_kick_coverage`, the 4th-down rule, `wants_fair_catch`
 - `src/net/protocol.gd`: the `snap` action signals a fair catch for a returner; snapshot `fc`
 - `src/game/player.gd` (raised arm + `FAIR CATCH` label), `src/game/overlay.gd` (`fair_catch_prompt`)
+- `src/sim/stats.gd`: kicking stats (#67): FG made/att/long, XP, punts and gross yards, kick and punt return yards. Rules and display: `progression.md` "Stats"
 - `src/game/main.gd`: K / 1 / 2 handling, instant kick input in `_set_charging()`, distance-based `kick_power()` and arc preview
 - Tests:
   - `tests/test_kicking.gd`: about 30 tests, including a full bot match with kicks
+  - `tests/test_kicking_stats.gd`: kicking stats from real kicks, and a bot match whose FG/XP stats must match the scoreboard; `tests/visual/kicking_stats_test.gd` captures them in the game overview
   - `tests/test_fair_catch.gd`: signal window, spots (punt, kickoff inside/past the 25, end zone), muffs, teammate catch, signaler protection, blocked kick, bot rule, snapshot
   - `tests/game_flow.gd`: toss, aimed kickoff + arc + return, K punt, K K field goal, fair catch on the real Space key
   - `tests/visual/fair_catch_test.gd`: captures `fair-catch-prompt`, `fair-catch-signal`, `fair-catch-whistle`
   - The scoring, clock and match-size tests expect live kickoffs
 
 ## Open issues
-- #67 D06 Kicking stats: FG made/att + long, punt avg, kick/punt return yards
+- #172 Kick and punt return touchdowns are credited as defensive TDs
 - #68 D07 Kick meter art: stepped power meter beside the kicker + ball on a tee
 - #69 D08 Fair catch + bot 2-pt decisions: #189 fair catch (this doc), #190 bot 2-pt try decision
 - #42 C27 Backyard rules / trick plays (onside kick mutator)

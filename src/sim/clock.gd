@@ -19,6 +19,7 @@ var quarter := 1
 var quarter_length := QUARTER_LENGTH:
 	set(v): quarter_length = v if v > 0.0 else QUARTER_LENGTH
 var remaining := QUARTER_LENGTH
+var play_clock_length := PLAY_CLOCK
 var play_clock := PLAY_CLOCK
 var final := false
 var running_between_plays := false
@@ -40,7 +41,7 @@ func _reset_half() -> void:
 
 func _reset_period() -> void:
 	remaining = quarter_length
-	play_clock = PLAY_CLOCK
+	new_play()
 	running_between_plays = false
 
 func advance_midhalf_quarter() -> bool:
@@ -96,7 +97,7 @@ func spend_timeout(team: int) -> bool:
 	return true
 
 func new_play() -> void:
-	play_clock = PLAY_CLOCK
+	play_clock = play_clock_length
 
 func start_next_half() -> void:
 	quarter = 3

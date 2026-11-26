@@ -203,6 +203,8 @@ func _build_scorebug() -> void:
 	field_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	field_strip.draw.connect(_draw_field_strip)
 	details.add_child(field_strip)
+	# Hold the row's height when all three hide (the coin toss, #131) so the bug doesn't jump.
+	details.custom_minimum_size.y = maxf(spot_l.get_combined_minimum_size().y, field_strip.custom_minimum_size.y)
 	# Status pill: a small backed tab on the scorebug's top-left edge, off the player.
 	status_pill = PanelContainer.new()
 	status_pill.name = "StatusPill"
@@ -494,8 +496,9 @@ func refresh(main, delta: float) -> void:
 	play_clock_l.text = "PLAY :%02d" % pc if clock_up else ""
 	play_clock_l.visible = clock_up
 	play_clock_div.visible = clock_up
-	play_clock_l.label_settings.font_color = ALERT if pc <= 5 else ACCENT
-	mode_l.text = _mode_text(main)
+	play_clock_l.label_settings.font_color = ALERT if pc <= 5 and _my_snap(main) else ACCENT
+	mode_l.text = _hud_title(main)
+	mode_l.visible = mode_l.text != ""
 	_refresh_field_position(main, final)
 	status_l.text = _status_text(main)
 	status_pill.visible = status_l.text != ""
@@ -504,9 +507,11 @@ func refresh(main, delta: float) -> void:
 	bug.visible = true
 	_layout_stack()
 	if scoreboard.visible:
-		scoreboard_label.text = "%s     %d – %d     %s\n%s     ·     %s\n%s possession" % [
+		# #131: mode/size lives here, on the hold-to-view board, not on the live HUD.
+		scoreboard_label.text = "%s\n%s     %d – %d     %s\n%s     ·     %s\n%s possession" % [
+			_mode_text(main) if main.drill == null else _hud_title(main),
 			TEAM_NAMES[0], s.score[0], s.score[1], TEAM_NAMES[1], clock_l.text,
-			_down_text(main), TEAM_NAMES[w.possession_team()]]
+			_down_text(main, true), TEAM_NAMES[w.possession_team()]]
 	# First down detection (same offense, down reset, chains moved).
 	var key := [w.offense_team, s.downs.down, snappedf(s.downs.first_down_y, 0.1)]
 	if not _prev.is_empty() and _prev["k"][0] == key[0] and key[1] == 1 and _prev["k"][1] > 1 and int(s.state) == 0:
@@ -530,16 +535,18 @@ func _animate_banner(delta: float) -> void:
 		banner.visible = false
 		banner_sub.visible = false
 
-func _down_text(main) -> String:
+## `board` = the Tab scoreboard. The live scorebug drops the KICKOFF / COIN TOSS phase
+## words (#131): the cell is down & distance only, and kickoffs/tosses have none.
+func _down_text(main, board := false) -> String:
 	var s = main.series
 	if main.drill != null:
 		return main.drill.label()
 	if int(s.state) == 1:
 		return "TRY FOR %d" % s.try_points
 	if int(s.state) == 2:
-		return "KICKOFF"
+		return "KICKOFF" if board else ""
 	if int(s.state) == 3:
-		return "COIN TOSS"
+		return "COIN TOSS" if board else ""
 	if main.world.is_chaos():
 		return "STREAK %d  ·  TD %d" % [main.world.streak, main.world.streak_points()]
 	var lab: String = s.downs.label()
@@ -576,16 +583,29 @@ func _draw_field_strip() -> void:
 	field_strip.draw_line(Vector2(start, mid - 7), Vector2(start, mid + 7), ACCENT, 2)
 	field_strip.draw_line(Vector2(gain, mid - 7), Vector2(gain, mid + 7), Color(1.0, 0.86, 0.35), 2)
 
+## Match mode and size ("7v7 CLASSIC  ·  RANKED"): the Tab scoreboard's header line (#131).
 func _mode_text(main) -> String:
 	var m := "CHAOSBALL" if main.match_mode == "chaosball" else "CLASSIC"
 	var t := "%dv%d %s" % [main.match_size, main.match_size, m]
 	if main.ranked_match:
 		t += "  ·  RANKED"
+	return t
+
+## The live HUD's title line (#131): training/practice titles and the queue search only.
+## A match shows none; its mode/size is on the Tab scoreboard (_mode_text).
+func _hud_title(main) -> String:
+	var t := ""
 	if main.drill != null:
 		t = main.drill.title() if _training(main) else "PRACTICE"
 	if main.searching():
-		t = main.queue_text() + "  ·  " + t
+		t = main.queue_text() + ("  ·  " + t if t != "" else "")
 	return t
+
+## #168: the play clock turns ALERT red only when the snap is yours to make (your team has
+## the ball). Against bots it counts their 5 s huddle, so it would be red the whole presnap.
+func _my_snap(main) -> bool:
+	var me = main.world.get_athlete(main.my_id)
+	return me != null and main.world.offense_team == me.team
 
 func _training(main) -> bool:
 	return main.drill != null and main.Drills.is_training(main.drill.kind)
@@ -606,11 +626,14 @@ func _status_text(main) -> String:
 		0:
 			var mine: bool = w.offense_team == w.get_athlete(main.my_id).team
 			if int(s.state) == 3:
+				# #131: no key hints on the toss (1 receive / 2 kick live in the controls list;
+				# no answer = receive). The coin-toss cutscene (#129) will own this moment.
 				var won: bool = s.toss_winner == w.get_athlete(main.my_id).team
-				return ("YOU WON THE TOSS  ·  PRESS 1 TO RECEIVE OR 2 TO KICK" if won else "%s IS CHOOSING" % TEAM_NAMES[clampi(s.toss_winner, 0, 1)])
-			# The scorebug already says KICKOFF; the pill only says what to do.
+				return "YOU WON THE TOSS" if won else "%s IS CHOOSING" % TEAM_NAMES[clampi(s.toss_winner, 0, 1)]
+			# #131: the kicker keeps the J / click hint (the only place a new player learns to
+			# kick) until the kick meter (#68) carries it; the return team gets no narration.
 			if w.kick_play == "kickoff":
-				return "PRESS J OR CLICK TO KICK" if mine else "GET READY TO RETURN"
+				return "PRESS J OR CLICK TO KICK" if mine else ""
 			if w.kick_play != "" and mine:
 				return ("PUNT" if w.kick_play == "punt" else "FIELD GOAL") + "  ·  PRESS K TO CHANGE"
 			return ""

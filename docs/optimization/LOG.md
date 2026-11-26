@@ -21,6 +21,30 @@ built, and relabel/hide them per side. Same machine, CPU, 8 runs each: before, 4
 after, 8/8 PASS (growth 0 or 21, under the 50 threshold). What didn't work: growing the pool lazily
 to its max size on first refresh, because the first refresh can still land in window 2.
 
+## 2026-11-26 — perf-04: pin the bench coin toss so the object-growth gate is deterministic (#169)
+
+Follow-up to perf-03 (#185): pooling the picker removes one of the two one-time builds, but the bench still played a
+different game per run. The measurements below were taken before #185 merged.
+
+`perf.sh` failed about half the time on origin/main @ c50b2ba (`objects grew by >= 52`). Not a leak.
+`tools/bench.gd` plays the real main scene, and its opening coin toss was unseeded `randi() % 2`.
+Per-frame object deltas and node-class diffs showed two outcomes:
+
+| Toss | First-use allocations (frame) | Windows 430–830 / 830–1230 | Result |
+|---|---|---|---|
+| 0 | replay hint bar +107 (687); play picker 10 Buttons +58 (1296) | 107 / 0 | growth 0, PASS |
+| 1 | replay hint bar +107 (483); play picker 10 Buttons +52 (1098) | 107 / 52 | growth 52, FAIL |
+
+Two one-time UI builds landed in separate windows, so "growth in both windows" fired. Both builds are
+kept and reused: 8000-frame runs plateau at 2965 objects for either toss. The #169 bisect blaming #155
+was luck: ac1c6f1 gives the same 0/52 split with `--toss=0/1`.
+
+Fix: the bench pins the toss (`--toss`, default 1) and measures leaks in two 600-frame windows after
+a 1200-frame warm-up (`--frames=2400`, about 3 s more). Threshold unchanged at 50. Now growth = 5
+on every run (a particle burst alive at the last checkpoint). Planted leaks still fail: `Resource.new()`
+per frame reads 605, 30 Labels per snap reads 69. On failure, perf.sh prints both windows and
+which node classes grew.
+
 ## 2026-11-25 — perf-02: shadow-caster budget broke on main (125/110)
 
 Reported by the loop session on origin/main 8663257. Cause: the sideline chain crew
