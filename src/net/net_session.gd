@@ -180,8 +180,8 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 				if not inp.is_empty() and inp["seq"] >= inputs.get(aid, {}).get("seq", -1):
 					inputs[aid] = inp
 		"act":
-			if mode == Mode.SERVER and peer_athlete.has(from):
-				actions.append([from, peer_athlete[from], msg.get("act", {})])
+			if mode == Mode.SERVER and peer_athlete.has(from) and P.is_action(msg.get("act")):
+				actions.append([from, peer_athlete[from], msg["act"]])
 		"lact":
 			if mode == Mode.SERVER and lobby != null and lobby.players.has(from) and msg.get("act") is Dictionary:
 				lobby_actions.append([from, msg["act"]])

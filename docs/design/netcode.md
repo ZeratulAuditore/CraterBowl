@@ -40,7 +40,7 @@ see when hosting, joining, queueing) lives in `docs/features/` (online play). La
 | `k` | Direction | Delivery | Payload | Receiver checks |
 |---|---|---|---|---|
 | `in` | C→S | unreliable-ordered, ch 1, every tick | `dir`, `spr`, `seq`, `block` | sender has an athlete; `P.sanitize_input`; `seq` must not go backwards |
-| `act` | C→S | reliable, ch 0 | `act` (action dict) | sender has an athlete; queued as `[peer, aid, act]`, validated when applied |
+| `act` | C→S | reliable, ch 0 | `act` (action dict) | sender has an athlete; `P.is_action(act)` (Dictionary with a String `a`, else dropped); queued as `[peer, aid, act]`, fields validated when applied |
 | `lact` | C→S | reliable, ch 0 | `act` = `{"a":"ready"}` / `{"a":"name","n":…}` | sender is in `lobby.players`; `act` is a Dictionary |
 | `refused` | S→C | reliable, ch 0 | `why` (reason text) | from peer 1; cut to 120 chars. Client stores `refused_reason`, emits `refused`, closes its peer and ignores later packets |
 | `welcome` | S→C | reliable, ch 0 | `aid`, `size`, `mode` | from peer 1; `size` ∈ {3,5,7} else 7; `mode` chaosball else classic |
@@ -55,7 +55,17 @@ The host re-broadcasts every world event from `main.gd:_on_world_event`, plus ma
 ## Validation
 
 - `protocol.gd:sanitize_input`: non-finite `dir` → zero, length clamped to 1; `seq` must be a
-  non-negative int (else 0); `spr`/`block` must be exactly `true`.
+  non-negative int (else 0); `spr`/`block` must be exactly `true` (`_flag` type-checks first).
+- `protocol.gd:is_action` is the **queue shape gate** (#77): only a Dictionary whose `a` is a String
+  enters `NetSession.actions`. Anything else is dropped on receipt. Why it exists: in Godot 4, `==`
+  between a String and an int/Array/Vector2/bool raises a script error, and passing a non-Dictionary
+  to a typed parameter aborts the caller. Either one inside `main.gd:_step_authoritative` killed the
+  host's whole tick, so every valid action queued behind the junk that tick was lost.
+  `sanitize_action` re-checks the shape and `apply_action` takes an untyped `action`, so the
+  dispatcher returns `false` rather than erroring even if a caller skips the gate. Wire booleans
+  (`lob`, `spr`, `block`) go through `_flag` and never use `== true` on a peer value.
+  Tests: `tests/test_action_validation.gd` (unit) and `tests/visual/invalid_actions_test.gd`
+  (real host scene: junk plus a same-tick play call, then a valid snap).
 - `protocol.gd:sanitize_action` is the **action whitelist**: `snap`, `tackle`, `recall_call`,
   `flip_play`, `handoff`, `timeout` (no args); `dash`/`spin` (finite `dir`, clamped); `throw` (finite
   target `t`, finite power `p` clamped 0–1, `lob` bool); `try` (`n` ∈ {1,2}); `play` (name in
