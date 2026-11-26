@@ -3,7 +3,8 @@ extends SceneTree
 ## against a host started with: -- --host --port=N --playclock=4
 ## --host-loss (#56): join, print "NET HOSTLOSS ARMED" once in the match, then expect the
 ## host to be killed (net_test.sh does it) and assert we land on the menu with
-## "Host disconnected".
+## "Host disconnected". #86: within NetSession.DROP_AFTER (+ slack) of the host's last
+## snapshot, after the "Connection to host lost…" banner (ENet alone took 5.8-9.7 s).
 
 var main
 var f := 0
@@ -46,6 +47,11 @@ var handoff_to := -1
 var remote_handoff_confirmed := false
 var host_loss := false      # #56 mode
 var armed_at := -1
+var last_host_ms := -1      # #86: wall clock of the last snapshot from the host
+var stall_banner_seen := false
+var lost_after := -1.0      # s from the last snapshot to host_lost
+const NetSession := preload("res://src/net/net_session.gd")
+const HOST_LOSS_SLACK := 0.75   # s over DROP_AFTER: frame granularity + the kill landing mid-gap
 
 func check(cond: bool, msg: String) -> void:
 	print(("  NET OK   " if cond else "  NET FAIL ") + msg)
@@ -202,6 +208,11 @@ func _host_loss_step() -> bool:
 	if f == 2:
 		main.net.welcomed.connect(_on_welcome)
 		main.net.snapshot_received.connect(_on_snap)
+		main.net.snapshot_received.connect(func(_s): last_host_ms = Time.get_ticks_msec())
+		main.net.host_stalled.connect(func():
+			var b = main.get_node_or_null("LinkBanner")
+			stall_banner_seen = b != null and b.visible, CONNECT_DEFERRED)
+		main.net.host_lost.connect(func(): lost_after = (Time.get_ticks_msec() - last_host_ms) / 1000.0)
 	if armed_at < 0 and aid >= 0 and snaps > 5:
 		armed_at = f
 		print("NET HOSTLOSS ARMED")
@@ -211,10 +222,15 @@ func _host_loss_step() -> bool:
 	var scene = current_scene
 	var on_menu: bool = scene != null and scene.scene_file_path == "res://scenes/menu.tscn" and scene.get("status_label") != null
 	if on_menu or f == 3000:
+		var silent := (Time.get_ticks_msec() - last_host_ms) / 1000.0
+		print("NET HOSTLOSS detected %.2fs after the host's last snapshot (menu up after %.2fs)" % [lost_after, silent])
 		check(armed_at > 0, "in the match (athlete %d, %d snapshots) before the host died" % [aid, snaps])
 		check(on_menu, "client left the frozen match for the menu after losing the host (%.1fs after arming)" % ((f - armed_at) / 60.0))
 		var status: String = scene.status_label.text if on_menu else ""
 		check(status == "Host disconnected", "menu status says why: '%s'" % status)
+		var bound: float = NetSession.DROP_AFTER + HOST_LOSS_SLACK
+		check(lost_after > 0.0 and lost_after <= bound, "host loss detected within %.2fs of the last snapshot (%.2fs)" % [bound, lost_after])
+		check(stall_banner_seen, "'Connection to host lost…' showed before the drop")
 		print("NET HOSTLOSS " + ("PASS" if ok else "FAIL"))
 		quit(0 if ok else 1)
 	return false

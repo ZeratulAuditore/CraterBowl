@@ -302,7 +302,7 @@ func _name_label(t: String, sz: int, alpha: float) -> Label:
 	var l := Label.new()
 	l.text = t
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.add_theme_font_override("font", italic_font(700))
+	l.add_theme_font_override("font", C.display_font(true))
 	l.add_theme_font_size_override("font_size", sz)
 	l.add_theme_color_override("font_color", Color(C.CREAM, alpha))
 	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
@@ -341,9 +341,9 @@ func _invite_button() -> Control:
 	v.add_child(l)
 	return v
 
-## Oswald slanted a little: the sporty italic used for names and the PLAY button.
+## The UI font slanted a little: the sporty italic used for names and headers.
 static func italic_font(weight: int) -> Font:
 	var f = C.font(weight)
 	if f is FontVariation:
-		f.variation_transform = Transform2D(Vector2(1, 0), Vector2(-0.18, 1), Vector2.ZERO)
+		f.variation_transform = C.SLANT
 	return f

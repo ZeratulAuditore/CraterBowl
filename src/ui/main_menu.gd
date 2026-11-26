@@ -291,7 +291,7 @@ func _build_play_cluster() -> void:
 	play_button.name = "PlayButton"
 	play_button.text = "PLAY"
 	play_button.custom_minimum_size = Vector2(0, 96)
-	play_button.add_theme_font_override("font", Lobby.italic_font(700))
+	play_button.add_theme_font_override("font", UITheme.display_font(true, 0.8))
 	play_button.add_theme_font_size_override("font_size", 58)
 	for st in ["normal", "hover", "pressed", "focus"]:
 		var c: Color = {"normal": UITheme.CYAN, "hover": UITheme.CYAN.lightened(0.25), "pressed": UITheme.CYAN.darkened(0.2), "focus": Color(0, 0, 0, 0)}[st]
@@ -759,6 +759,8 @@ func _screen_settings() -> void:
 	content.add_child(UITheme.heading("Music credits", 22, UITheme.CYAN))
 	for t in Music.load_playlist():
 		_text(str(t.get("credit", "%s - %s" % [t.get("artist", ""), t.get("title", "")]))).add_theme_font_size_override("font_size", 14)
+	content.add_child(UITheme.heading("Font credits", 22, UITheme.CYAN))
+	_text("Graduate, Teko and Barlow Semi Condensed, from Google Fonts. SIL Open Font License 1.1.").add_theme_font_size_override("font_size", 14)
 
 func _unhandled_key_input(e: InputEvent) -> void:
 	if not (e is InputEventKey and e.pressed):
@@ -917,7 +919,7 @@ func _text(t: String, parent: Node = null) -> Label:
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	if parent == null:
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	l.add_theme_font_override("font", UITheme.font(400))
+	l.add_theme_font_override("font", UITheme.body_font())
 	l.add_theme_font_size_override("font_size", 18)
 	(parent if parent else content).add_child(l)
 	return l
