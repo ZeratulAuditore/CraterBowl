@@ -32,11 +32,15 @@ for every test process is throwaway. Tests can't touch the player's saves or set
 (or another session) changing settings mid-run can't fail the guard. Running `smoke.sh` alone still
 uses the real dir plus its before/after guard, so prefer `check.sh`.
 
-**Pre-commit hook (optional, off by default).** `./scripts/install-hooks.sh` sets `core.hooksPath=scripts/githooks`
-(shared by all worktrees): commits touching `.gd/.tscn/.tres/.sh/.godot` then run `check.sh --fast`.
-It's off because of the commit-everything rule (`AGENTS.md`): another session's half-finished files
-ride along in your commit and would block it. Turn it on for a solo clone or CI-like use. Either way,
-**run `./scripts/check.sh` yourself before committing your change.**
+**Pre-commit hook (opt-in).** Nothing enables it on clone. `./scripts/install-hooks.sh` sets
+`core.hooksPath=scripts/githooks` in the clone's git config, so it applies to every worktree at once,
+including other sessions' (a branch without `scripts/githooks` simply has no hook). Once installed,
+`scripts/githooks/pre-commit` exits immediately unless the staged files include a `.gd`, `.tscn`, `.tres`,
+`.sh` or `.godot` path (docs-only commits stay instant). Otherwise it runs `./scripts/check.sh --fast`
+against the worktree as it sits on disk, unstaged edits included, and blocks the commit if that fails.
+Bypass with `git commit --no-verify` and say why in the commit message. To turn it off again:
+`git config --unset core.hooksPath`. Hook or not, **run `./scripts/check.sh` yourself before committing
+your change**, and stage only your own paths (`AGENTS.md` "Shipping").
 
 **Writing tests that catch real bugs:**
 - Test through the real entry point the player uses (`_key()` / `--press`), not internals.

@@ -95,8 +95,9 @@ Full guide: `docs/TESTING.md`.
 - A new check must go red when you plant the bug it's meant to catch. Try it once.
 - Don't weaken or delete older tests to go green. `check.sh` isolates `user://` (temp
   `XDG_DATA_HOME`), so tests can't touch real saves.
-- Run `./scripts/check.sh` before you commit. (A pre-commit hook exists, `scripts/install-hooks.sh`, but it's off by default
-  because commit-everything would let other sessions' WIP block your commit. See `docs/TESTING.md`.)
+- Run `./scripts/check.sh` before you commit. An opt-in pre-commit hook (`./scripts/install-hooks.sh`) runs
+  `check.sh --fast` on commits that stage code files. Nothing installs it by default, and installing it turns it on for every
+  worktree of the clone. Details: `docs/TESTING.md`.
 
 #### Regressions: every change is asserted or visible
 
@@ -169,13 +170,14 @@ Several Claude sessions work on this repo at once (game loop, graphics, out-of-g
 
 - The `main` checkout at `~/Coding/football-game` belongs to the loop session. Other work uses
   its own worktree (`~/Coding/football-game-<topic>`) on a branch, merges `origin/main` often,
-  and lands on `main` only after `check.sh` passes.
-- Shared checkouts hold other sessions' uncommitted files; per the Committing rule they ride along in your commit (list them in the message).
+  and reaches `main` only through a PR the owner merges (see Shipping).
+- Other sessions' uncommitted files are theirs. Stage only your own paths (`git add <files>`, never
+  `git add -A` or `git commit -a`) and check `git show --stat` before pushing.
 - Never `git stash` / `stash pop` bare: the stash is shared across worktrees.
 - Claim work on the GitHub issue (`status:in-progress` + claim comment), never by editing files. `FEATURES.md` and `docs/gaps/TODO.md` are stubs now.
 
 ### Definition of done
 `CHECK PASS`; acceptance criteria covered by tests; visual changes viewed via `shot.sh`;
 perf budgets green (ratcheted if you improved them); owning docs updated (feature doc + design doc where relevant);
-issue closed or narrowed with a summary comment; side findings filed as issues; everything committed
-(Committing rule); report lists issues touched/opened and ends with a `result:` line.
+issue closed or narrowed with a summary comment; side findings filed as issues; your own files committed on
+your branch and a PR open (Shipping); report lists issues touched/opened and ends with a `result:` line.
