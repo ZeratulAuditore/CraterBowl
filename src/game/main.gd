@@ -78,6 +78,15 @@ const POV_ANGLE_OFFSET := 10.0      # launch angle = view pitch + this (deg): le
 const CAMERA_FOV := 65.0
 const AIM_ZOOM_FOV := 45.0          # FOV at full charge
 const AIM_ZOOM_RATE := 8.0          # 1/s easing rate (frame-rate independent)
+## Camera framing (#128). Offsets are (right, up, back) from the controlled player. The
+## follow look is clamped (_framed_look) so the player's ring never drops below
+## FRAME_FEET_MAX of the screen height, whatever the offset, FOV or aim range; a future
+## camera zoom (#140) only has to scale FOLLOW_CAM_OFFSET.
+const FOLLOW_CAM_OFFSET := Vector3(0, 6, 9)
+const FOLLOW_CAM_OFFSET_BLOCKING := Vector3(0, 10, 13)   # blocking drill: both lines in view
+const POV_CAM_OFFSET := Vector3(0.9, 2.8, 5.4)           # over the passer's right shoulder
+const FRAME_RING_R := 1.1      # PlayerRing outer edge (presentation.gd quad half-size)
+const FRAME_FEET_MAX := 0.8    # lowest screen row (fraction) for the ring; scorebug top ≈ 0.865
 var pov_enabled := true             # tests/bots that aim at a field point turn this off
 var aim_yaw := 0.0                  # 0 = straight downfield (+y), + = right
 var aim_pitch := POV_PITCH_START
@@ -1303,21 +1312,37 @@ func _update_camera(delta: float) -> void:
 	if camera_follow.distance_to(target) > 12.0:
 		camera_follow = target
 	camera_follow = camera_follow.lerp(target, 1.0 - exp(-10.0 * delta))
-	var offset := Vector3(0, 10, 13) if drill != null and drill.kind == "blocking" else Vector3(0, 6, 9)
+	var offset := FOLLOW_CAM_OFFSET_BLOCKING if drill != null and drill.kind == "blocking" else FOLLOW_CAM_OFFSET
 	var follow_pos := camera_follow + rot * offset
-	var follow_look := target + rot * Vector3(0, 0, -aim_distance)
+	var follow_look := _framed_look(follow_pos, target + rot * Vector3(0, 0, -aim_distance), target, camera.fov)
 	if pov_w <= 0.0:
 		camera.global_position = follow_pos
 		camera.look_at(follow_look)
 		return
 	# POV: over the passer's right shoulder, pitched with the aim.
 	var fwd := rot * Vector3(0, 0, -1)
-	var right := rot * Vector3(1, 0, 0)
 	var cam_pitch := aim_pitch * 0.55 - deg_to_rad(8.0)
-	var pov_pos := target + Vector3(0, 2.6, 0) - fwd * 4.2 + right * 0.9
+	var pov_pos := target + rot * POV_CAM_OFFSET
 	var pov_look := pov_pos + (fwd * cos(cam_pitch) + Vector3.UP * sin(cam_pitch)) * 10.0
 	camera.global_position = follow_pos.lerp(pov_pos, pov_w)
 	camera.look_at(follow_look.lerp(pov_look, pov_w))
+
+## Follow look-at point, pitched down just enough that the ring around `feet` sits no lower
+## than FRAME_FEET_MAX of the screen (#128). Exact on the camera's vertical plane (no roll),
+## so it holds for any offset, FOV, aim range or follow lag; unchanged when already framed.
+func _framed_look(cam_pos: Vector3, look: Vector3, feet: Vector3, fov_deg: float) -> Vector3:
+	var flat := Vector3(look.x - cam_pos.x, 0.0, look.z - cam_pos.z)
+	var d := flat.length()
+	if d < 0.001:
+		return look
+	var dir := flat / d
+	var near := Vector3(feet.x - cam_pos.x, 0.0, feet.z - cam_pos.z).dot(dir) - FRAME_RING_R
+	if near <= 0.05:
+		return look   # camera over the ring (never in follow): nothing to frame
+	var min_dip := atan2(cam_pos.y - feet.y, near) - atan((2.0 * FRAME_FEET_MAX - 1.0) * tan(deg_to_rad(fov_deg) * 0.5))
+	if atan2(cam_pos.y - look.y, d) >= min_dip:
+		return look
+	return cam_pos + (dir * cos(min_dip) + Vector3.DOWN * sin(min_dip)) * d
 
 ## Target FOV for the follow/POV camera: narrows with the charge while the passer winds up.
 func aim_zoom_fov() -> float:
