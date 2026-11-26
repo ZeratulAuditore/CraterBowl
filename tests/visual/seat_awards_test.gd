@@ -23,7 +23,7 @@ func _run() -> void:
 	game.world.event.emit("snap", {"qb": game.my_id})
 	game.world.event.emit("touchdown", {"carrier": game.my_id, "spot": Vector2(26, 100), "team": 0, "points": 6})
 	game.series.score = [6, 0]
-	game.series.clock.half = 2
+	game.series.clock.quarter = 4
 	game.series.clock.remaining = 0.0
 	game.world.phase = game.World.Phase.DEAD
 	game.series.last_result = {"type": "incomplete"}
@@ -33,6 +33,7 @@ func _run() -> void:
 		"winner earns First Touchdown and First Win")
 
 	var launch = root.get_node("Launch")
+	launch.settings_path = "user://test_seat_awards_settings.cfg"   # never leak the name into later cases
 	launch.settings.player_name = "Ann"
 	launch.go_to_menu("", game.match_overview())
 	for frame in 5:
