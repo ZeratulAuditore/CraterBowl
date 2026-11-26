@@ -43,7 +43,7 @@ const FieldArt := preload("res://src/game/art/field_art.gd")
 const StadiumArt := preload("res://src/game/art/stadium.gd")
 const ArtMats := preload("res://src/game/art/materials.gd")
 const ArtQuality := preload("res://src/game/art/quality.gd")
-const EmotePicker := preload("res://src/game/emote_picker.gd")
+const TauntWheel := preload("res://src/game/taunt_wheel.gd")
 const TrainingArt := preload("res://src/game/art/training_art.gd")
 const ARC_DOTS := 24
 
@@ -93,7 +93,7 @@ var aim_pitch := POV_PITCH_START
 var pov_w := 0.0                    # 0 follow cam .. 1 POV cam
 var _last_phase := -1
 var crosshair: Control
-var emote_picker: EmotePicker
+var taunt_wheel: TauntWheel
 var ai := AI.new()
 var last_whistle := ""
 var banner := ""
@@ -254,8 +254,8 @@ func _ready() -> void:
 	crosshair.visible = false
 	crosshair.draw.connect(_draw_crosshair)
 	layer.add_child(crosshair)
-	emote_picker = EmotePicker.new()
-	layer.add_child(emote_picker)
+	taunt_wheel = TauntWheel.new()
+	layer.add_child(taunt_wheel)
 	add_child(layer)
 	replay_overlay = ReplayOverlay.new(self)
 	add_child(replay_overlay)
@@ -301,7 +301,7 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	_start_series()
 	world.event.connect(_on_world_event)
 	stats = Stats.new()
-	stats.attach(world, owner_name, series)
+	stats.attach(world, owner_name, series, _player_on_athlete)
 	replay = Replay.new()
 	replay.attach(world)
 	replay.meta = {"size": match_size, "mode": match_mode}
@@ -534,10 +534,13 @@ func _start_series() -> void:
 			winner_humans = true
 	series.start_match(s, winner_humans)
 
+func _player_on_athlete(aid: int) -> int:
+	var slot := roster.slot_of_athlete(aid)
+	return roster.slots[slot]["owner"] if slot >= 0 else (LOCAL_PLAYER if aid == my_id else -1)
+
 ## Display name of whoever controls athlete `aid` right now ("Bot" for AI).
 func owner_name(aid: int) -> String:
-	var slot := roster.slot_of_athlete(aid)
-	var owner: int = roster.slots[slot]["owner"] if slot >= 0 else (LOCAL_PLAYER if aid == my_id else -1)
+	var owner := _player_on_athlete(aid)
 	if owner < 0:
 		return "Bot"
 	if lobby.players.has(owner):
@@ -622,51 +625,39 @@ func _ranked_text(r: Dictionary) -> String:
 		return ""
 	return "RATING %s (%+d)" % [str(labels[my_id]), int(round(float(deltas[my_id])))]
 
-## XP per human (by name) from this match's stats + result.
-func _match_awards() -> Dictionary:
-	var lines := {}
-	var team_of := {}
-	for s in roster.slots:
-		if s["owner"] >= 0:
-			team_of[owner_name(s["athlete_id"])] = s["team"]
-	if roster.slots.is_empty():
-		team_of[owner_name(my_id)] = world.get_athlete(my_id).team
-	for k in stats.lines:
-		var nm: String = k.get_slice("|", 0)
-		if nm == "Bot":
-			continue
-		if not lines.has(nm):
-			lines[nm] = {}
-		for f in stats.lines[k]:
-			lines[nm][f] = lines[nm].get(f, 0.0) + float(stats.lines[k][f])
+## XP and achievement context per human, addressed to their athlete at final.
+func _match_awards(ratings: Dictionary) -> Dictionary:
 	var xp := {}
-	for nm in team_of:
-		xp[nm] = Cosmetics.award_xp(lines.get(nm, {}), series.winner() == team_of[nm])
-	return xp
+	var ctx := {}
+	var recipients := roster.humans() if not roster.slots.is_empty() else [my_id]
+	var winner: int = series.winner()
+	for aid in recipients:
+		var team: int = world.get_athlete(aid).team
+		var line: Dictionary = stats.award_stats.get(_player_on_athlete(aid), {})
+		var won := winner == team
+		xp[aid] = Cosmetics.award_xp(line, won)
+		ctx[aid] = {"line": line, "won": won, "deficit": series.max_deficit[team],
+			"rating": ratings.get(aid, 0.0), "mode": match_mode}
+	return {"xp": xp, "ctx": ctx}
 
-## Per-human achievement context (merged stats, result, deficit overcome, rating).
-func _match_contexts(ratings: Dictionary) -> Dictionary:
-	var out := {}
-	var team_of := {}
-	for s in roster.slots:
-		if s["owner"] >= 0:
-			team_of[owner_name(s["athlete_id"])] = s["team"]
-	if roster.slots.is_empty():
-		team_of[owner_name(my_id)] = world.get_athlete(my_id).team
-	for nm in team_of:
-		var line := {}
-		for k in stats.lines:
-			if k.get_slice("|", 0) == nm:
-				for f in stats.lines[k]:
-					line[f] = maxf(line.get(f, 0.0), float(stats.lines[k][f])) if f in Stats.MAX_FIELDS else line.get(f, 0.0) + float(stats.lines[k][f])
-		var t: int = team_of[nm]
-		out[nm] = {"line": line, "won": series.winner() == t, "deficit": series.max_deficit[t],
-			"rating": ratings.get(nm, 0.0), "mode": match_mode}
-	return out
+## Older clients read the award by name. Include aliases only for unique names.
+func _broadcast_match_awards(awards: Dictionary) -> void:
+	var athlete_by_name := {}
+	for aid in awards["xp"]:
+		var display_name := owner_name(aid)
+		athlete_by_name[display_name] = -1 if athlete_by_name.has(display_name) else aid
+	for display_name in athlete_by_name:
+		var aid: int = athlete_by_name[display_name]
+		if aid >= 0:
+			awards["xp"][display_name] = awards["xp"][aid]
+			awards["ctx"][display_name] = awards["ctx"][aid]
+	net.broadcast_event("awards", awards)
 
 ## Every machine credits only its own player's local profile (XP + achievements).
 func _apply_award(xp: Dictionary, ctx: Dictionary = {}) -> void:
-	var me := owner_name(my_id) if not is_client() else player_name
+	var me: Variant = my_id
+	if not xp.has(me):
+		me = player_name if is_client() else owner_name(my_id)
 	var amount = xp.get(me)
 	if not (amount is int and amount >= 0 and amount <= Cosmetics.MAX_MATCH_XP):
 		return
@@ -705,17 +696,15 @@ func _on_match_event(n: String, data: Dictionary) -> void:
 				var rk := Ranked.new()
 				rk.load_file(ranked_path)
 				profile.season_rewards = rk.rewards.get(ranked_key(LOCAL_PLAYER, my_id), [])
-				for aid in r["ratings"]:
-					ratings[owner_name(aid)] = r["ratings"][aid]   # achievement contexts are still by name
+				ratings = r["ratings"]
 				ranked_line = _ranked_text(r)
 				print("RANKED: %s" % str(r))
 				if is_server():
 					net.broadcast_event("ranked", r)
-			var awards := _match_awards()
-			var ctx := _match_contexts(ratings)
-			_apply_award(awards, ctx)
+			var awards := _match_awards(ratings)
+			_apply_award(awards["xp"], awards["ctx"])
 			if is_server():
-				net.broadcast_event("awards", {"xp": awards, "ctx": ctx})
+				_broadcast_match_awards(awards)
 		summary_lines = stats.summary_lines()
 		print("MATCH SUMMARY:\n  " + "\n  ".join(summary_lines))
 		if replay_auto and not replay_viewer:   # the final whistle beats a highlight (V replays it in the reel)
@@ -1153,9 +1142,12 @@ func _unhandled_input(e: InputEvent) -> void:
 	var launch := get_node_or_null("/root/Launch")
 	if in_lobby() or replay_active or (launch != null and launch.menu_open()):
 		return
-	if e is InputEventMouseMotion and pov_active() and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if e is InputEventMouseMotion and taunt_wheel.open:
+		taunt_wheel.drag(e.relative)   # #139: the mouse picks a taunt; camera and aim hold still
+		return
+	if e is InputEventMouseMotion and pov_active() and mouse_captured():
 		look(e.relative)   # passer: mouse X = direction, mouse Y = loft
-	elif e is InputEventMouseMotion and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	elif e is InputEventMouseMotion and (mouse_captured()
 			or Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE)):
 		camera_orbit = wrapf(camera_orbit - e.relative.x * 0.004, -PI, PI)
 		cam_yaw = _camera_target_yaw()
@@ -1166,20 +1158,31 @@ func _unhandled_input(e: InputEvent) -> void:
 			_set_charging(e.pressed)   # hold = power (distance), release = throw
 		elif e.pressed:
 			throw_pass()
-	elif e is InputEventMouseButton and e.pressed and e.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
-		emote_picker.scroll(-1 if e.button_index == MOUSE_BUTTON_WHEEL_UP else 1)
+	# The mouse wheel is unbound (#139 took it off taunts; #140 plans camera zoom).
+
+## Tests set this: headless can't capture the mouse, so mouse-look would never run.
+var mouse_captured_override = null
+
+func mouse_captured() -> bool:
+	return mouse_captured_override if mouse_captured_override != null else Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 
 ## POV mouse look (pixels of mouse motion). aim_yaw: + = right of downfield.
 func look(rel: Vector2) -> void:
 	aim_yaw = wrapf(aim_yaw + rel.x * POV_SENS, -PI, PI)
 	aim_pitch = clampf(aim_pitch - rel.y * POV_SENS, POV_PITCH_MIN, POV_PITCH_MAX)
 
-## Perform the taunt selected in the wheel picker.
-func taunt() -> bool:
+## Hold C: open the taunt wheel (#139). Release picks; see taunt_wheel.gd.
+func open_taunt_wheel() -> bool:
 	if in_lobby() or replay_active:
 		return false
-	emote_picker.reveal()
-	return do_action({"a": "emote", "e": emote_picker.selected()})
+	taunt_wheel.open_wheel()
+	return true
+
+## Perform a taunt. Only its id goes over the wire ("emote" action).
+func taunt(id: String) -> bool:
+	if id == "" or in_lobby() or replay_active:
+		return false
+	return do_action({"a": "emote", "e": id})
 
 
 func _on_world_event(n: String, d: Dictionary) -> void:
@@ -1358,6 +1361,8 @@ func _input(e: InputEvent) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
 		scoreboard_held = false
+		if taunt_wheel:
+			taunt_wheel.close()   # the C release would be lost
 
 ## Space on a set defender (#142): one press does nothing, a double-tap breaks stance.
 var stance_tap := preload("res://src/sim/double_tap.gd").new()
@@ -1365,6 +1370,9 @@ var stance_tap := preload("res://src/sim/double_tap.gd").new()
 func _unhandled_key_input(e: InputEvent) -> void:
 	var launch := get_node_or_null("/root/Launch")
 	if launch != null and launch.menu_open():
+		return
+	if e is InputEventKey and not e.pressed and e.keycode == KEY_C and taunt_wheel.open:
+		taunt(taunt_wheel.release())   # #139: release performs the highlighted taunt
 		return
 	if not (e is InputEventKey and e.pressed and not e.echo):
 		return
@@ -1408,7 +1416,7 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		KEY_G:
 			do_action({"a": "handoff"})
 		KEY_C:
-			taunt()
+			open_taunt_wheel()
 		KEY_T:
 			if drill == null:
 				do_action({"a": "timeout"})
@@ -1843,13 +1851,15 @@ func _process(delta: float) -> void:
 		_last_phase = int(world.phase)
 	var pov := pov_active()
 	if DisplayServer.get_name() != "headless":
-		var capture: bool = (world.phase == World.Phase.LIVE or pov) and not menu_open and not in_lobby() and not replay_active
+		var capture: bool = (world.phase == World.Phase.LIVE or pov or taunt_wheel.open) and not menu_open and not in_lobby() and not replay_active
 		var mode := Input.MOUSE_MODE_CAPTURED if capture else Input.MOUSE_MODE_VISIBLE
 		if Input.mouse_mode != mode:
 			Input.mouse_mode = mode
 	if menu_open:
 		scoreboard_held = false
-	if pov and not Input.get_connected_joypads().is_empty():
+	if taunt_wheel.open and (menu_open or replay_active or in_lobby()):
+		taunt_wheel.close()
+	if pov and not taunt_wheel.open and not Input.get_connected_joypads().is_empty():
 		var rs := Vector2(Input.get_joy_axis(0, JOY_AXIS_RIGHT_X), Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y))
 		if rs.length() > 0.2:
 			look(rs * delta * 900.0)   # right stick = POV look

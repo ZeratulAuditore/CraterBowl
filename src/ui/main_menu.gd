@@ -54,6 +54,7 @@ var avatar: Button
 var profile_name: Label
 var profile_sub: Label
 var status_label: Label
+var status_bar: PanelContainer   # holds status_label above the footer (#221)
 var nav_buttons := {}         # screen id -> Button
 var current := ""
 var profile := Cosmetics.new()
@@ -378,14 +379,10 @@ func _build_footer() -> void:
 		_style_tab(b, false)
 		b.pressed.connect(l[1])
 		h.add_child(b)
-	status_label = Label.new()
-	status_label.name = "Status"
-	status_label.add_theme_color_override("font_color", UITheme.ORANGE)
-	status_label.add_theme_font_size_override("font_size", 16)
-	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	status_label.clip_text = true
-	status_label.text = launch.last_status
-	h.add_child(status_label)
+	var spacer := Control.new()   # the status used to sit here, clipped at ~190 px (#221)
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(spacer)
 	var ver := Label.new()
 	ver.text = "BUILD v%s" % launch.version()
 	ver.add_theme_font_size_override("font_size", 14)
@@ -396,6 +393,36 @@ func _build_footer() -> void:
 	music.volume = settings().music_volume
 	h.add_child(music.build_widget())
 	add_child(music)
+	_build_status_bar()
+
+## #221: statuses (a refusal reason, an invite-code error) get a tab of their own on top of
+## the footer, centered and as wide as the text, wrapping only past the window width. The
+## footer slot between the links and the build label is ~190 px, about 22 characters.
+func _build_status_bar() -> void:
+	status_bar = PanelContainer.new()
+	status_bar.name = "StatusBar"
+	status_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var s := UITheme.box(Color(UITheme.SPACE, 0.86), Color(UITheme.CYAN, 0.22), 1, 0)
+	s.border_width_bottom = 0
+	s.corner_radius_top_left = 6
+	s.corner_radius_top_right = 6
+	s.content_margin_left = 16
+	s.content_margin_right = 16
+	s.content_margin_top = 1
+	s.content_margin_bottom = 0
+	status_bar.add_theme_stylebox_override("panel", s)
+	_place(status_bar, [0.5, 1, 0.5, 1], [0, -FOOT_H, 0, -FOOT_H])
+	status_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	status_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	add_child(status_bar)
+	status_label = Label.new()
+	status_label.name = "Status"
+	status_label.add_theme_color_override("font_color", UITheme.ORANGE)
+	status_label.add_theme_font_size_override("font_size", 16)
+	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status_bar.add_child(status_label)
+	_status(launch.last_status)
 
 func _gap(w: int) -> Control:
 	var c := Control.new()
@@ -912,6 +939,12 @@ func _rating_line() -> String:
 ## ------------------------------------------------------------------ widgets
 func _status(t: String) -> void:
 	status_label.text = t
+	status_bar.visible = t != ""
+	# Autowrap labels have no width of their own: size to the text, capped at the window.
+	var font := status_label.get_theme_font("font")
+	var w := font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, status_label.get_theme_font_size("font_size")).x
+	status_label.custom_minimum_size.x = ceilf(minf(w + 1.0, get_viewport_rect().size.x - 72 - 32))
+	_place(status_bar, [0.5, 1, 0.5, 1], [0, -FOOT_H, 0, -FOOT_H])   # shrink-wrap again; grows from here
 
 func _text(t: String, parent: Node = null) -> Label:
 	var l := Label.new()
