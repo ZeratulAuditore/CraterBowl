@@ -28,8 +28,13 @@ Feature-level doc: how this works **today** on `main`. The in-match game is in t
 | Practice | Passing / catching / tackling / scrimmage drills |
 | Locker | Level/XP, equip unlocked cosmetics + number |
 | Leaderboards | Ranked rating + per-position career tables |
+| Last game | Reopen the postgame overview. Team stats keep both columns clear of the scrollbar. |
 | Replays | Saved match replays, newest first |
 | Settings | Player, video, audio, online, controls (click to rebind; conflicts swap) |
+
+### Design decisions
+
+- The postgame box score leaves a 12 px inset before the scrollbar so both teams' right-aligned values stay readable when the overview scrolls (#115).
 
 ## Finding games + internet play
 - **Matchmaker** (`--matchmaker`) does queues (casual/competitive, parties, Chaosball) and now also the **server browser**: hosts `register` their lobby every 5 s (`src/net/lobby_advertiser.gd`); entries expire after 20 s (`src/net/lobby_registry.gd`).
