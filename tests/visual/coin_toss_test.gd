@@ -16,7 +16,7 @@ const World := preload("res://src/sim/world.gd")
 const Roster := preload("res://src/sim/roster.gd")
 const Match := preload("res://src/sim/match.gd")
 ## Via the constant map so before_after.sh can run this on a base without TOSS_REVEAL.
-var REVEAL: float = Match.get_script_constant_map().get("TOSS_REVEAL", 3.0)
+var REVEAL: float = (load("res://src/sim/match.gd") as Script).get_script_constant_map().get("TOSS_REVEAL", 3.0)
 const HINTS := ["PRESS", "KEY", "SPACE", "ENTER", "ESC", "CLICK", "[1]", "[2]", " 1 ", " 2 ", "(1", "(2"]
 
 var game
