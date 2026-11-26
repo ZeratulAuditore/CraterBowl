@@ -1,6 +1,6 @@
 # Legacy backlog IDs → GitHub issues
 
-Until 2026-11-25 the backlog lived in `FEATURES.md` (A/B/D ids) and `docs/gaps/TODO.md` (C ids). It now lives in GitHub issues (migration: #1). Old ids still appear in commit messages, `ITERATIONS.md`, iteration docs and code comments; use this table to resolve them. **New work never gets a letter id**: the issue number is the id.
+Until 2026-11-25 the backlog lived in `FEATURES.md` (A/B/D ids) and `docs/gaps/TODO.md` (C ids). It now lives in GitHub issues (migration: #1). Old ids still appear in commit messages, old PRs and code comments; use this table to resolve them. **New work never gets a letter id**: the issue number is the id.
 
 ## Open items (migrated)
 
@@ -68,7 +68,7 @@ Until 2026-11-25 the backlog lived in `FEATURES.md` (A/B/D ids) and `docs/gaps/T
 | C08a | shipped iter 030 (defensive playbook) |
 | C08b | shipped iter 031 (defensive selection + sync) |
 | C08c | shipped iter 032 (assignments, coverage, play art) |
-| C08d | shipped (pre-snap defensive roam + LOS barrier, `docs/iterations/032-presnap-defense-roam.md`) |
+| C08d | shipped (pre-snap defensive roam + LOS barrier, `docs/features/defense.md`) |
 | D01 | shipped with A27 (gamepad/InputMap) |
 | D02 | shipped iter 028 (party queue); rematch remainder → #26 |
 | D03 | shipped iter 029 (Chaosball queue) |

@@ -20,12 +20,11 @@ Agents start from `AGENTS.md`. This file says which doc owns what, so each fact 
 | `TESTING.md` | How to test without opening a window: every script, tier and harness | You add or change a test script, harness flag or gate |
 | `optimization/README.md` | Performance best practices, budgets, measuring tools | You learn a new perf rule or change a budget |
 | `optimization/LOG.md` | Dated before/after measurements, newest first | You make (or try) any perf change: numbers or it didn't happen |
-| `iterations/NNN-slug.md` | One loop iteration's design pass (starts with `Issue: #N`) | You start an iteration (LOOP.md step 3) |
 | `PARITY.md` | Gridiron parity audit (`G##` rows with test evidence; read by `scripts/parity_audit.sh`) | A parity feature lands or a gap is found (gaps → issues labelled `parity`) |
 | `research/` | Gap analysis vs Gridiron/genre and dated review logs; `REEVALUATE.md` is the scheduled review procedure | Per `research/REEVALUATE.md` |
 | `backlog/legacy-ids.md` | Old `A/B/C/D##` ids → GitHub issue numbers | Never (frozen 2026-11-25) |
 
-Repo-root files: `AGENTS.md` (entry point), `LOOP.md` (the iteration procedure), `ITERATIONS.md` (the iteration log), `ASSETS.md` (licenses for every third-party asset). `FEATURES.md` and `docs/gaps/TODO.md` are stubs pointing to the issues.
+Repo-root files: `AGENTS.md` (entry point), `LOOP.md` (the iteration procedure), `ASSETS.md` (licenses for every third-party asset). `FEATURES.md` and `docs/gaps/TODO.md` are stubs pointing to the issues.
 
 ## Writing rules
 - **One home per fact.** Link to it instead of restating it. If two docs disagree, fix the one that isn't the owner listed above. If the code disagrees with a doc, the code wins: fix the doc, and open an issue if the code is the thing that's wrong.
