@@ -104,6 +104,7 @@ func test_bot_toss_winner_receives_immediately() -> void:
 	assert_eq(m.state, Match.State.KICKOFF)
 	assert_eq(m.opening_receiver, 1)
 	# 2nd half: the other team receives.
+	m.clock.quarter = 2
 	m.clock.remaining = 0.0
 	m.world.phase = World.Phase.DEAD
 	m.last_result = {"type": "touchback", "spot": 105.0}
@@ -562,7 +563,7 @@ func test_bot_kicks_field_goal_and_pat() -> void:
 func test_full_bot_game_with_kicking() -> void:
 	var m := Match.new(_world())
 	var w := m.world
-	m.clock.half_length = 150.0
+	m.clock.quarter_length = 75.0   # 5-minute game
 	m.start_match(3, false)
 	_listen(w)
 	var ai := AI.new()

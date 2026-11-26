@@ -61,14 +61,16 @@ func test_each_team_attacks_the_other_goal_every_quarter() -> void:
 	assert_eq(m.clock.quarter, 4)
 	assert_eq([m.defended_end(0), m.defended_end(1)], [1, 0], "Q4: ends switched again")
 
-func test_halves_format_switches_at_halftime() -> void:
+## #130: a zero quarter length was the old halves format; it now plays default quarters.
+func test_legacy_halves_length_still_switches_every_quarter() -> void:
 	var m := _match(25.0, 0.0)
-	assert_true(not m.ends_switched(), "H1 opening ends")
+	assert_eq(m.clock.label(), "Q1 2:30")
+	assert_true(not m.ends_switched(), "Q1 opening ends")
 	var out := _expire_with_tackle(m, 28.0)
-	assert_eq(out["outcome"], "halftime")
+	assert_eq(out["outcome"], "quarter", "the first period ends at Q1, not at halftime")
 	assert_true(out.get("switch_ends", false))
-	assert_eq(m.clock.half, 2)
-	assert_true(m.ends_switched(), "H2 ends switched")
+	assert_eq(m.clock.half, 1)
+	assert_true(m.ends_switched(), "Q2 ends switched")
 	assert_eq(m.defended_end(0), 1)
 
 func test_switch_preserves_field_position_down_and_possession() -> void:
