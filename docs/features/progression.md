@@ -20,9 +20,10 @@ Everything is stored in JSON files on each player's own machine, keyed by displa
 
 ### Stats (`src/sim/stats.gd`)
 - Lines are keyed `name|POSITION`, so switching positions splits your stats. Bots are recorded as `Bot` and excluded from leaderboards and XP.
-- Fields: passing att/comp/yds/TD/INT thrown, receptions/yds/TD, carries/rush yds/TD, tackles, sacks, INTs, PBUs, forced and recovered fumbles, points, block engagements, defensive TDs, best Chaosball TD value.
+- Fields: passing att/comp/yds/TD/INT thrown, receptions/yds/TD, carries/rush yds/TD, tackles, sacks, INTs, PBUs, forced and recovered fumbles, INT return yards, fumble return yards, points, block engagements, defensive TDs, best Chaosball TD value.
 - A sack is a QB tackled behind the LOS before he throws. A defensive TD is a touchdown scored by a carrier from the team on defense.
-- Yards are measured from the snap LOS. Return yards are not tracked (#8).
+- Scrimmage yards are measured from the snap LOS. Takeaway return yards (#100) run from the takeaway spot (the interception's catch point, or where the recovering player stood) to the dead-ball spot, measured toward the returner's scoring end zone, so a returner driven back gets negative yards. A return touchdown is credited to the goal line, not to where he stopped in the end zone. A return ends at a fumble or a throw (Chaosball swings), and a re-recovery by the other team starts its own return. Own-team recoveries aren't takeaways and get no return yards. Kick and punt returns are still untracked (#67).
+- Return yards show in the post-game stat lines: the FINAL screen and the overview's "Your game" (`34yd int ret`, `12yd fum ret`) and the players-of-the-game cards (`34 INT RET YDS`, `12 FUM RET YDS`). A zero-yard return shows nothing.
 
 ### Leaderboard (`src/sim/leaderboard.gd`)
 | Position | Score |
@@ -91,6 +92,7 @@ User data dir `crater-bowl` (see [out-of-game.md](out-of-game.md)). Tests pass t
 - **Host is the authority for the match result.** Clients trust the host's XP and achievement context. That's fine among friends but not tamper-proof, and names aren't authenticated (#28).
 - **No pay-to-win:** cosmetics are view-only and checked by a determinism test (identical worlds regardless of looks).
 - **Original achievement set** (12 milestones), not copied from any other game.
+- **Return yards are their own fields** (`int_ret_yds`, `fr_ret_yds`), not added to rush yards. Folding them into rushing would inflate RB/QB rushing lines and the scrimmage-yard totals that players-of-the-game and the box score compare. Players of the game weight them like scrimmage yards (0.1 per yard) under DEFENSIVE STANDOUT. The leaderboard score and team box score leave them out for now, so career tables from before #100 stay comparable.
 - Not done: cross-machine ratings and leaderboards. Each machine's tables only contain matches it hosted or played offline.
 
 ## Code and tests

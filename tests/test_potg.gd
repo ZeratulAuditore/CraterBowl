@@ -59,6 +59,15 @@ func test_defense_category_and_totals() -> void:
 	assert_eq(t[0]["turnovers"], 2)
 	assert_eq(t[1]["sack"], 2)
 
+## #100: return yards ride on the defensive card and count like scrimmage yards.
+func test_return_yards_on_cards() -> void:
+	var l := _line(1, "CB", "Ann", {"int": 1, "int_ret_yds": 34, "def_td": 1, "fr": 1, "fr_ret_yds": 12})
+	assert_eq(Potg.stat_lines(l)[0], "1 INT  1 FR  1 DEF TD  34 INT RET YDS  12 FUM RET YDS")
+	assert_near(Potg.impact(l), 5.0 + 2.0 + 6.0 + 4.6, 0.001)
+	assert_eq(Potg.category(l), "DEFENSIVE STANDOUT")
+	var zero := _line(1, "CB", "Bo", {"int": 1})
+	assert_eq(Potg.stat_lines(zero)[0], "1 INT", "a zero-yard return shows nothing")
+
 func test_stats_tracks_athletes() -> void:
 	var w := World.new()
 	Roster.new().build(w, 7)
