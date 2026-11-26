@@ -788,10 +788,9 @@ func capture_binding(action: String, key: int) -> void:
 
 ## ------------------------------------------------------------------ actions
 func _queue(mode: String) -> void:
-	_with_port(QUEUE_HOST_PORT, func(ip):
+	_with_port(QUEUE_HOST_PORT, func(port_options):
 		var o := queue_options(mode)
-		if ip != "":
-			o["advertise"] = ip
+		o.merge(port_options)
 		launch.start_game(o))
 
 ## Options for a queue launch (party: everyone enters the same code + size).
@@ -846,35 +845,37 @@ func _party_row() -> void:
 			code.text = party_code)
 
 func host_match() -> void:
-	_with_port(host_port, func(ip):
+	_with_port(host_port, func(port_options):
 		var o := {"host": true, "size": str(pick_size), "mode": pick_mode}
 		if host_port != NetSession.DEFAULT_PORT:
 			o["port"] = str(host_port)
-		if ip != "":
-			o["advertise"] = ip
+		o.merge(port_options)
 		if list_public:
 			o["public"] = true
 		launch.start_game(o))
 
-## Open the router port with UPnP (if enabled), then cb(public_ip or "").
+## Open the router port with UPnP (if enabled), then pass the launch options to cb.
 ## Without UPnP the invite code carries the LAN address (works on LAN / manual forward).
 func _with_port(port: int, cb: Callable) -> void:
 	if busy:
 		return
 	if not settings().upnp:
-		cb.call("")
+		cb.call({})
 		return
 	busy = true
 	_status("Opening port %d on your router…" % port)
-	_upnp_thread = PortMapper.open_port_async(port, func(res):
+	_upnp_thread = _open_port_async(port, func(res):
 		busy = false
 		_upnp_thread.wait_to_finish()
 		if res.get("ok", false):
 			_status("Port %d open · public address %s" % [port, res["ip"]])
-			cb.call(str(res["ip"]))
+			cb.call({"advertise": str(res["ip"])})
 		else:
-			launch.last_status = "%s. Friends on other networks need UDP port %d forwarded to this PC." % [res.get("error", "UPnP failed"), port]
-			cb.call(""))
+			var notice := "%s.\nFor remote play, forward UDP port %d to this PC." % [res.get("error", "UPnP failed"), port]
+			cb.call({"port-mapping-notice": notice}))
+
+func _open_port_async(port: int, cb: Callable) -> Thread:
+	return PortMapper.open_port_async(port, cb)
 
 func _join(target: String) -> void:
 	target = target.strip_edges()
