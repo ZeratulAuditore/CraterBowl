@@ -209,6 +209,69 @@ func test_only_athletes_who_need_the_ball_watch_it() -> void:
 	for c in cases:
 		assert_eq(PlayerNode.watches_ball(c[0], c[1], c[2], c[3], c[4], c[5]), c[6], c[7])
 
+# --- #246 catch stance and reach -------------------------------------------------
+
+func test_catch_point_is_where_the_pass_comes_down_through_chest_height() -> void:
+	# z = 2 + 5t - 4.9t^2 reaches 1.4 on the way down at t = 1.1289 -> y = 11.29
+	var cp := PlayerNode.catch_point(Vector3(0, 0, 2), Vector3(0, 10, 5), 9.8, 1.4)
+	assert_near(cp.y, 11.289, 0.01, "catch point downfield")
+	assert_near(cp.x, 0.0, 0.001, "catch point across")
+	# A low pass that never climbs to 1.4 uses where it lands: 1 - t - 4.9t^2 = 0 -> t = 0.3611
+	var low := PlayerNode.catch_point(Vector3(0, 0, 1), Vector3(0, 10, -1), 9.8, 1.4)
+	assert_near(low.y, 3.611, 0.01, "low pass: landing spot")
+
+func test_catch_stance_puts_both_hands_up_in_front() -> void:
+	var v = _view(Athlete.Role.WR)
+	var sk := _skel(v)
+	_pose(sk, v.anim.get_animation("Sprint"), 0.3)
+	var chest := sk.get_bone_global_pose(sk.find_bone("spine_03"))
+	v.pose.catch_target = chest * Vector3(0, 0.5, 8.0)   # pass still far out in front
+	v.pose.catch_reach = 0.0
+	v.pose.catch_weight = 1.0
+	v.pose.apply(sk)
+	sk.force_update_all_bone_transforms()
+	var r := chest.affine_inverse() * _bone_pos(sk, "hand_r")
+	var l := chest.affine_inverse() * _bone_pos(sk, "hand_l")
+	for p in [r, l]:
+		assert_true(p.z > 0.2 and p.y > -0.05, "hand up in front of the chest: %s" % str(p))
+	assert_true(r.x < 0.0 and l.x > 0.0, "right hand on the right, left on the left")
+	v.free()
+
+func test_reach_closes_both_hands_on_the_ball() -> void:
+	var v = _view(Athlete.Role.WR)
+	var sk := _skel(v)
+	_pose(sk, v.anim.get_animation("Sprint"), 0.3)
+	var chest := sk.get_bone_global_pose(sk.find_bone("spine_03"))
+	var ball := chest * Vector3(0.15, 0.25, 0.45)   # high and to the left, within reach
+	v.pose.catch_target = ball
+	v.pose.catch_reach = 1.0
+	v.pose.catch_weight = 1.0
+	v.pose.apply(sk)
+	sk.force_update_all_bone_transforms()
+	var r := _bone_pos(sk, "hand_r") - ball
+	var l := _bone_pos(sk, "hand_l") - ball
+	assert_true(r.length() < 0.22 and l.length() < 0.22, "both hands at the ball: %.2f, %.2f m" % [r.length(), l.length()])
+	var toward := (ball - chest.origin).normalized()   # both wrists sit behind the ball: compare sideways
+	var rs := r - toward * r.dot(toward)
+	var ls := l - toward * l.dot(toward)
+	assert_true(rs.dot(ls) < 0.0, "hands on opposite sides of the ball")
+	v.free()
+
+func test_reach_never_stretches_the_arm() -> void:
+	var v = _view(Athlete.Role.WR)
+	var sk := _skel(v)
+	_pose(sk, v.anim.get_animation("Idle"), 0.5)
+	var arm := _bone_pos(sk, "upperarm_r").distance_to(_bone_pos(sk, "lowerarm_r")) + _bone_pos(sk, "lowerarm_r").distance_to(_bone_pos(sk, "hand_r"))
+	v.pose.catch_target = sk.get_bone_global_pose(sk.find_bone("spine_03")) * Vector3(0, 0.3, 3.0)   # out of reach
+	v.pose.catch_reach = 1.0
+	v.pose.catch_weight = 1.0
+	v.pose.apply(sk)
+	sk.force_update_all_bone_transforms()
+	var d := _bone_pos(sk, "upperarm_r").distance_to(_bone_pos(sk, "hand_r"))
+	assert_true(d <= arm + 0.005, "arm not stretched: %.3f <= %.3f" % [d, arm])
+	assert_true(d > arm * 0.95, "arm fully extended toward a ball out of reach: %.3f of %.3f" % [d, arm])
+	v.free()
+
 # --- helpers ------------------------------------------------------------------
 
 ## Head facing (Head bone +Z) as (yaw, pitch) degrees in the chest's frame.

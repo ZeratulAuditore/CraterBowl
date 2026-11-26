@@ -25,6 +25,7 @@ var fc_ret = null   # #189 fair-catch step's returner
 var fp_lb = null          # C06a forward progress: the defender driving the carrier back
 var fp_contact_y := INF
 var fp_driven_y := 0.0
+var catch_pose := []   # #246: [catch_weight, catch_reach, hand-to-ball, chest-to-ball] at the A04 catch
 var bot_snap_clock := INF   # #136: play clock when the bot offense snapped (frames 4171-4481)
 
 func check(cond: bool, msg: String) -> void:
@@ -68,7 +69,12 @@ func _initialize() -> void:
 		[402, func(): main.ai.defense_enabled = false; main.world.snap()],
 		[480, func(): _lead_to_wr(); _key(KEY_J)],
 		[531, func(): check(main.world.forward_pass_thrown, "lead pass thrown")],
-		[800, func(): main.ai.defense_enabled = true; check(caught_by >= 0, "WR caught it"); check(main.controlled_id == main.my_id and main.controlled_id != caught_by, "assigned athlete retained after catch")],
+		[800, func():
+			main.ai.defense_enabled = true
+			check(caught_by >= 0, "WR caught it")
+			check(catch_pose.size() == 4 and catch_pose[0] > 0.8 and catch_pose[1] > 0.8 and catch_pose[2] < catch_pose[3] - 0.3,
+				"receiver reaches for the ball as it arrives (#246): weight/reach/hand-to-ball/chest-to-ball %s" % str(catch_pose))
+			check(main.controlled_id == main.my_id and main.controlled_id != caught_by, "assigned athlete retained after catch")],
 		# A05: idle receiver gets run down by AI pursuit and tackled
 		[1300, func():
 			check(tackled, "AI defender tackled the carrier")
@@ -610,7 +616,12 @@ func _connect_listeners() -> void:
 		if n == "catch":
 			caught_by = d["by"]
 			if frame >= 480 and frame < 800:
-				main.ai.defense_enabled = true)
+				main.ai.defense_enabled = true
+				# #246: the receiver's pose as the ball arrives (views still show the last frame).
+				var cv = main.views[caught_by]
+				var ball: Vector3 = main.ball_view.global_position
+				catch_pose = [cv.pose.catch_weight, cv.pose.catch_reach, ball.distance_to(cv.hand_r.global_position),
+					ball.distance_to(cv.global_position + Vector3.UP * cv.CATCH_HEIGHT)])
 	main.world.event.connect(func(n, d): if n == "tackle" and caught_by >= 0: tackled = true)
 	main.world.event.connect(func(n, _d): if n == "interception": picked = true)
 	main.world.event.connect(func(n, _d): if n == "snap" and frame > 4171 and frame <= 4481: bot_snap_clock = main.series.clock.play_clock)
@@ -678,6 +689,7 @@ func _check_carry_pose(two_hand: bool, context: String) -> void:
 	var offense: int = main.world.offense_team
 	var o_look: int = main.views.filter(func(o): return o != v and o.athlete.team == offense and o.pose.look_weight > 0.5).size()
 	var d_free: Array = near.filter(func(o): return o.athlete.team != offense and o.athlete.engaged_with < 0 and not o.athlete.blocking)
+	check(main.views.all(func(o): return o.pose.catch_weight == 0.0), "nobody reaches without a pass in the air (%s)" % context)
 	check(o_look == 0 and d_free.all(func(o): return o.pose.look_weight > 0.5),
 		"only the defense watches a held ball (%s): %d offense look, %d free defenders near the camera all look" % [context, o_look, d_free.size()])
 

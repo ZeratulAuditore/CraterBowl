@@ -8,6 +8,14 @@ Machine for all entries so far: WSL2 Ubuntu 24.04, i7-11800H (16 threads), RTX 3
 
 ---
 
+## 2026-11-26 — perf-09: catch stance and reach (#246)
+
+Same machine and mode as perf-05, CPU load 26%, 3 rounds interleaved, scene_frame p50 / p99 medians in µs:
+#245 tree 1123 (1088–1239) / 3584; #246 tree 997 (991–1074) / 2452. No measurable cost: only the few
+athletes near a pass's catch point run the catch IK, and only while it's in the air. The #246 tree
+measuring *faster* is noise, not a win: it only adds code, and the #245 runs had p99 spikes up to 5163 µs
+in this session. Render budget unchanged (no meshes or materials).
+
 ## 2026-11-26 — perf-08: decide who looks at 10 Hz (#245)
 
 `player.gd` now decides "near the camera" and "watches the ball" at `LOOK_DECIDE_HZ` (10 Hz, staggered by

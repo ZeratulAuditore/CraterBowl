@@ -1195,6 +1195,10 @@ func enforce_neutral_zone(a: Athlete) -> bool:
 		return pushing
 	return false
 
+## True while the snap is travelling from the center to the QB (the ball is IN_FLIGHT then too).
+func snap_in_flight() -> bool:
+	return _snap_to_id >= 0
+
 func _step_snap(dt: float) -> void:
 	if _snap_to_id < 0 or ball.state != Ball.State.IN_FLIGHT:
 		return
