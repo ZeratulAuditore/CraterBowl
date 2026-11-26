@@ -7,6 +7,11 @@ extends CanvasLayer
 const Mats := preload("res://src/game/art/materials.gd")
 const UITheme := preload("res://src/ui/ui_theme.gd")
 const T := preload("res://src/sim/tuning.gd")
+const Routes := preload("res://src/sim/routes.gd")
+const DefensivePlaybook := preload("res://src/sim/defensive_playbook.gd")
+## Picker buttons, built once (#169): the longest list either side shows. Offense with a run
+## back: passes + runs + Repeat last/Flip play; defense: calls + Repeat last.
+var PICKER_POOL := maxi(Routes.PLAY_NAMES.size() + Routes.RUN_NAMES.size() + 2, DefensivePlaybook.CALLS.size() + 1)
 const TEAM_NAMES := ["HELIOS", "NEBULA"]
 const TEAM_ABBR := ["HEL", "NEB"]
 const NAVY := Color(0.055, 0.078, 0.14, 0.9)
@@ -43,6 +48,7 @@ var picker_grid: GridContainer
 var route_select: OptionButton
 var picker_side := -1
 var picker_calls: Array = []
+var _picker_main   # set on refresh; pooled buttons call its do_action
 var scoreboard: PanelContainer
 var scoreboard_label: Label
 var me_panel: PanelContainer
@@ -229,9 +235,21 @@ func _build_picker() -> void:
 	picker_grid.add_theme_constant_override("h_separation", 6)
 	picker_grid.add_theme_constant_override("v_separation", 6)
 	column.add_child(picker_grid)
+	# Built up front so the node count never changes mid-match (perf.sh's leak check, #169).
+	for i in PICKER_POOL:
+		_add_picker_button()
 	route_select = OptionButton.new()
 	route_select.focus_mode = Control.FOCUS_NONE
 	column.add_child(route_select)
+
+func _add_picker_button() -> void:
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.visible = false
+	b.pressed.connect(func():
+		if _picker_main != null and b.has_meta("action"):
+			_picker_main.do_action(b.get_meta("action")))
+	picker_grid.add_child(b)
 
 ## UITheme's menu look, compacted for the in-game picker.
 static func _picker_theme() -> Theme:
@@ -577,25 +595,28 @@ func _refresh_picker(main, final: bool) -> void:
 	var side := 0 if w.get_athlete(main.my_id).team == w.offense_team else 1
 	var offense := side == 0
 	var calls: Array = w.available_plays() if offense else w.DefensivePlaybook.CALLS.keys()
+	_picker_main = main
 	if picker_side != side or picker_calls != calls:
 		picker_side = side
 		picker_calls = calls
-		for child in picker_grid.get_children():
-			picker_grid.remove_child(child)
-			child.queue_free()
+		# Reuse one pool of buttons, relabelled per side: rebuilding on every possession change
+		# churned nodes and tripped perf.sh's object-growth leak check (#169).
+		var entries: Array = []   # [text, action, toggle]
 		for call in calls:
-			var b := Button.new()
-			b.text = call if offense else w.DefensivePlaybook.CALLS[call].name
-			b.focus_mode = Control.FOCUS_NONE
-			b.toggle_mode = true
-			b.pressed.connect(func(): main.do_action({"a": "play" if offense else "defense", "p": call}))
-			picker_grid.add_child(b)
+			entries.append([call if offense else w.DefensivePlaybook.CALLS[call].name,
+				{"a": "play" if offense else "defense", "p": call}, true])
 		for action in ([["Repeat last", "recall_call"], ["Flip play", "flip_play"]] if offense else [["Repeat last", "recall_call"]]):
-			var b := Button.new()
-			b.text = action[0]
-			b.focus_mode = Control.FOCUS_NONE
-			b.pressed.connect(func(): main.do_action({"a": action[1]}))
-			picker_grid.add_child(b)
+			entries.append([action[0], {"a": action[1]}, false])
+		while picker_grid.get_child_count() < entries.size():   # safety net; PICKER_POOL covers every list
+			_add_picker_button()
+		for i in picker_grid.get_child_count():
+			var b: Button = picker_grid.get_child(i)
+			b.visible = i < entries.size()
+			if b.visible:
+				b.text = entries[i][0]
+				b.set_meta("action", entries[i][1])
+				b.toggle_mode = entries[i][2]
+				b.set_pressed_no_signal(false)
 		if route_select.item_count == 0:
 			for route in main.Routes.ROUTE_NAMES:
 				route_select.add_item(route)
