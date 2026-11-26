@@ -57,6 +57,7 @@ After Phase B, take the first unchecked `C##` item in `docs/gaps/TODO.md` (P0 �
 - [x] D03 Chaosball in matchmaking: queue mode for Chaosball 3v3 — parity G17
 - [x] D04 Achievements: milestone unlocks (first TD, 300-yd game, pick-six, 7-pt Chaosball TD, …) with profile persistence — parity G23
 - [ ] D05 Stats: return yards after interceptions/fumble recoveries (gap noted in A21)
+- [x] TRN Training ground (user request 2026-11-25): hub with 3 portals (blocking / practice field / catching), leveled drills + personal bests, and the queue waiting lobby (warm up while matchmaking). See docs/TRAINING.md
 - [ ] D06 Kicking stats: FG made/att + long, punt avg, kick/punt return yards (iter 035 gap)
 - [ ] D07 Kick meter art: stepped power meter beside the kicker + ball on a tee (remaster R-ss); HUD shows only KICK %
 - [ ] D08 Fair catch + bot 2-pt decisions (bots always kick the PAT; returners can't signal a fair catch)

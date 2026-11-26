@@ -1,8 +1,7 @@
 extends Node3D
-## View of one sim athlete: a rigged, animated CC0 character (Quaternius
-## Universal Animation Library, see ASSETS.md) dressed as a football player:
-## team-colored jersey/pants/socks via a region-baked shader, bone-attached
-## helmet + facemask, shoulder pads and jersey numbers.
+## View of one sim athlete with two uniforms driven by the Quaternius rig.
+## The local team wears the CC0 mannequin and Innerscene helmet. Opponents
+## wear a custom Blender uniform, including its own helmet and facemask.
 ## Mirrors sim state; owns no rules. Cosmetics are view-only.
 ##
 ## Animation is chosen from how the node actually moves (works for live sim,
@@ -11,6 +10,7 @@ extends Node3D
 const Cos := preload("res://src/sim/cosmetics.gd")
 const Mats := preload("res://src/game/art/materials.gd")
 const CharacterArt := preload("res://src/game/art/character_art.gd")
+const Uniforms := preload("res://src/game/art/football_uniforms.gd")
 const RC := preload("res://src/game/render_cache.gd")
 ## A view that moves more than this (yards) in one tick teleported (new play, replay
 ## seek, swap): snap instead of gliding across the field.
@@ -32,11 +32,8 @@ var pants_color := Color(0.15, 0.15, 0.2)
 var world = null           # optional: sim world (stances)
 var throw_pose := 0.0      # 0..1, set by presentation while the controlled QB charges a throw
 
-# Public parts (kept for tests/cosmetics)
+# Public cosmetics
 var body: Node3D           # model root; celebrations spin/flip it
-var trim_band: MeshInstance3D
-var helmet: MeshInstance3D
-var stripe: MeshInstance3D
 var number_front: Label3D
 var number_back: Label3D
 var number_text := ""
@@ -50,6 +47,12 @@ var mesh_i: MeshInstance3D
 var anim: AnimationPlayer
 var hand_r: Node3D
 var trim_mat: StandardMaterial3D
+var is_opponent := false
+
+var _open_gear: Node3D
+var _open_helmet: MeshInstance3D
+var _opponent_mesh: MeshInstance3D
+var _skin_color: Color
 
 var _last_pos := Vector3.ZERO
 var _vel := Vector3.ZERO
@@ -66,10 +69,11 @@ var _prev_yaw := 0.0
 var _cur_yaw := 0.0
 var _has_pose := false
 
-func setup(a, c: Color, w = null) -> void:
+func setup(a, c: Color, w = null, opponent := false) -> void:
 	athlete = a
 	color = c
 	world = w
+	is_opponent = opponent
 	pants_color = Color(0.16, 0.17, 0.22) if a.team == 0 else Color(0.92, 0.92, 0.94)
 
 func _ready() -> void:
@@ -84,39 +88,27 @@ func _ready() -> void:
 	anim = CharacterArt.find_anim(model)
 	var skel: Skeleton3D = mesh_i.get_parent() if mesh_i else null
 	CharacterArt.dress_mesh(mesh_i)
-	var skin: Color = SKIN_TONES[(athlete.id * 7 + athlete.team * 3) % SKIN_TONES.size()]
+	_skin_color = SKIN_TONES[(athlete.id * 7 + athlete.team * 3) % SKIN_TONES.size()]
 	if mesh_i:
 		_set_uniform("jersey", color)
 		_set_uniform("pants", pants_color)
 		_set_uniform("sock", color.darkened(0.3))
-		_set_uniform("skin", skin)
+		_set_uniform("skin", _skin_color)
 
 	trim_mat = Mats.cloth(Color.WHITE)
 	var chest := _attach(skel, "spine_03")
 	var head_b := _attach(skel, "Head")
 	hand_r = _attach(skel, "hand_r")
-	# Shoulder pads under the jersey color, trim stripe across the yoke.
-	var jersey_mat := Mats.cloth(color)
-	var pads := _part(chest, RC.sphere(0.5, 1.0), jersey_mat, Vector3(0, 0.1, -0.01))
+	_open_gear = Node3D.new()
+	chest.add_child(_open_gear)
+	var pads := _part(_open_gear, RC.sphere(0.5, 1.0), Mats.cloth(color), Vector3(0, 0.1, -0.01))
 	pads.scale = Vector3(0.46, 0.15, 0.27)
-	pads.name = "Pads"
-	trim_band = _part(chest, _cyl(0.085, 0.05), trim_mat, Vector3(0, 0.2, 0.0))   # collar
-	trim_band.name = "TrimBand"
-	# Helmet: glossy shell, stripe, visor, facemask cage.
-	helmet = _part(head_b, RC.sphere(0.5, 1.0, 20, 12), Mats.glossy(color.darkened(0.15)), Vector3(0, 0.12, -0.01))
-	helmet.scale = Vector3(0.27, 0.27, 0.3)
-	helmet.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	helmet.name = "Helmet"
-	stripe = MeshInstance3D.new()
-	stripe.mesh = _box(Vector3(0.18, 0.06, 1.0))
-	stripe.position = Vector3(0, 0.49, -0.02)
-	stripe.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	helmet.add_child(stripe)
-	_part(head_b, _facemask_mesh(), Mats.metal(Color(0.85, 0.86, 0.9)), Vector3.ZERO).name = "Facemask"
-	var visor := _part(head_b, RC.sphere(0.5, 1.0), Mats.visor(), Vector3(0, 0.1, 0.1))
-	visor.scale = Vector3(0.21, 0.07, 0.13)
-	number_front = _number_label(chest, 0.17)
-	number_back = _number_label(chest, -0.17)
+	_part(_open_gear, _cyl(0.085, 0.05), trim_mat, Vector3(0, 0.2, 0.0))
+	_open_helmet = Uniforms.open_helmet(head_b)
+	_opponent_mesh = Uniforms.opponent_mesh(mesh_i)
+	number_front = _number_label(chest, 0.205)
+	number_back = _number_label(chest, -0.205)
+	set_opponent(is_opponent)
 	add_child(_blob_shadow())
 	apply_look(Cos.DEFAULT_LOOK.merged({"number": (athlete.id % 90) + 10}, true))
 	_last_pos = Vector3(athlete.position.x, 0, -athlete.position.y)
@@ -146,41 +138,17 @@ func _attach(skel: Skeleton3D, bone: String) -> Node3D:
 	ba.add_child(holder)
 	return holder
 
-func _part(parent: Node3D, mesh: Mesh, mat: Material, at: Vector3, rot := Vector3.ZERO) -> MeshInstance3D:
+func _part(parent: Node3D, mesh: Mesh, mat: Material, at: Vector3) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
 	mi.material_override = mat
 	mi.position = at
-	mi.rotation = rot
-	# Small gear sits inside the body's shadow; each caster is redrawn once per shadow
-	# split, so only the body (and the helmet, set below) cast. docs/optimization/README.md
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mi)
 	return mi
 
 static func _cyl(r: float, h: float) -> CylinderMesh:
 	return RC.cylinder(r, h)
-
-static var _mask_mesh: Mesh
-
-## Facemask cage merged into one mesh (one draw call), shared by every athlete.
-static func _facemask_mesh() -> Mesh:
-	if _mask_mesh == null:
-		var st := SurfaceTool.new()
-		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		var bars := []
-		for i in 3:
-			bars.append([0.24, Transform3D(Basis.from_euler(Vector3(0, 0, PI / 2)), Vector3(0, 0.07 - i * 0.055, 0.155))])
-		for sx in [-1.0, 1.0]:
-			bars.append([0.15, Transform3D(Basis.from_euler(Vector3(PI / 2, 0, 0)), Vector3(0.105 * sx, 0.02, 0.115))])
-		bars.append([0.13, Transform3D(Basis.IDENTITY, Vector3(0, 0.0, 0.165))])
-		for b in bars:
-			st.append_from(_cyl(0.011, b[0]), 0, b[1])
-		_mask_mesh = st.commit()
-	return _mask_mesh
-
-static func _box(s: Vector3) -> BoxMesh:
-	return RC.box(s)
 
 func _blob_shadow() -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
@@ -204,16 +172,24 @@ func _number_label(parent: Node3D, z: float) -> Label3D:
 	parent.add_child(l)
 	return l
 
+func set_opponent(opponent: bool) -> void:
+	is_opponent = opponent
+	mesh_i.visible = not opponent
+	_open_gear.visible = not opponent
+	_open_helmet.visible = not opponent
+	_opponent_mesh.visible = opponent
+
 ## Apply a (sanitized) look. Purely visual.
 func apply_look(lk: Dictionary) -> void:
 	look = Cos.sanitize_look(lk)
 	trim_color = Cos.color_of("trim", look["trim"])
 	trim_mat.albedo_color = trim_color
-	trim_band.material_override = trim_mat
 	if mesh_i:
 		_set_uniform("trim", trim_color)
 	var hc: Color = Cos.color_of("helmet", look["helmet"])
-	stripe.material_override = Mats.metal(hc) if look["helmet"] == "chrome" else Mats.glossy(hc)
+	var helmet_stripe := Mats.metal(hc) if look["helmet"] == "chrome" else Mats.glossy(hc)
+	Uniforms.recolor(_open_helmet, color, _skin_color, trim_mat, helmet_stripe)
+	Uniforms.recolor(_opponent_mesh, color, _skin_color, trim_mat, helmet_stripe)
 	number_text = str(int(look["number"]))
 	for l in [number_front, number_back]:
 		l.text = number_text

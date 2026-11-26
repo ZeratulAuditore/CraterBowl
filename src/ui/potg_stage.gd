@@ -4,7 +4,8 @@ extends Control
 ## visits each one while a stat card slides in, then a wide group shot with
 ## confetti. Emits `finished` at the end (main.gd then returns to the lobby).
 ## Pure view: fed with Potg.pick() entries decorated by main.gd
-## (name, number, look). Space/Enter/click = next, S = skip.
+## (name, number, look). Space/Enter/click = next, S = skip. Athletes hold the
+## idle pose facing the camera (the dance animation turns them away).
 
 const PlayerView := preload("res://src/game/player.gd")
 const C := preload("res://src/ui/ui_theme.gd")
@@ -117,8 +118,9 @@ func _process(delta: float) -> void:
 	var want_look := Vector3(0, 1.1, 0)
 	if step >= 0 and step < entries.size():
 		var p: Vector3 = pad_pos[step]
-		want_pos = p + Vector3(1.15 - step_t * 0.12, 1.55, 4.3 - step_t * 0.25)
-		want_look = p + Vector3(-0.75, 1.05, 0)
+		# Look right of the athlete so they sit in the left third, clear of the card.
+		want_pos = p + Vector3(0.7 - step_t * 0.08, 1.5, 4.4 - step_t * 0.22)
+		want_look = p + Vector3(1.0, 1.0, 0)
 	elif step >= entries.size():
 		want_pos = Vector3(sin(step_t * 0.3) * 0.6, 2.3, 9.2 - step_t * 0.2)
 	var k := clampf(delta * 3.2, 0.0, 1.0)
@@ -157,9 +159,6 @@ func _enter(s: int) -> void:
 			c.modulate.a = 0.0
 			c.position = Vector2(size.x * 0.56 + 140.0, size.y * 0.24)
 		(spots[i] as SpotLight3D).light_energy = 14.0 if focus or group else (3.0 if step < 0 else 1.2)
-		var v = views[i]
-		v.celebrate_kind = "dance"
-		v.celebrate_t = 99.0 if focus or (group and i == 0) else 0.0
 		tags[i].visible = group
 		if group:
 			tags[i].modulate.a = 0.0
@@ -228,10 +227,11 @@ func _build_stage() -> void:
 		a.id = int(e.get("id", i))
 		a.team = int(e.get("team", 0))
 		a.role = maxi(0, PlayerView.ROLE_NAMES.find(str(e.get("pos", "WR"))))
+		a.position = Vector2(at.x, -at.z)   # spawn on the pad: a later move reads as running and turns them
 		var v = PlayerView.new()
-		v.setup(a, col)
+		v.setup(a, col, null, a.team != int(info.get("local_team", 0)))
 		root.add_child(v)
-		v.position = at
+		v.position.y = at.y
 		v.rotation.y = PI - x * 0.08   # face the camera, angled in
 		var lk: Dictionary = e.get("look", {}) if e.get("look") is Dictionary else {}
 		v.apply_look(lk.merged({"number": int(e.get("number", (a.id % 90) + 10))}, true))

@@ -5,9 +5,15 @@ extends RefCounted
 const DEFAULT_PATH := "user://settings.cfg"
 const DEFAULT_MM := "127.0.0.1:24600"   # matchmaker; point at the hosted one once deployed
 const FPS_CAPS := [0, 30, 60, 120, 144, 240]
+const DEFAULT_DISPLAY_MODE := "borderless"
+const DISPLAY_MODES := {
+	"borderless": {"label": "Borderless fullscreen", "mode": Window.MODE_FULLSCREEN},
+	"exclusive": {"label": "Exclusive fullscreen", "mode": Window.MODE_EXCLUSIVE_FULLSCREEN},
+	"windowed": {"label": "Windowed", "mode": Window.MODE_WINDOWED},
+}
 
 var player_name := ""            # "" = ask on first launch
-var fullscreen := false
+var display_mode := DEFAULT_DISPLAY_MODE
 var vsync := true
 var render_scale := 1.0          # 3D resolution scale (0.5..1.0)
 var max_fps := 0                 # 0 = unlimited
@@ -23,7 +29,11 @@ func load_file(path: String = DEFAULT_PATH) -> void:
 	if cf.load(path) != OK:
 		return
 	player_name = clean_name(str(cf.get_value("player", "name", player_name)))
-	fullscreen = bool(cf.get_value("video", "fullscreen", fullscreen))
+	# Older settings wrote the windowed default even when the player had never
+	# changed it. Use the new default until an explicit display mode is saved.
+	display_mode = str(cf.get_value("video", "display_mode", DEFAULT_DISPLAY_MODE))
+	if not DISPLAY_MODES.has(display_mode):
+		display_mode = DEFAULT_DISPLAY_MODE
 	vsync = bool(cf.get_value("video", "vsync", vsync))
 	render_scale = clampf(float(cf.get_value("video", "render_scale", render_scale)), 0.5, 1.0)
 	max_fps = int(cf.get_value("video", "max_fps", max_fps))
@@ -42,7 +52,7 @@ func load_file(path: String = DEFAULT_PATH) -> void:
 func save(path: String = DEFAULT_PATH) -> bool:
 	var cf := ConfigFile.new()
 	cf.set_value("player", "name", player_name)
-	cf.set_value("video", "fullscreen", fullscreen)
+	cf.set_value("video", "display_mode", display_mode)
 	cf.set_value("video", "vsync", vsync)
 	cf.set_value("video", "render_scale", render_scale)
 	cf.set_value("video", "max_fps", max_fps)
@@ -75,7 +85,9 @@ static func split_address(addr: String, default_port: int) -> Array:
 
 func apply(window: Window) -> void:
 	if DisplayServer.get_name() != "headless" and window != null:
-		window.mode = Window.MODE_FULLSCREEN if fullscreen else Window.MODE_WINDOWED
+		var mode: Window.Mode = DISPLAY_MODES.get(display_mode, DISPLAY_MODES[DEFAULT_DISPLAY_MODE])["mode"]
+		if window.mode != mode:
+			window.mode = mode
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED)
 	if window != null:
 		window.scaling_3d_scale = render_scale
