@@ -1309,6 +1309,7 @@ func _physics_process(delta: float) -> void:
 		"dir": Vector2.ZERO if menu_open else read_input(),
 		"sprint": not menu_open and (sprint_override if sprint_override != null else Input.is_key_pressed(KEY_SHIFT)),
 		"block": not menu_open and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT),
+		World.HUMAN: true,
 	}
 	if in_lobby():
 		if is_server():
@@ -1377,7 +1378,9 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 	inputs[controlled_id] = my_input
 	if is_server():
 		for aid in net.inputs:
-			inputs[aid] = net.inputs[aid]
+			var inp: Dictionary = net.inputs[aid]
+			inp[World.HUMAN] = true   # the host decides who is human, never the wire
+			inputs[aid] = inp
 	world.step(inputs, delta)
 	if is_server():
 		net_tick += 1
