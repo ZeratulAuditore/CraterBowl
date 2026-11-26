@@ -10,6 +10,7 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var launch = root.get_node("Launch")
+	launch.settings_path = "user://test_kicking_stats_settings.cfg"   # never leak the name into later cases
 	launch.settings.player_name = "Ace"
 	var game = preload("res://scenes/main.tscn").instantiate()
 	root.add_child(game)
