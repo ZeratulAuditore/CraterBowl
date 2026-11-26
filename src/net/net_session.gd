@@ -9,10 +9,13 @@ signal peer_joined(peer_id: int, athlete_id: int)
 signal peer_left(peer_id: int, athlete_id: int)
 signal lobby_received(state: Dictionary)
 signal lobby_changed()
+signal refused(reason: String)
 
 const P := preload("res://src/net/protocol.gd")
 const DEFAULT_PORT := 24565
 const MAX_PEERS := 13
+const REFUSE_GRACE := 1.0      # s: server drops a refused peer after this (the client normally hangs up first)
+const FULL_MATCH_REASON := "Match full: every seat is taken"
 
 enum Mode { OFFLINE, SERVER, CLIENT }
 
@@ -33,6 +36,7 @@ var lobby_mode := false        # server: joiners wait in the lobby (no athlete) 
 var lobby                      # server: Lobby (set by main)
 var lobby_actions: Array = []  # server: [[peer_id, action], ...]
 var last_snapshot_tick := -1
+var refused_reason := ""       # client: why the host turned us away ("" = not refused)
 
 func _ready() -> void:
 	api = SceneMultiplayer.new()
@@ -71,15 +75,27 @@ func _send(target: int, msg: Dictionary, reliable: bool) -> void:
 # ---- server ----
 func _on_peer_connected(id: int) -> void:
 	if lobby_mode and lobby != null and lobby.phase == lobby.Phase.LOBBY:
+		if lobby.is_full():
+			refuse(id, lobby.full_reason())
+			return
 		lobby.add(id)
 		lobby_changed.emit()
 		return
 	var aid: int = assign_fn.call(id)
 	if aid < 0:
-		peer.disconnect_peer(id)
+		refuse(id, FULL_MATCH_REASON)
 		return
 	set_assignment(id, aid)
 	peer_joined.emit(id, aid)
+
+## Server: tell a peer why it can't join, then drop it. ENet's disconnect discards queued
+## packets, so the drop waits REFUSE_GRACE (the client hangs up itself on receipt).
+func refuse(id: int, reason: String) -> void:
+	print("NET refused peer %d: %s" % [id, reason])
+	_send(id, {"k": "refused", "why": reason}, true)
+	get_tree().create_timer(REFUSE_GRACE).timeout.connect(func():
+		if mode == Mode.SERVER and api.get_peers().has(id):
+			peer.disconnect_peer(id))
 
 ## Server: (re)assign a peer to an athlete and tell them.
 func set_assignment(id: int, aid: int) -> void:
@@ -146,7 +162,16 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 	var msg = bytes_to_var(bytes)   # never decodes objects
 	if not (msg is Dictionary):
 		return
+	if mode == Mode.CLIENT and refused_reason != "":
+		return   # turned away: ignore anything still in flight
 	match msg.get("k", ""):
+		"refused":
+			if mode == Mode.CLIENT and from == 1:
+				var why = msg.get("why", "")
+				refused_reason = str(why).left(120) if why is String and why != "" else "The host refused the connection"
+				print("NET refused by host: %s" % refused_reason)
+				refused.emit(refused_reason)
+				peer.close.call_deferred()
 		"in":
 			if mode == Mode.SERVER and peer_athlete.has(from):
 				var inp := P.sanitize_input(msg)

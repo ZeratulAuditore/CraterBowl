@@ -1754,8 +1754,13 @@ func _process(delta: float) -> void:
 		hud.text = replay_hud_text()
 		return
 	if in_lobby():
+		if is_client() and net.refused_reason != "":
+			hud.text = "COULDN'T JOIN THE MATCH\n%s\n\nAsk the host for a bigger match, or try again later." % net.refused_reason
+			return
 		var host_keys := "\nHost: [3/5/7] size   [M] mode   [Q] halves/quarters   [H] period length" if is_server() else ""
 		var lobby_text := "PRIVATE MATCH LOBBY   Invite code: %s\n%s\n[Enter] ready. Starts when everyone is ready.%s" % [lobby.code, lobby.summary(), host_keys]
+		if is_server() and lobby.notice != "":
+			lobby_text += "\n" + lobby.notice
 		if is_server() and port_mapping_notice != "":
 			lobby_text += "\n\n" + port_mapping_notice
 		hud.text = lobby_text

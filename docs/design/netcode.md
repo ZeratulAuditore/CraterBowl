@@ -23,8 +23,12 @@ see when hosting, joining, queueing) lives in `docs/features/` (online play). La
 
 - `host(port, assign, release)`: `main.gd:_host_game` passes `roster.auto_assign(peer)` / `roster.release(peer)`.
 - `_on_peer_connected`: if `lobby_mode` and the lobby is open, the peer joins `lobby.players` with **no
-  athlete**. Otherwise (`--no-lobby`, or a match already running) it is auto-assigned at once; `-1` (no
-  free slot) → `peer.disconnect_peer(id)`.
+  athlete**, unless `lobby.is_full()` (`players.size() >= capacity()`, capacity = 2 × the size's slots),
+  which refuses it. Otherwise (`--no-lobby`, or a match already running) it is auto-assigned at once;
+  `-1` (no free slot) refuses it. So every lobby player is guaranteed a seat at start (#54).
+- `refuse(id, reason)`: sends `refused` and drops the peer `REFUSE_GRACE` (1 s) later. The delay is
+  needed because ENet's `disconnect_peer` discards queued reliable packets, so a same-tick disconnect
+  would lose the reason. A well-behaved client hangs up as soon as `refused` arrives.
 - `set_assignment(id, aid)` records `peer_athlete[id]` and sends `welcome`. `main.gd:_start_from_lobby`
   seats every lobby player (competitive: `roster.auto_assign_team` by the matchmaker's team split,
   keyed by display name; else `auto_assign`).
@@ -38,6 +42,7 @@ see when hosting, joining, queueing) lives in `docs/features/` (online play). La
 | `in` | C→S | unreliable-ordered, ch 1, every tick | `dir`, `spr`, `seq`, `block` | sender has an athlete; `P.sanitize_input`; `seq` must not go backwards |
 | `act` | C→S | reliable, ch 0 | `act` (action dict) | sender has an athlete; queued as `[peer, aid, act]`, validated when applied |
 | `lact` | C→S | reliable, ch 0 | `act` = `{"a":"ready"}` / `{"a":"name","n":…}` | sender is in `lobby.players`; `act` is a Dictionary |
+| `refused` | S→C | reliable, ch 0 | `why` (reason text) | from peer 1; cut to 120 chars. Client stores `refused_reason`, emits `refused`, closes its peer and ignores later packets |
 | `welcome` | S→C | reliable, ch 0 | `aid`, `size`, `mode` | from peer 1; `size` ∈ {3,5,7} else 7; `mode` chaosball else classic |
 | `snap` | S→all | unreliable-ordered, ch 1, 30 Hz | see Snapshots | from peer 1; tick `t` > last seen |
 | `ev` | S→all | reliable, ch 0 | `n` (event name), `d` | from peer 1; `d` forced to Dictionary |
@@ -117,7 +122,10 @@ The quarter fields extend the clock array after its four original entries. If th
 1. Host: `_host_game` makes a `Lobby` (`host_id = 1`), sets `code` (invite code), `expected` (queue
    matches), and `NetSession.lobby_mode = true`. Host keys (`main.gd:lobby_key`): Enter ready, 3/5/7 size,
    M classic/chaosball (forces size 3), Q halves/quarters, H duration (2/5/8 min halves or 1/2/3 min quarters).
-   Any setting change clears the guests' ready state.
+   Any setting change clears the guests' ready state. A size or mode change whose capacity is below
+   `players.size()` is refused and sets `lobby.notice` (shown in the host lobby HUD) rather than kicking
+   anyone; an accepted change clears it. Chosen over disconnecting extras because it never throws a
+   player out and the host can see why.
 2. Client: `_join_game` decodes the code, connects; on the first `lobby` state it sends `name` and, for
    queue joins (`auto_ready`), `ready`. Clients mirror via `lobby.from_dict`.
 3. `main.gd:_step_lobby` (host, each tick): apply `lact`s, broadcast on change, and when
@@ -184,7 +192,6 @@ messages are reliable on channel 0.
 - #20 C14 Spectators
 - #26 C20 Rematch and keep-the-lobby
 - #53 Host keeps only the newest client input per tick
-- #54 Lobby accepts more peers than the match has slots
 - #55 No rate limits on client actions or matchmaker messages
 - #56 Client doesn't detect losing the host
 - #57 UPnP port mapping is never removed after hosting

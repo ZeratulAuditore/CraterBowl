@@ -22,12 +22,14 @@ Bots fill every empty slot. Everything runs peer-hosted: there are no dedicated 
 - The address inside is the router's public IP when UPnP succeeded, otherwise this PC's LAN address.
 
 ### Private lobby (in the match scene, text HUD)
-- HUD: `PRIVATE MATCH LOBBY  Invite code: …`, settings and names (✓ = ready).
+- HUD: `PRIVATE MATCH LOBBY  Invite code: …`, settings, seats taken (`6/6 players`) and names (✓ = ready).
 - **Enter** toggles ready. The host can press **3/5/7** for team size, **M** for classic/Chaosball, **Q** for halves/quarters and **H** for the duration. Defaults are 7v7 and five-minute halves. See [clock rules](rules.md#clock-srcsimclockgd) for the duration choices.
 - Any settings change un-readies everyone except the host.
 - Hosting from the menu with Chaosball selected opens the lobby in Chaosball 3v3, whatever size was picked (`--host --mode=chaosball` does the same). The host can still press **M** to switch back to classic (#74).
 - Starts automatically when **every player is ready and at least 2 are present**. A host alone can't start a private match.
-- Players who join after kickoff go straight into a free slot. Up to 13 clients (14 humans).
+- **Seats are capped at the match size** (both teams' slots: 3v3 = 6, 5v5 = 10, 7v7 = 14 players, host included; #54). A joiner beyond that is turned away and their screen shows `COULDN'T JOIN THE MATCH` with the reason (`Lobby full: 3v3 seats 6 players`). Nobody waits in a lobby they can never play from. There are no spectators yet (#20).
+- **The host can't shrink the match below the players already present.** Pressing 3/5 or M (Chaosball is 3v3) with too many players is refused, and the host lobby shows why (`Can't switch to 3v3: 7 players here, 6 seats. Someone has to leave first.`). Nobody is kicked. Growing the match is always allowed.
+- Players who join after kickoff go straight into a free slot. With every seat taken they're turned away with `Match full: every seat is taken`. ENet allows at most 13 clients (14 humans, a full 7v7).
 
 ### Team and position online
 - Humans are seated automatically: each joins the team with fewer humans and takes the first free slot in priority order (QB/LB, WR/CB, WR/CB, RB/S, C/DL, OL/DL, OL/S).
@@ -109,7 +111,6 @@ Bots fill every empty slot. Everything runs peer-hosted: there are no dedicated 
 - #32 B07 NAT relay for CGNAT/strict routers + hosted public matchmaker
 - #44 C29 Events and variety: weather, time of day, rotating modes
 - #48 Decide: host the public matchmaker (VPS/AWS + DNS)?
-- #54 Lobby accepts more peers than the match has slots
 - #56 Client doesn't detect losing the host
 - #57 UPnP port mapping is never removed after hosting
 - #58 Dead matchmaker code: whoami/you path and snake_teams

@@ -33,6 +33,13 @@ if [ $menu -ne 0 ] || grep -E "SCRIPT ERROR|Parse Error" .menu-flow.log | grep -
 fi
 # Two-process online test (host + client over localhost)
 ./scripts/net_test.sh || exit 1
+# Lobby seat cap (#54): in-process host + 8 joiners over localhost, random port
+timeout 60 "$GODOT" --headless --path . -s res://tests/net_capacity.gd -- --port=$((27000 + RANDOM % 2000)) > .net-capacity.log 2>&1
+cap=$?
+grep -E "CAP FAIL|NET CAPACITY" .net-capacity.log
+if [ $cap -ne 0 ] || grep -E "SCRIPT ERROR|Parse Error" .net-capacity.log | grep -q .; then
+  grep -E "SCRIPT ERROR|Parse Error|at: " .net-capacity.log | head; echo "NET CAPACITY FAIL"; exit 1
+fi
 # Matchmaking: matchmaker + 2 queued clients
 ./scripts/mm_test.sh | tail -1 | grep -q "MM TEST PASS" || { echo "MM TEST FAIL"; exit 1; }
 MODE=competitive ./scripts/mm_test.sh | tail -1 | grep -q "MM TEST PASS" || { echo "MM TEST FAIL (competitive)"; exit 1; }
