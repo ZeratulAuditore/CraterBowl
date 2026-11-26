@@ -2,7 +2,7 @@
 # Boot the main scene headless for N frames; fail on any script/engine error.
 set -uo pipefail
 cd "$(dirname "$0")/.."
-# Guard: tests must never write the player's real data files.
+# Guard the same user data directory Godot uses, including isolated XDG runs.
 USERDATA="${XDG_DATA_HOME:-$HOME/.local/share}/crater-bowl"   # project.godot custom_user_dir_name
 before=$(ls -l --time-style=+%s "$USERDATA"/{profile,leaderboard,ranked}.json "$USERDATA"/settings.cfg "$USERDATA"/replays 2>/dev/null)
 GODOT="${GODOT:-godot}"

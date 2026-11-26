@@ -178,6 +178,51 @@ func _initialize() -> void:
 		[7630, func(): main.world.carrier().position = Vector2(26, 101.0)],
 		[7632, func(): main.next_play(); main.world.snap(); main.series.last_result = {"type": "touchdown", "team": 0}; main.world.phase = main.World.Phase.DEAD; main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.next_play()],
 		[7634, func(): check(main.series.is_final(), "final"); check(main.profile.achievements.has("first_td") and main.profile.achievements.has("first_win"), "First Touchdown + First Win unlocked (%s)" % str(main.profile.achievements)); check(main.hud.text.find("ACHIEVEMENTS: ") >= 0, "HUD lists achievements"); var saved = main.Cosmetics.new(); saved.load_file(main.profile_path); check(saved.achievements.has("first_win"), "achievements saved"); main.ai.defense_enabled = true; DirAccess.remove_absolute(ProjectSettings.globalize_path(main.profile_path))],
+		# C01: call a run, snap, exchange through G, then steer the RB.
+		[7710, func():
+			main.configure(7)
+			main.ai.defense_enabled = false
+			for i in 4: _key(KEY_Q)
+			check(main.world.play_name == "Inside Zone", "Q selects a run play")
+			_key(KEY_Q)
+			_key(KEY_X)
+			check(main.world.play_name == "Outside Sweep" and main.world.run_flipped, "Q selects the sweep and X flips it")],
+		[7712, func():
+			check(main.huddle_calls(0).contains("[Outside Sweep]") and main.route_mesh.get_surface_count() > 0, "huddle and turf show the selected run")
+			_key(KEY_SPACE)],
+		[7764, func():
+			check(main.handoff_hint() == "G HANDOFF", "handoff prompt appears in reach")
+			_key(KEY_G)
+			var back = main.world.find_role(0, main.Athlete.Role.RB)
+			check(main.world.carrier() == back and main.controlled_id == back.id, "G hands off and hands offline control to the back")
+			main.input_override = Vector2.DOWN],
+		[7766, func():
+			check(main.pres.overlay.me_name.text.contains("YOU  RB/"), "HUD identifies the new controlled role")],
+		[7830, func():
+			check(main.world.carrier().position.y > main.world.los_y and main.world.phase == main.World.Phase.LIVE, "human RB runs across the LOS and stays live")
+			var back = main.world.carrier()
+			back.position.x = -0.5
+			main.input_override = Vector2.ZERO],
+		[7832, func():
+			check(main.world.phase == main.World.Phase.DEAD and main.stats.total("car") == 1 and main.stats.total("rush_yds") > 0.0, "whistle records the RB's rushing attempt and gain")],
+		# C04a: U from dead ball, then the one-minute warning at the next whistle.
+		[7850, func():
+			main.configure(3)
+			main.ai.defense_enabled = false
+			main.series.clock.remaining = 60.1
+			_key(KEY_U)
+			check(main.series.clock.timeouts == [1, 2], "U spends a timeout in 3v3")
+			check(main.pres.overlay.banner.text == "TIMEOUT", "timeout banner appears")
+			_key(KEY_SPACE)],
+		[7870, func():
+			check(main.world.phase == main.World.Phase.LIVE and main.series.clock.remaining < 60.0, "play stays live below 1:00")
+			check(not main.pres.overlay.banner.visible, "timeout banner clears on the snap")
+			check(main.pres.overlay.timeout_pips[0].is_visible_in_tree() and main.pres.overlay.timeout_pips[0].text == "●○", "live scorebug shows remaining timeouts")
+			_key(KEY_U)
+			check(main.series.clock.timeouts == [1, 2], "U cannot call timeout during the play")
+			main.world.carrier().position.x = -0.5],
+		[7874, func():
+			check(main.world.phase == main.World.Phase.DEAD and main.pres.overlay.banner.text == "ONE-MINUTE WARNING", "warning appears after the whistle")],
 	]
 
 ## First receiver not controlled by the human (humans don't auto-run routes).
