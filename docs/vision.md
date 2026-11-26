@@ -1,4 +1,6 @@
-# Arcade Football Game: Plan
+# Crater Bowl: vision
+
+The original pitch, pillars and roadmap (written as `PLAN.md`, 2026-11-24). The pillars and the problems → fixes table still guide every design call. The roadmap phases are history: what to build next lives in GitHub issues (`workflow.md`), and what shipped is in `../ITERATIONS.md`. The game is now named **Crater Bowl** (`features/out-of-game.md`).
 
 Working title: **"Fourth & Long"** (placeholder; pick your own. Don't reuse "Gridiron Remastered" or any existing game's name, art or assets.)
 
@@ -30,7 +32,7 @@ An original online multiplayer arcade football game for 2–10 friends. It's a s
 - **Engine: Godot 4 (GDScript).** It's free and lightweight, friends can install it in minutes, it has built-in high-level multiplayer, and it exports to Windows/Mac/Linux/Web. (Unity is the alternative if a friend already knows it. Don't pick Unreal for a small part-time team.)
 - **Networking:** a dedicated headless Godot server (cheap VPS, ~$5/mo) running at 30 Hz. Clients predict their own player, and the server owns the ball, tackles and scoring. Start with ENet; add Steam relay later.
 - **Art:** low-poly 3D, a stylized look (flat colors, chunky silhouettes). It's cheap to produce and ages well. Start with free CC0 packs (Kenney, Quaternius) and replace them later.
-- **Collab:** a GitHub repo, Git LFS for assets, a Discord channel, one shared task board (GitHub Projects).
+- **Collab:** a GitHub repo, Git LFS for assets, a Discord channel, and GitHub issues as the one shared backlog (`workflow.md`).
 
 ## Roadmap
 

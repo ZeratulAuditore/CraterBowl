@@ -302,6 +302,7 @@ func _jumbotrons(ox: float, oz: float, team_colors: Array) -> void:
 			logo.shaded = false
 			logo.position = Vector3(0, 3.4, -sz * 0.75)
 			logo.rotation.y = lab.rotation.y
+			logo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF   # the screen frame already casts
 			frame.add_child(logo)
 
 func _benches(w: float, L: float, team_colors: Array) -> void:
@@ -324,6 +325,7 @@ func _ground() -> void:
 	rm.set_shader_parameter("diff", load("res://assets/textures/regolith/moon_01_diff_1k.jpg"))
 	rm.set_shader_parameter("nrm", load("res://assets/textures/regolith/moon_01_nor_gl_1k.jpg"))
 	var mi := _mesh_node("Regolith", pm, rm)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF   # flat ground never casts
 	mi.position = center + Vector3(0, -0.06, 0)
 
 ## Jagged crater rim on the horizon.

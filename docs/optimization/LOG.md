@@ -8,6 +8,22 @@ Machine for all entries so far: WSL2 Ubuntu 24.04, i7-11800H (16 threads), RTX 3
 
 ---
 
+## 2026-11-25 — perf-02: shadow-caster budget broke on main (125/110)
+
+Reported by the loop session on origin/main 8663257. Cause: the sideline chain crew
+(`presentation._crew_member`) is 13 ellipsoid parts per member, all casting shadows (39 casters),
+each with its own `SphereMesh`. The turf, regolith ground and jumbotron logo sprites also cast.
+Fix: only crew torsos cast, parts share `RC.sphere(0.5, 1.0, 12, 6)`, and flat ground and logos don't cast.
+Shadow casters **125 → 85**; budget ratcheted 110 → 106. No visual change expected (limb and ground
+shadows are invisible at that distance). Lesson: new art layers must set `cast_shadow` deliberately.
+The default is ON.
+
+Also: the object-growth gate started failing at 57 objects. That wasn't a leak: growth stayed
+flat (57/71/66 at 600/1800/3600 frames) and came from first-use allocations of newer features. The
+gate now requires growth in **both** of two consecutive 400-frame windows (clean ≈ ±5; a
+planted per-frame `Resource.new()` reads 405 → fail).
+
+
 ## 2026-11-25 — perf-01: render pass, interpolation, gates (branch `perf-optimization`)
 
 Trigger: the user said the game "feels low quality in terms of performance". The windowed game

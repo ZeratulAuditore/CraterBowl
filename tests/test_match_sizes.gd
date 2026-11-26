@@ -64,7 +64,8 @@ func test_match_on_60_field() -> void:
 	w.step({}, DT)
 	var out := m.next_play()
 	assert_eq(out["outcome"], "try", "TD past 60")
-	assert_near(w.los_y, 57.0, 0.001, "1-pt try from the 3")
+	assert_near(w.los_y, 45.0, 0.001, "1-pt try: PAT kick from the 15")
+	assert_eq(w.kick_play, "fg", "PAT is a kick")
 	assert_true(m.choose_try(2))
 	assert_near(w.los_y, 50.0, 0.001, "2-pt try from the 10")
 

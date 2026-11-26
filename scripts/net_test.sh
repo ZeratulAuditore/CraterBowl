@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 GODOT="${GODOT:-godot}"
 PORT="${PORT:-$((24000 + RANDOM % 1000))}"
 "$GODOT" --headless --path . --import >/dev/null 2>&1 || true
-timeout 40 "$GODOT" --headless --path . -s res://tests/net_host.gd -- --host --port="$PORT" --playclock=4 --size=5 --start-when-ready --advertise=127.0.0.1 --profile-file=user://test_net_profile.json --leaderboard-file=user://test_net_lb.json --ranked-file=user://test_net_ranked.json > .net-host.log 2>&1 &
+timeout 40 "$GODOT" --headless --path . -s res://tests/net_host.gd -- --host --port="$PORT" --playclock=4 --no-kickoff --size=5 --start-when-ready --advertise=127.0.0.1 --profile-file=user://test_net_profile.json --leaderboard-file=user://test_net_lb.json --ranked-file=user://test_net_ranked.json > .net-host.log 2>&1 &
 HOST=$!
 # Join the private lobby by its invite code (printed by the host).
 CODE=""

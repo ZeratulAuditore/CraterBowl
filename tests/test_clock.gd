@@ -24,6 +24,15 @@ func _match(los: float = 25.0) -> Match:
 	m.match_event.connect(func(n, _d): mevents.append(n))
 	return m
 
+## Resolve a pending kickoff as a touchback: receiving team's ball at its 25.
+func _touchback(m) -> void:
+	assert_eq(m.state, m.State.KICKOFF)
+	m.world.kicked = true
+	m.world.phase = World.Phase.DEAD
+	m.last_result = {"type": "touchback", "spot": 105.0, "team": m.world.offense_team}
+	m.next_play()
+	assert_eq(m.state, m.State.SCRIMMAGE)
+
 func _tick(m, seconds: float, inputs := {}) -> void:
 	for i in int(round(seconds / DT)):
 		m.tick(DT)
@@ -66,8 +75,11 @@ func test_untimed_down_and_halftime() -> void:
 	assert_eq(out["outcome"], "halftime")
 	assert_eq(m.clock.half, 2)
 	assert_near(m.clock.remaining, Clock.HALF_LENGTH)
-	assert_eq(m.world.offense_team, 1, "other team receives 2nd half")
-	assert_near(m.world.los_y, 25.0)
+	# Opening receiver was team 0, so team 0 kicks off to team 1 from its 35.
+	assert_eq(m.state, m.State.KICKOFF, "2nd half opens with a kickoff")
+	assert_eq(out["receiving"], 1, "other team receives 2nd half")
+	assert_eq(m.world.offense_team, 0, "team 0 kicks")
+	assert_near(m.world.los_y, 35.0)
 
 func test_final_and_winner() -> void:
 	var m := _match()
@@ -167,6 +179,7 @@ func test_warning_waits_for_whistle_and_resets_at_halftime() -> void:
 	m.clock.remaining = 0.0
 	m.next_play()
 	assert_eq(m.clock.half, 2)
+	_touchback(m)   # 2nd half opens with a kickoff (B09)
 	_snap_with_holder(m)
 	m.clock.remaining = 60.1
 	_tick(m, 0.25)
@@ -194,7 +207,8 @@ func test_running_presnap_stops_at_warning_and_can_expire_after_warning() -> voi
 	assert_eq(m.last_outcome["outcome"], "halftime")
 	assert_eq(m.clock.half, 2)
 	assert_eq(m.world.phase, World.Phase.PRESNAP)
-	assert_eq(m.world.offense_team, 1)
+	assert_eq(m.state, m.State.KICKOFF, "2nd half opens with a kickoff")
+	assert_eq(m.last_outcome["receiving"], 1)
 
 func test_timeouts_stop_clock_use_actor_team_and_reset_at_half() -> void:
 	var m := _match()
@@ -232,3 +246,96 @@ func test_3v3_has_two_timeouts_and_snapshot_carries_counts() -> void:
 	var copy := _match()
 	Protocol.apply_snapshot(copy, Protocol.encode_snapshot(m, 10))
 	assert_eq(copy.clock.timeouts, [1, 2])
+
+func test_first_quarter_waits_for_whistle_and_preserves_drive_and_timeouts() -> void:
+	var m := _match()
+	m.clock.quarter_length = 120.0
+	m.start()
+	assert_eq(m.clock.label(), "Q1 2:00")
+	assert_true(m.call_timeout(0))
+	_snap_with_holder(m)
+	m.clock.remaining = 0.1
+	_tick(m, 0.25)
+	assert_eq(m.clock.quarter, 1, "wait for the live play")
+	assert_eq(m.world.phase, World.Phase.LIVE)
+	_end_tackle(m, 28.0)
+	assert_eq(m.next_play()["outcome"], "quarter")
+	assert_eq(m.clock.quarter, 2)
+	assert_eq(m.clock.half, 1)
+	assert_eq(m.world.offense_team, 0)
+	assert_eq(m.downs.down, 2)
+	assert_near(m.downs.los, 28.0)
+	assert_near(m.downs.first_down_y, 35.0)
+	assert_eq(m.clock.timeouts, [2, 3])
+	assert_eq(m.clock.label(), "Q2 2:00")
+
+func test_halftime_after_q2_preserves_pending_try_then_resets_timeouts() -> void:
+	var m := _match(90.0)
+	m.clock.quarter_length = 120.0
+	m.clock.quarter = 2
+	assert_true(m.call_timeout(1))
+	var qb := _snap_with_holder(m)
+	m.clock.remaining = 0.0
+	m.world._whistle("touchdown", {"carrier": qb.id, "team": 0})
+	assert_eq(m.next_play()["outcome"], "try")
+	assert_eq(m.clock.quarter, 2)
+	assert_true(m.choose_try(2))
+	qb = _snap_with_holder(m)
+	m.world._whistle("touchdown", {"carrier": qb.id, "team": 0})
+	var halftime := m.next_play()
+	assert_eq(halftime["outcome"], "halftime")
+	assert_eq(halftime["receiving"], 1)
+	assert_eq(m.score, [8, 0])
+	assert_eq(m.clock.half, 2)
+	assert_eq(m.clock.timeout_limit, 3)
+	assert_eq(m.clock.timeouts, [3, 3])
+	assert_eq(m.world.offense_team, 0, "opening receiver kicks after halftime")
+	assert_eq(m.clock.label(), "Q3 2:00")
+
+func test_q3_and_q4_can_end_between_snaps() -> void:
+	var m := _match()
+	m.clock.quarter_length = 180.0
+	m.clock.start_next_half()
+	assert_true(m.call_timeout(0))
+	_snap_with_holder(m)
+	_end_tackle(m, 28.0)
+	m.next_play()
+	m.clock.remaining = 0.1
+	m.clock.play_clock = 0.1
+	m.tick(0.2)
+	assert_eq(m.last_outcome["outcome"], "quarter")
+	assert_eq(m.clock.label(), "Q4 3:00")
+	assert_eq(m.clock.timeouts, [2, 3])
+	assert_eq(m.world.offense_team, 0)
+	assert_eq(m.downs.down, 2)
+	assert_near(m.downs.los, 28.0)
+	_snap_with_holder(m)
+	_end_tackle(m, 31.0)
+	m.next_play()
+	m.clock.remaining = 0.1
+	m.clock.play_clock = 0.1
+	m.tick(0.2)
+	assert_true(m.is_final())
+	assert_true(not mevents.has("auto_snap"))
+	assert_eq(m.clock.label(), "FINAL")
+
+func test_quarter_clock_snapshot_and_warning_only_in_q2_and_q4() -> void:
+	var m := _match()
+	m.clock.quarter_length = 120.0
+	m.start()
+	for quarter in [1, 2, 3, 4]:
+		var w := m.world
+		m.clock.quarter = quarter
+		m.clock.remaining = 60.1
+		var qb := _snap_with_holder(m)
+		w._whistle("out_of_bounds", {"carrier": qb.id, "team": 0})
+		m.tick(DT)
+		assert_eq(mevents.count("clock_warning"), int(quarter / 2), "quarter %d" % quarter)
+		m.next_play()
+		if quarter == 2:
+			m.clock.start_next_half()
+	var copy := _match()
+	Protocol.apply_snapshot(copy, Protocol.encode_snapshot(m, 50))
+	assert_eq(copy.clock.quarter, 4)
+	assert_near(copy.clock.quarter_length, 120.0)
+	assert_eq(copy.clock.label(), m.clock.label())

@@ -42,7 +42,8 @@ func test_run_into_endzone_is_td() -> void:
 	var out := m.next_play()
 	assert_eq(m.score[0], 6, "+6")
 	assert_eq(out["outcome"], "try", "try next")
-	assert_near(w.los_y, 97.0, 0.001, "try from the 3")
+	assert_near(w.los_y, 85.0, 0.001, "PAT snapped from the 15")
+	assert_eq(w.kick_play, "fg", "1-pt try is a kick")
 
 func test_catch_in_endzone_is_td() -> void:
 	var m := _match(80.0)
@@ -69,8 +70,9 @@ func test_safety() -> void:
 	var out := m.next_play()
 	assert_eq(m.score[1], 2, "+2 defense")
 	assert_eq(out["outcome"], "kickoff")
-	assert_eq(w.offense_team, 1, "safety: scoring team receives")
-	assert_near(w.los_y, 25.0)
+	assert_eq(out["receiving"], 1, "safety: scoring team receives")
+	assert_eq(w.offense_team, 0, "safety: free kick by the team scored on")
+	assert_near(w.los_y, 20.0, 0.001, "free kick from the 20")
 
 func _score_td(m) -> void:
 	var w = m.world
@@ -86,9 +88,10 @@ func test_one_point_try_good() -> void:
 	var out := m.next_play()
 	assert_eq(m.score[0], 7, "6 + 1")
 	assert_eq(out["try"], "good")
-	assert_eq(m.world.offense_team, 1, "kickoff to other team")
-	assert_near(m.world.los_y, 25.0)
-	assert_eq(m.downs.down, 1)
+	assert_eq(out["receiving"], 1, "kickoff to other team")
+	assert_eq(m.world.offense_team, 0, "scoring team kicks off")
+	assert_near(m.world.los_y, 35.0)
+	assert_eq(m.world.kick_play, "kickoff")
 
 func test_two_point_try_choice() -> void:
 	var m := _match(95.0)
@@ -108,4 +111,4 @@ func test_failed_try() -> void:
 	var out := m.next_play()
 	assert_eq(m.score[0], 6, "no try points")
 	assert_eq(out["try"], "no_good")
-	assert_eq(m.world.offense_team, 1, "kickoff")
+	assert_eq(out["receiving"], 1, "kickoff to the other team")
