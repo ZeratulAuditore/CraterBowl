@@ -350,7 +350,7 @@ func _status_text(main) -> String:
 		0:
 			var mine: bool = w.offense_team == w.get_athlete(main.my_id).team
 			var t := "BALL ON %s  ·  " % spot if spot != "" else ""
-			return t + ("SPACE TO SNAP" if mine else "DEFENSE  ·  SPACE TO LET THEM SNAP")
+			return t + ("SPACE TO SNAP" if mine else "DEFENSE  ·  Q CHANGE CALL" if not w.defensive_call.is_empty() else "DEFENSE")
 		1:
 			if main.world.is_chaos():
 				return "PASS CLOCK %.1f" % maxf(0.0, main.T.PASS_CLOCK - w.hold_t)
@@ -362,12 +362,19 @@ func _refresh_card(main) -> void:
 	var w = main.world
 	var me = w.get_athlete(main.my_id)
 	var offense: bool = me != null and w.offense_team == me.team
-	if offense:
-		card_title.text = "PLAY CALL  [Z]"
+	var remaining: int = main.huddle_remaining()
+	if remaining > 0 and me != null:
+		card_title.text = "%s HUDDLE  ·  %ds  ·  Q NEXT" % ["OFFENSE" if offense else "DEFENSE", remaining]
+		card_body.text = main.huddle_calls(me.team) + ("\nL Last   ·   X Flip   ·   Y Auto" if offense else "\nL Last   ·   Y Auto")
+	elif offense:
+		card_title.text = "AUTO CALL  [Y]" if main.auto_call else "PLAY CALL  [Q]"
 		var body: String = str(w.play_name).to_upper()
 		if w.route_of.has(main.my_id):
-			body += "\nYOUR ROUTE  %s  [X]" % w.route_of[main.my_id]
+			body += "\nYOUR ROUTE  %s  [F]" % w.route_of[main.my_id]
 		card_body.text = body
+	elif int(w.phase) == 0 and not w.defensive_call.is_empty():
+		card_title.text = "AUTO CALL  [Y]" if main.auto_call else "DEFENSIVE CALL  [Q]"
+		card_body.text = w.DefensivePlaybook.CALLS[w.defensive_call].name
 	else:
 		card_title.text = "DEFENSE"
 		card_body.text = "F / RMB  DIVE TACKLE\nSHIFT  SPRINT"
@@ -391,7 +398,7 @@ func _hints(main) -> String:
 	var me = w.get_athlete(main.my_id)
 	var offense: bool = me != null and w.offense_team == me.team
 	if int(w.phase) == 0:
-		return "WASD MOVE · SHIFT SPRINT · TAB POSITION · T TEAM" + (" · Z PLAY · X ROUTE" if offense else "") + " · WHEEL/G TAUNT"
+		return "WASD MOVE · SHIFT SPRINT · TAB POSITION · T TEAM" + (" · Q PLAY · F ROUTE · X FLIP" if offense else " · Q CALL") + " · WHEEL/G TAUNT"
 	if int(w.phase) == 1 and main.pov_active() and main.world.ball.is_held_by(main.controlled_id):
 		return "MOUSE LOOK = AIM (UP = LOFT) · HOLD LMB / J CHARGE · RELEASE TO THROW"
 	if int(w.phase) == 1 and main.world.ball.is_held_by(main.controlled_id):

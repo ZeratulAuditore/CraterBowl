@@ -23,6 +23,11 @@ var saw_lobby := false
 var lobby_size := 0
 var lobby_code := ""
 var lead_samples := 0
+var was_locked := false     # C08d: joiner (defense) started in stance per host snapshot
+var broke_stance := false   # host snapshot shows the lock cleared after our Space
+var crossed_line := false   # predicted defender ever past the neutral zone
+var defense_call_seen := false
+var defense_recall_seen := false
 
 func check(cond: bool, msg: String) -> void:
 	print(("  NET OK   " if cond else "  NET FAIL ") + msg)
@@ -33,6 +38,8 @@ func _on_snap(s: Dictionary) -> void:
 	snaps += 1
 	if aid >= 0:
 		last_server_x = (s["a"] as PackedFloat32Array)[aid * 7]
+	if s.get("dc") == "edge_blitz" and main.world.defensive_call == "edge_blitz":
+		defense_call_seen = true
 	if s["ph"] == 1:
 		saw_live = true
 
@@ -67,7 +74,16 @@ func _physics_process(_dt: float) -> bool:
 		var x: float = main.world.get_athlete(aid).position.x
 		if start_x == INF:
 			start_x = x
-			main.input_override = Vector2(1, 0)  # strafe right (legal presnap for defense)
+			main.do_action({"a": "defense", "p": "edge_blitz"})
+			var me = main.world.get_athlete(aid)
+			was_locked = me.set_lock or me.role == main.Athlete.Role.DL
+			main.do_action({"a": "snap"})          # defense Space: break stance over the wire
+			main.input_override = Vector2(1, 0)  # strafe right (legal presnap once roaming)
+		if not broke_stance and main.world.phase == 0 and not main.world.get_athlete(aid).set_lock:
+			broke_stance = true
+		var a = main.world.get_athlete(aid)
+		if main.world.phase == 0 and a.team != main.world.offense_team and a.position.y < main.world.los_y + 0.5 - 0.001:
+			crossed_line = true
 
 		max_dx = maxf(max_dx, x - start_x)
 	# With prediction, the locally shown position leads the last raw server state while moving.
@@ -78,9 +94,11 @@ func _physics_process(_dt: float) -> bool:
 	if saw_live and bad_snap_sent_at < 0 and main.world.phase == 0:
 		main.input_override = Vector2.ZERO
 		main.do_action({"a": "snap"})
+		main.do_action({"a": "recall_call"})
 		bad_snap_sent_at = f
 	if bad_snap_sent_at > 0 and f == bad_snap_sent_at + 30:
 		bad_snap_rejected = main.world.phase == 0
+		defense_recall_seen = main.world.defensive_call == "edge_blitz"
 		aid_before_swap = aid
 		main.do_action({"a": "team"})
 	if bad_snap_sent_at > 0 and f == bad_snap_sent_at + 60:
@@ -96,8 +114,13 @@ func _physics_process(_dt: float) -> bool:
 		check(main.match_size == 5 and main.world.athletes.size() == 10, "client adopted host's 5v5 (%d athletes)" % main.world.athletes.size())
 		check(snaps > 20, "receiving snapshots (%d)" % snaps)
 		check(max_dx > 2.0, "own input moved own athlete on server (dx %.1f)" % max_dx)
+		check(was_locked, "joiner on defense starts in stance")
+		check(broke_stance, "defense Space broke stance via the host (snapshot lock cleared)")
+		check(not crossed_line, "predicted defender never past the neutral zone")
 		check(lead_samples > 10, "own athlete predicted ahead of server state (%d frames)" % lead_samples)
 		check(saw_live and got_snap_event, "host auto-snap reached client (snapshot LIVE + reliable event)")
+		check(defense_recall_seen, "remote defender recalled the previous snap's call")
+		check(defense_call_seen, "defensive selection reached host and returned in a snapshot")
 		check(bad_snap_rejected, "defense snap rejected by server")
 		check(swapped_to_team0, "team swap request -> server reassigned to team 0")
 		check(main.views[aid].number_text == "88", "my equipped #88 round-tripped through the host (%s)" % main.views[aid].number_text)

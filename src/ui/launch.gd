@@ -20,6 +20,8 @@ var settings := SettingsStore.new()
 var settings_path := SettingsStore.DEFAULT_PATH
 var menu_visited := false        # the boot-time "skip menu" rule applies only once
 var last_status := ""             # message shown on the menu after returning (e.g. "Disconnected")
+var from_menu := false            # the current match was started from the menu (post-game returns to it)
+var last_match := {}              # post-game overview handed to the lobby (main.gd _finish_postgame)
 var _overlay: CanvasLayer
 var _hint: Label
 var _xlate := {}             # pressed key -> default key (rebinding)
@@ -92,14 +94,18 @@ static func _copy_tree(src: String, dst: String, copied: Array) -> void:
 ## Start the game scene with these options (same keys as CLI flags, e.g. {"host": true}).
 func start_game(opts: Dictionary) -> void:
 	options = opts.duplicate()
+	from_menu = true
+	last_match = {}
 	if settings.player_name != "" and not options.has("name"):
 		options["name"] = settings.player_name
 	get_tree().paused = false
 	get_tree().change_scene_to_file.call_deferred(GAME_SCENE)
 
-func go_to_menu(status: String = "") -> void:
+func go_to_menu(status: String = "", overview: Dictionary = {}) -> void:
 	menu_visited = true
 	last_status = status
+	last_match = overview
+	from_menu = false
 	options = {}
 	_close_overlay()
 	_close_game_network()

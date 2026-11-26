@@ -120,7 +120,20 @@ func _setup() -> void:
 			_btn(menu.content, "Quick match").pressed.emit()
 			check(rec.opts.get("queue") == "casual" and rec.opts.get("mm") == "127.0.0.1:%d" % MM_PORT and rec.opts.get("host-port") == "24566", "quick match -> casual queue %s" % str(rec.opts))
 			_btn(menu.content, "Ranked").pressed.emit()
-			check(rec.opts.get("queue") == "competitive", "ranked -> competitive queue")],
+			check(rec.opts.get("queue") == "competitive", "ranked -> competitive queue")
+			var ps: OptionButton = menu.content.find_child("PartySize", true, false)
+			ps.select(2)
+			ps.item_selected.emit(2)
+			var pc: LineEdit = menu.content.find_child("PartyCode", true, false)
+			check(pc.text.length() == 5 and pc.editable, "party gets a code")
+			pc.text = "abc12"
+			pc.text_changed.emit("abc12")
+			_btn(menu.content, "Chaosball (3v3, low-g)").pressed.emit()
+			_btn(menu.content, "Quick match").pressed.emit()
+			check(rec.opts.get("party") == "ABC12:3" and rec.opts.get("mode") == "chaosball" and rec.opts.get("size") == "3",
+				"party + chaosball queue %s" % str(rec.opts))
+			menu.pick_mode = "classic"
+			menu.party_size = 1],
 		[302, func():
 			menu.show_screen("practice")
 			_btn(menu.content, "Tackling").pressed.emit()
@@ -159,7 +172,22 @@ func _setup() -> void:
 			check(mine.size() == 1 and mine[0]["code"] == current_scene.lobby.code and mine[0]["size"] == 3, "public lobby registered %s" % str(mine))
 			launch.go_to_menu("Left match")],
 		[830, func():
-			check(current_scene != null and current_scene.scene_file_path == launch.MENU_SCENE, "leave -> back at menu")],
+			check(current_scene != null and current_scene.scene_file_path == launch.MENU_SCENE, "leave -> back at menu")
+			check(current_scene.current == "home" and launch.last_match.is_empty(), "leaving mid-match shows no overview")
+			launch.go_to_menu("", {"score": [21, 14], "winner": 0, "my_team": 0, "team_names": ["HELIOS", "NEBULA"],
+				"mode": "classic", "size": 5, "me": "Ace", "my_lines": ["QB: 12/18 160yd 2TD 0INT"], "xp": "XP +120 (Level 2)",
+				"teams": [{"pass_yds": 160, "rush_yds": 40, "td": 3}, {"pass_yds": 90, "rush_yds": 70, "td": 2}],
+				"potg": [{"id": 1, "team": 0, "pos": "QB", "name": "Ace", "number": 12, "title": "PLAYER OF THE GAME", "lines": ["12/18  160 YDS  2 TD"]},
+					{"id": 9, "team": 1, "pos": "LB", "name": "CPU", "number": 44, "title": "DEFENSIVE STANDOUT", "lines": ["7 TKL  1 SACK"]}]})],
+		[860, func():
+			var m = current_scene
+			check(m.current == "overview" and m.panel.visible, "post-game return opens the game overview")
+			var ov = m.content.find_child("GameOverview", true, false)
+			check(ov != null and ov.find_child("Potg1", true, false) != null and ov.find_child("BoxScore", true, false) != null, "overview lists players of the game + team stats")
+			check((ov.find_child("Result", true, false) as Label).text == "VICTORY", "overview headline from your side")
+			check(_btn(m, "Last game") != null, "footer can reopen the last game")
+			_btn(m.content, "Close").pressed.emit()
+			check(m.current == "home", "close overview -> lobby home")],
 		[900, func():
 			check(mms.registry.listing(mms._now()).filter(func(e): return e["name"] == "Ace's match").is_empty(), "lobby unlisted after leaving")
 			launch.start_game({"practice": "passing"})],

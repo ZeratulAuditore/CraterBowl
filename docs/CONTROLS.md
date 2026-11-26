@@ -5,12 +5,13 @@
 | WASD | Move (relative to your view while you're the passer) |
 | Shift | Sprint |
 | Space | Snap |
-| **Q / E** | **Spin left / right**: 0.4 s spin + sidestep; any dive tackle that lands mid-spin misses. 1.2 s cooldown. |
-| **F** / RMB | **Dive**: tackle attempt on defense. With the ball, dive for extra yards and you're down where you land (or score if you dive across the goal line). |
+| **Q / E** | **Spin left / right** (during the play): 0.4 s spin + sidestep; any dive tackle that lands mid-spin misses. 1.2 s cooldown. |
+| **F** / RMB | **Dive** (during the play): tackle attempt on defense. With the ball, dive for extra yards and you're down where you land (or score if you dive across the goal line). |
 | **Mouse wheel** | Scroll the taunt picker (right side of the screen) |
 | **G** / middle click | Perform the selected taunt (cosmetic, 1 s rate limit, everyone sees it) |
 | LMB / J (hold) | Charge a throw, release to throw |
-| Z / X | Cycle play / cycle your route (moved off Q / F) |
+| Q / F before the snap | Next play call (defensive call on D) / cycle your route. Same keys, different job before the snap |
+| X / Y / L | Flip play / auto call / last call (huddle) |
 | Tab / T | Switch position / team |
 | R / V | Next play / instant replay |
 
@@ -30,7 +31,7 @@ and the mouse is released. The ESC menu also releases it. On a gamepad, the righ
 Ctrl (lob) only applies to the old click-to-aim path, which tests/bots still use (`main.pov_enabled = false`).
 
 ## Gamepad
-Stick move, A snap, B dive, LB/RB spin, RT throw, LT sprint, right stick POV look,
+Stick move, A snap, B dive, LB/RB spin, X next call (pre-snap), Y flip, RT throw, LT sprint, right stick POV look,
 L3 lob, R3 switch position. Taunts are not on the pad yet.
 
 ## Where it lives

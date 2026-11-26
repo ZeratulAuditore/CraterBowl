@@ -207,3 +207,19 @@
 - Parity: G25 evidence = menu_flow (name, matchmaking, rebinding via real keys, gamepad, Esc overlay) + unit tests; G26 evidence = offscreen real-renderer screenshots (viewed: stadium, rigged players, scorebug, live play).
 - `./scripts/parity_audit.sh` full run: **26/26 PASS, 0 gaps, 0 pending** (7m11s). Built game: `./scripts/export.sh Linux` → CraterBowl-0.1.0-linux.zip, EXPORT BOOT CHECK PASS.
 - Phase A complete. Open follow-ups: D05 return yards; Phase B items (B07 owned by out-of-game session); Phase C TODOs from docs/gaps.
+
+## 030: C08a Defensive playbook (2026-11-25)
+- Added nine named defensive calls across man, zone and blitz families and base, goal-line and prevent shells. Suggestions use down, yards to gain, yards to goal and time remaining.
+- C08b still owns on-field assignments and play art. B03 still owns the huddle.
+- Tests: 202 unit (+2); full smoke passed with isolated user data after the shared settings file changed during the baseline run.
+
+## 031: C08b Defensive play selection and synchronization (2026-11-25)
+- Classic matches seed a defensive call from the game situation each snap. The host accepts catalog calls from defending athletes during presnap and sends the current call in match snapshots.
+- Player controls, assignment behavior and play art remain open in C08c and B03.
+- Tests: 204 unit (+2); full smoke passed, including a remote defender's selection round-tripping through the host.
+
+## 032: C08c + B03 Defensive assignments and play-call huddle (2026-11-25)
+- Classic presnap shows a five-second play-call panel for both teams. Q cycles calls, L recalls the team's last call, X mirrors the offense's wide receiver routes, and Y opts into the situational default without the panel.
+- Calls drive bot man, zone and rush behavior. Presnap turf art shows teammates' coverage landmarks, man tethers, rush lanes, receiver routes and pass protection targets. The local assignment is emphasized.
+- Cover 2 allowed 1 deep completion across 24 matched bot snaps versus 8 with legacy coverage. Deep attempts fell from 10 to 1.
+- Tests: 208 unit (+4) and full smoke passed, including remote recall. Checked offense and defense screenshots offscreen. An initial smoke attempt hit a matchmaker port bind error and passed on retry.

@@ -9,8 +9,10 @@ const ACTIONS := [
 	["move_left", "Move left", KEY_A], ["move_right", "Move right", KEY_D],
 	["sprint", "Sprint", KEY_SHIFT], ["snap", "Snap / hike", KEY_SPACE],
 	["throw", "Throw (hold to charge)", KEY_J], ["lob", "Lob (click-aim only)", KEY_CTRL],
-	["tackle", "Dive / tackle", KEY_F], ["spin_left", "Spin left", KEY_Q], ["spin_right", "Spin right", KEY_E],
-	["taunt", "Taunt (wheel picks)", KEY_G], ["play", "Cycle play", KEY_Z], ["route", "Cycle route", KEY_X],
+	["tackle", "Dive / tackle (pre-snap: cycle route)", KEY_F],
+	["spin_left", "Spin left (pre-snap: next play call)", KEY_Q], ["spin_right", "Spin right", KEY_E],
+	["flip", "Flip play", KEY_X], ["auto_call", "Auto call", KEY_Y], ["recall", "Last call", KEY_L],
+	["taunt", "Taunt (wheel picks)", KEY_G],
 	["position", "Switch position", KEY_TAB], ["team", "Switch team", KEY_T],
 	["next", "Next play", KEY_R], ["replay", "Instant replay", KEY_V],
 	["try1", "Extra point", KEY_1], ["try2", "Two-point try", KEY_2],
@@ -20,7 +22,7 @@ const STICK_DEADZONE := 0.4
 const TRIGGER_ON := 0.5
 ## Gamepad (SDL/Xbox layout) button -> action
 const PAD_BUTTONS := {
-	JOY_BUTTON_A: "snap", JOY_BUTTON_B: "tackle", JOY_BUTTON_X: "play", JOY_BUTTON_Y: "route",
+	JOY_BUTTON_A: "snap", JOY_BUTTON_B: "tackle", JOY_BUTTON_X: "spin_left", JOY_BUTTON_Y: "flip",
 	JOY_BUTTON_LEFT_SHOULDER: "spin_left", JOY_BUTTON_RIGHT_SHOULDER: "spin_right",
 	JOY_BUTTON_LEFT_STICK: "lob", JOY_BUTTON_RIGHT_STICK: "position", JOY_BUTTON_BACK: "replay", JOY_BUTTON_DPAD_UP: "next",
 	JOY_BUTTON_DPAD_LEFT: "try1", JOY_BUTTON_DPAD_RIGHT: "try2", JOY_BUTTON_DPAD_DOWN: "team",
@@ -95,5 +97,5 @@ static func help_text(bindings: Dictionary) -> String:
 		lines.append("%-24s %s" % [a[1], key_name(key_for(a[0], bindings))])
 	lines.append("QB aim: mouse look (captured). Look up for loft, hold LMB to charge distance")
 	lines.append("Mouse: LMB throw, RMB dive, wheel pick taunt, middle click taunt")
-	lines.append("Gamepad: stick move, A snap, B dive, LB/RB spin, RT throw, LT sprint")
+	lines.append("Gamepad: stick move, A snap, B dive, LB/RB spin, X next call, Y flip, RT throw, LT sprint")
 	return "\n".join(lines)

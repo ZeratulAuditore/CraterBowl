@@ -309,7 +309,8 @@ func _process(delta: float) -> void:
 	if bubble:
 		bubble.visible = emote_t > 0.0
 		bubble.modulate.a = clampf(emote_t / 0.3, 0.0, 1.0)
-	if athlete.is_spinning() and spin_vis_t <= 0.0:
+	# Menu/POTG stub athletes have no spin state.
+	if athlete.has_method("is_spinning") and athlete.is_spinning() and spin_vis_t <= 0.0:
 		spin_vis_t = T.SPIN_TIME
 		spin_vis_side = athlete.spin_dir
 	spin_vis_t = maxf(0.0, spin_vis_t - delta)

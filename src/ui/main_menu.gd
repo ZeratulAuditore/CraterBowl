@@ -15,6 +15,7 @@ const PortMapper := preload("res://src/net/port_mapper.gd")
 const NetSession := preload("res://src/net/net_session.gd")
 const Lobby := preload("res://src/ui/lobby_stage.gd")
 const Music := preload("res://src/ui/music_player.gd")
+const GameOverview := preload("res://src/ui/game_overview.gd")
 const QUEUE_HOST_PORT := 24566    # fixed so UPnP can map it before queueing
 const SIZES := [3, 5, 7]
 const TOP_H := 78
@@ -66,6 +67,8 @@ var _capture_button: Button
 var browser: Node
 var list_public := true
 var host_port := NetSession.DEFAULT_PORT
+var party_code := ""
+var party_size := 1          # 1 = solo
 var _upnp_thread: Thread
 var busy := false
 
@@ -105,6 +108,9 @@ func build() -> void:
 	_set_mode(mode_id)
 	if settings().player_name == "":
 		show_screen("welcome")
+	elif not launch.last_match.is_empty():
+		show_screen("overview")   # just back from a match: show how it went
+		play_button.grab_focus.call_deferred()
 	else:
 		show_screen("home")
 		play_button.grab_focus.call_deferred()
@@ -357,8 +363,11 @@ func _build_footer() -> void:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 26)
 	bar.add_child(h)
-	for l in [["Replays", func(): show_screen("replays")], ["Controls", func(): show_screen("settings")],
-			["Report a bug", func(): OS.shell_open(BUG_URL)], ["Quit", func(): show_screen("quit")]]:
+	var links := [["Replays", func(): show_screen("replays")], ["Controls", func(): show_screen("settings")],
+			["Report a bug", func(): OS.shell_open(BUG_URL)], ["Quit", func(): show_screen("quit")]]
+	if not launch.last_match.is_empty():
+		links.push_front(["Last game", func(): show_screen("overview")])
+	for l in links:
 		var b := Button.new()
 		b.text = str(l[0]).to_upper()
 		b.focus_mode = Control.FOCUS_NONE
@@ -496,6 +505,22 @@ func show_screen(id: String) -> void:
 	if not home:
 		call("_screen_" + id)
 
+## Last match: result, players of the game, team stats, your line (src/ui/game_overview.gd).
+func _screen_overview() -> void:
+	var ov: Dictionary = launch.last_match
+	if ov.is_empty():
+		_text("No finished match yet this session.")
+		return
+	GameOverview.build(content, ov)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 10)
+	content.add_child(h)
+	_button("Play again", play_selected, h).name = "PlayAgain"
+	var rp := str(ov.get("replay", ""))
+	if rp != "" and FileAccess.file_exists(rp):
+		_button("Watch replay", func(): launch.start_game({"replay": rp}), h)
+	_button("Close", func(): show_screen("home"), h).name = "CloseOverview"
+
 func _screen_welcome() -> void:
 	content.add_child(UITheme.heading("Welcome to the Crater", 40, UITheme.CYAN))
 	_text("Pick a name. It shows on scoreboards, leaderboards and your ranked rating. You can change it in Settings.")
@@ -518,14 +543,15 @@ func _screen_online() -> void:
 	content.add_child(UITheme.heading("Play online"))
 	_text("Playing as %s  ·  %s" % [settings().player_name, _rating_line()])
 	content.add_child(UITheme.heading("Matchmaking", 22, UITheme.CYAN))
+	_mode_picker()
 	_size_picker(false)
+	_party_row()
 	var q := HBoxContainer.new()
 	q.add_theme_constant_override("separation", 10)
 	content.add_child(q)
 	_button("Quick match", func(): _queue("casual"), q)
 	_button("Ranked", func(): _queue("competitive"), q)
 	content.add_child(UITheme.heading("Private match", 22, UITheme.CYAN))
-	_mode_picker()
 	var pub := CheckButton.new()
 	pub.text = "List publicly in the match browser"
 	pub.button_pressed = list_public
@@ -735,10 +761,58 @@ func capture_binding(action: String, key: int) -> void:
 ## ------------------------------------------------------------------ actions
 func _queue(mode: String) -> void:
 	_with_port(QUEUE_HOST_PORT, func(ip):
-		var o := {"queue": mode, "mm": settings().matchmaker, "size": str(pick_size), "host-port": str(QUEUE_HOST_PORT)}
+		var o := queue_options(mode)
 		if ip != "":
 			o["advertise"] = ip
 		launch.start_game(o))
+
+## Options for a queue launch (party: everyone enters the same code + size).
+func queue_options(mode: String) -> Dictionary:
+	var o := {"queue": mode, "mm": settings().matchmaker, "size": str(3 if pick_mode == "chaosball" else pick_size),
+		"host-port": str(QUEUE_HOST_PORT)}
+	if pick_mode == "chaosball":
+		o["mode"] = "chaosball"
+	var code := party_code.strip_edges().to_upper()
+	if party_size >= 2 and code != "":
+		o["party"] = "%s:%d" % [code, party_size]
+	return o
+
+static func new_party_code() -> String:
+	const A := "ABCDEFGHJKMNPQRSTVWXYZ23456789"
+	var s := ""
+	for i in 5:
+		s += A[randi() % A.length()]
+	return s
+
+func _party_row() -> void:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 8)
+	content.add_child(h)
+	_text("Party", h).custom_minimum_size = Vector2(120, 0)
+	var size_ob := OptionButton.new()
+	size_ob.name = "PartySize"
+	for n in range(1, 8):
+		size_ob.add_item("Solo" if n == 1 else "%d friends" % n)
+	size_ob.select(party_size - 1)
+	h.add_child(size_ob)
+	var code := _line("Party code", party_code, h)
+	code.name = "PartyCode"
+	code.custom_minimum_size = Vector2(150, 0)
+	code.max_length = 8
+	code.editable = party_size >= 2
+	code.text_changed.connect(func(t): party_code = t)
+	var gen := _button("New code", func():
+		party_code = new_party_code()
+		code.text = party_code, h)
+	gen.disabled = party_size < 2
+	size_ob.item_selected.connect(func(i):
+		party_size = i + 1
+		code.editable = party_size >= 2
+		gen.disabled = party_size < 2
+		if party_size >= 2 and party_code == "":
+			party_code = new_party_code()
+			code.text = party_code)
+	_text("Everyone in the party picks the same size + code, then queues.", content).add_theme_color_override("font_color", Color(UITheme.REGOLITH, 0.9))
 
 func host_match() -> void:
 	_with_port(host_port, func(ip):
