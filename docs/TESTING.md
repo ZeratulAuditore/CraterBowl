@@ -20,6 +20,10 @@ Run the full one before every commit that touches code. The pre-commit hook runs
 
 ## The gate tiers (`scripts/check.sh`)
 
+The gate checks that Godot is available before running lint. Set `GODOT=/path/to/godot` when using
+a binary outside `PATH`. The Ubuntu 24.04 PR workflow installs renderer packages from the Ubuntu
+archives and runs `bash tests/ci_setup_test.sh` to check setup failures without changing system APT state.
+
 | Tier | Steps | Catches |
 |---|---|---|
 | `lint` | `tools/lint.gd` compiles every `.gd` (src, tests, tools); grep rules: no default-tessellation primitive meshes in `player.gd`, no engine/time/random calls in `src/sim` | parse errors in files no test loads; perf anti-patterns; sim purity breaks (determinism, server safety) |
