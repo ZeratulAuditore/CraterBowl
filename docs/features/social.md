@@ -3,7 +3,8 @@
 Feature-level doc: how this works for players **today** on `main`. Design/implementation detail: [../design/voice-chat.md](../design/voice-chat.md) (planned). Open work: GitHub issues labelled `area:social` (listed below).
 
 ## Summary
-There is **no in-match communication** today: no voice, no text chat, no quick-chat wheel, no pings, no emotes.
+There is **no in-match communication** today: no voice, no text chat, no quick-chat wheel and no pings.
+The one in-match expression is **taunts**: hold C for a radial wheel of 8 cosmetic taunts (animation + speech bubble).
 The social features that do ship sit around a match: names, invite codes, parties and private lobbies. They're documented in [online.md](online.md); this page indexes them and tracks the communication work.
 
 ## How it plays
@@ -16,6 +17,7 @@ The social features that do ship sit around a match: names, invite codes, partie
 | Queue together as a party (same code + size) | [online.md](online.md#parties) |
 | Private lobby with ready-up and host settings | [online.md](online.md#private-lobby-in-the-match-scene-text-hud) |
 | Public match browser | [online.md](online.md#match-browser-srcuiserver_browsergd-srcnetlobby_registrygd) |
+| Taunts: hold C, drag toward one of 8 on a radial wheel, release (everyone sees the animation and bubble) | [CONTROLS.md](../CONTROLS.md#taunt-wheel-139) |
 | Self-expression: jersey number, trim, helmet, TD celebration | [progression.md](progression.md#cosmetics-locker-room) |
 | Players of the Game presentation after each match | [presentation.md](presentation.md) |
 
@@ -36,7 +38,8 @@ The social features that do ship sit around a match: names, invite codes, partie
 - Voice is host-relayed and team-filtered on the host, so a client can't subscribe to the other team. A modified host could still listen in, which is accepted for a friends game (see the design doc).
 
 ## Code and tests
-- No communication code exists yet. Name handling: `src/ui/settings_store.gd` (`clean_name`), `src/net/lobby.gd` (`set_name`).
+- Taunts: `src/sim/emotes.gd` (list, rate limit), `src/game/taunt_wheel.gd`, tests `tests/test_taunt_wheel.gd` + `tests/game_flow.gd`.
+- No voice/text/ping code exists yet. Name handling: `src/ui/settings_store.gd` (`clean_name`), `src/net/lobby.gd` (`set_name`).
 - Parties, lobby and browser code and tests: see [online.md](online.md#code-and-tests).
 
 ## Open issues
