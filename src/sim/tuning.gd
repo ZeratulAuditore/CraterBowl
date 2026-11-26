@@ -120,3 +120,23 @@ const DEFENSE_PREVENT_DEPTH := 25.0
 const DEFENSE_GOAL_DEPTH := 4.0
 const HUDDLE_SECONDS := 5.0
 const PROTECTION_RANGE := 8.0
+
+# Kicking (B09/C02). Kicks are deterministic: aim + power meter, no random wobble.
+const KICK_SPEED_MIN := 14.0       # yd/s at 0 power
+const KICK_SPEED_MAX := 27.0       # yd/s at full power (~66 yd carry)
+const KICK_HEIGHT := 0.3           # ball height at contact
+const KICK_ANGLE := {"punt": 52.0, "fg": 38.0, "kickoff": 42.0}   # degrees
+const KICK_BLOCK_WINDOW := 5.0     # ball travel (yd) during which rushers can block it
+const KICK_BLOCK_HEIGHT := 3.0
+const KICK_BLOCK_REACH := 1.0
+const KICK_REST_TIME := 1.5        # an unfielded kick that stops rolling is downed
+const ONSIDE_MIN_TRAVEL := 10.0    # kicking team may recover a kickoff past this
+const CROSSBAR_HEIGHT := 3.3
+const UPRIGHT_SPAN_FRACTION := 0.116   # of field width, clamped 4.5..6.2 (matches field art)
+const PUNT_DEPTH := 10.0           # punter's depth behind the LOS
+const FG_HOLD_DEPTH := 7.0         # holder's depth behind the LOS
+const KICKOFF_RETURNER_DEPTH := 0.1    # returner stands at this fraction of the field from his goal
+const PUNT_RETURNER_DEPTH := 38.0  # yd past the LOS
+const KICKOFF_DEFAULT_POWER := 0.85    # Space / play clock kickoff
+const AI_FG_MAX := 50.0            # longest field goal (kick distance) a bot tries
+const AI_GO_FOR_IT := 2.0          # bots go for it on 4th & this or less past midfield

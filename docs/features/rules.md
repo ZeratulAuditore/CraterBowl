@@ -3,9 +3,8 @@
 Feature-level doc: how this works for players **today** on `main`. Open work: GitHub issues labelled `area:rules` (listed below).
 
 ## Summary
-Classic Crater Bowl is two-way football with four downs to gain 10 yards, play-based tries instead of kicks,
-and two timed halves. There is no kicking game yet: every "kickoff" places the receiving team at 25% of the
-field. Fields shrink with match size so 3v3 and 5v5 use the same rules engine as 7v7.
+Classic Crater Bowl is two-way football with four downs to gain 10 yards, a PAT kick or 2-point scrimmage try,
+and two timed halves. Kickoffs, punts and field goals are live kicking plays (iter 035; see [kicking.md](kicking.md)). Fields shrink with match size so 3v3 and 5v5 use the same rules engine as 7v7.
 Chaosball changes most of this: see [chaosball.md](chaosball.md).
 
 ## How it plays
@@ -34,8 +33,9 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 | Event | Points | Then |
 |---|---|---|
 | Touchdown (carrier in bounds in the scoring end zone) | 6 (`TD_POINTS`) | scoring team attempts a try |
-| Try for 1 (snap from the 3) | 1 | kickoff to the other team |
-| Try for 2 (snap from the 10) | 2 | kickoff to the other team |
+| Try for 1 (PAT kick from the 15, see [kicking.md](kicking.md)) | 1 | kickoff to the other team |
+| Try for 2 (scrimmage snap from the 10) | 2 | kickoff to the other team |
+| Field goal (see [kicking.md](kicking.md)) | 3 | kickoff to the other team |
 | Safety (offense's own carrier downed or out behind its goal line) | 2 to the defense (`SAFETY_POINTS`) | the defense receives |
 
 - During try pre-snap the offense presses **1** or **2** (gamepad D-pad left/right); default is 1. A try is one

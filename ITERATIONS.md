@@ -236,6 +236,18 @@
 - U spends a team timeout between plays. The scorebug shows three per team, or two in 3v3. The host validates the caller, and halftime restores the counts.
 - Verified 245 unit tests and full headless smoke, including a remote timeout. Viewed offscreen captures of the timeout banner and visible pips before and after the snap. Quarters and the mercy rule remain in C04b.
 
+## 035: B09 + C02 Kicking game (2026-11-25, #2, #3)
+- Coin toss (`Match.start_match`): deterministic from a seed (`--toss=N`), winner has 5 s to press 1 receive / 2 kick (bots and no answer = receive), other team receives the 2nd half.
+- Live kickoffs from the 35 (20 after a safety): kicker on the tee, coverage spread, front row + two deep returners. Space/play clock = default kick; J/LMB = aimed kick with the throw meter (arc preview shows the kick). Returns, touchbacks (25), out of bounds (40), rolled/downed spots. Onside recovery exists as an opt-in mutator (`world.onside`, off by default per the gap notes; C27 owns turning it on).
+- K cycles the kick call on any scrimmage down: punt (punter 10 deep, returner drops back; touchback 20, return/downed spots, fake punts play normal downs) or field goal (holder 7 deep; good = between the uprights above the 3.3 yd crossbar at the end line; miss = defense at the kick spot or its 20). 1-pt try = PAT kick from the 15; 2-pt stays scrimmage from the 10.
+- Blocks: a rusher within 1 yd of the ball in its first 5 yd blocks it; the ball pops up live (scoop and score; kicking-team recovery plays downs).
+- Bots: 4th-down rule (FG within 50 yd, go on 4th & ≤2 past midfield, else punt), kick PATs, vary kickoff depth; coverage lanes, a returner under the ball, a return wall.
+- Net: `kick`/`kick_call`/`toss` actions sanitized + routed; snapshots carry the kick call, kicked flag and toss winner. Huddle skipped on kickoffs; play card shows kick instructions.
+- Merged with iter 032 (Codex huddle): kicks go live through `_go_live()` so stance locks release.
+- Test changes: the scoring/clock/size tests now expect live kickoffs and the PAT from the 15; game_flow opens on the toss then resets to a scrimmage for the legacy steps (`opening_kickoff`); net_test host runs `--no-kickoff` (its defense/offense checks assume a scrimmage opener).
+- Tests: 260 unit after the merge (30 new in test_kicking.gd incl. a full bot match with kicks); flow adds toss (2 key), metered kickoff + arc + return, K punt, K K field goal +3. Screenshots checked: toss prompt, kickoff coverage, return.
+- Follow-ups filed: kicking stats, stepped meter/tee art, fair catch + bot 2-pt (filed as D06–D08, migrated to issues #67–#69).
+
 ## Process: backlog → GitHub issues (2026-11-25, #1)
 - Not a game iteration (no number). The backlog moved from `FEATURES.md` / `docs/gaps/TODO.md` checklists to GitHub issues #2–#51, with labels for type, priority, area and status. Old ids map via `docs/backlog/legacy-ids.md`. Team voice chat was planned as #31.
 - Docs split into feature level (`docs/features/`) and design level (`docs/design/`). `PLAN.md` → `docs/vision.md`, `docs/gaps/` → `docs/research/`, plus a new `docs/workflow.md`. `LOOP.md` now picks from issues, and the daily gap review files and updates issues.

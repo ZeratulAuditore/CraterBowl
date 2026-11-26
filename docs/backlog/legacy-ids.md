@@ -6,8 +6,8 @@ Until 2026-11-25 the backlog lived in `FEATURES.md` (A/B/D ids) and `docs/gaps/T
 
 | Legacy | Issue | Title |
 |---|---|---|
-| B09 | #2 | B09 Real kickoffs and returns |
-| C02 | #3 | C02 Kicking game: coin toss, punts, field goals, PAT kicks |
+| B09 | #2 | B09 Real kickoffs and returns (closed: shipped iter 035) |
+| C02 | #3 | C02 Kicking game: coin toss, punts, field goals, PAT kicks (closed: shipped iter 035) |
 | C04b | #4 | C04b Four-quarter format and configurable periods |
 | C03 | #5 | C03 Movement moveset: jump, dive, dash, spin, stiff-arm |
 | C04c | #6 | C04c Switching ends, mercy rule and clock actions |
@@ -74,6 +74,9 @@ Until 2026-11-25 the backlog lived in `FEATURES.md` (A/B/D ids) and `docs/gaps/T
 | D03 | shipped iter 029 (Chaosball queue) |
 | D04 | shipped iter 030 (achievements) |
 | D05 | folded into #8 (C06 spotting/return yards) |
+| D06 | #67 kicking stats (filed by the kicking session during the migration) |
+| D07 | #68 kick meter art |
+| D08 | #69 fair catch + bot 2-pt |
 | TRN | shipped (training ground, `docs/features/training.md`) |
 
 Issue #1 is the migration itself. Items without a legacy id came from `docs/OUT_OF_GAME.md` known gaps and open decisions, the TODO.md addenda, and new requests (voice chat #31).

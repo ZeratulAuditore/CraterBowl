@@ -32,6 +32,7 @@ static func encode_snapshot(m, tick: int, acks: Dictionary = {}) -> Dictionary:
 		"to": PackedInt32Array(m.clock.timeouts),
 		"ms": m.state, "tp": m.try_points, "ack": acks, "pl": w.play_name, "rt": _routes_array(w),
 		"dc": w.defensive_call, "rf": w.run_flipped, "hc": w.handoff_cooldown,
+		"kp": w.kick_play, "kk": w.kicked, "tw": m.toss_winner,
 		"cs": PackedFloat32Array([w.streak, w.hold_t]),
 	}
 
@@ -94,6 +95,9 @@ static func apply_snapshot(m, s: Dictionary) -> void:
 	w.defensive_call = s.get("dc", "")
 	w.run_flipped = s.get("rf", false)
 	w.handoff_cooldown = s.get("hc", 0.0)
+	w.kick_play = str(s.get("kp", ""))
+	w.kicked = s.get("kk", false) == true
+	m.toss_winner = int(s.get("tw", -1))
 	var cs: PackedFloat32Array = s.get("cs", PackedFloat32Array([0, 0]))
 	w.streak = int(cs[0])
 	w.hold_t = cs[1]
@@ -133,6 +137,18 @@ static func sanitize_action(act) -> Dictionary:
 			if not _finite_v(t) or not (p is float or p is int) or not is_finite(float(p)):
 				return {}
 			return {"a": act["a"], "t": t, "p": clampf(float(p), 0.0, 1.0), "lob": act.get("lob", false) == true}
+		"kick":
+			var kt = act.get("t", Vector2.ZERO)
+			var kp = act.get("p", 0.0)
+			if not _finite_v(kt) or not (kp is float or kp is int) or not is_finite(float(kp)):
+				return {}
+			return {"a": "kick", "t": kt, "p": clampf(float(kp), 0.0, 1.0)}
+		"kick_call":
+			var k = act.get("k", "")
+			return {"a": "kick_call", "k": k} if k is String and k in ["", "punt", "fg"] else {}
+		"toss":
+			var ch = act.get("c", "")
+			return {"a": "toss", "c": ch} if ch is String and ch in ["receive", "kick"] else {}
 		"try":
 			var n = act.get("n", 1)
 			return {"a": "try", "n": n} if n is int and (n == 1 or n == 2) else {}
@@ -174,6 +190,12 @@ static func apply_action(m, athlete_id: int, action: Dictionary) -> bool:
 			return m.call_timeout(ath.team)
 		"try":
 			return ath.team == w.offense_team and m.choose_try(act["n"])
+		"kick":
+			return w.kick(athlete_id, act["t"], act["p"])
+		"kick_call":
+			return ath.team == w.offense_team and m.call_kick(act["k"])
+		"toss":
+			return m.choose_toss(ath.team, act["c"])
 		"play":
 			return ath.team == w.offense_team and w.phase == w.Phase.PRESNAP and w.call_play(act["p"])
 		"recall_call":

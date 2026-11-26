@@ -364,6 +364,10 @@ func _down_text(main) -> String:
 		return main.drill.label()
 	if int(s.state) == 1:
 		return "TRY FOR %d" % s.try_points
+	if int(s.state) == 2:
+		return "KICKOFF"
+	if int(s.state) == 3:
+		return "COIN TOSS"
 	if main.world.is_chaos():
 		return "STREAK %d  ·  TD %d" % [main.world.streak, main.world.streak_points()]
 	var lab: String = s.downs.label()
@@ -401,6 +405,14 @@ func _status_text(main) -> String:
 	var spot := lab.substr(at + 4).to_upper() if at > 0 else ""
 	match int(w.phase):
 		0:
+			var mine: bool = w.offense_team == w.get_athlete(main.my_id).team
+			if int(s.state) == 3:
+				var won: bool = s.toss_winner == w.get_athlete(main.my_id).team
+				return ("YOU WON THE TOSS  ·  1 RECEIVE  ·  2 KICK" if won else "COIN TOSS  ·  %s CHOOSING" % ("HOME" if s.toss_winner == 0 else "AWAY"))
+			if w.kick_play == "kickoff":
+				return "KICKOFF  ·  " + ("J / CLICK TO KICK" if mine else "RETURN TEAM")
+			if w.kick_play != "" and mine:
+				return ("BALL ON %s  ·  " % spot if spot != "" else "") + ("PUNT" if w.kick_play == "punt" else "FIELD GOAL") + "  ·  K CHANGE"
 			return "BALL ON %s" % spot if spot != "" else ""
 		1:
 			if main.world.is_chaos():
@@ -421,7 +433,7 @@ func _refresh_picker(main, final: bool) -> void:
 		coaching_text.text = card[1]
 		route_select.hide()
 		return
-	picker.visible = not final and w.phase == w.Phase.PRESNAP and main.play_picker_open and not main.scoreboard_held and not main.replay_active
+	picker.visible = not final and w.phase == w.Phase.PRESNAP and w.kick_play != "kickoff" and main.play_picker_open and not main.scoreboard_held and not main.replay_active
 	if not picker.visible:
 		return
 	var side := 0 if w.get_athlete(main.my_id).team == w.offense_team else 1
