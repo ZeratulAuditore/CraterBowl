@@ -288,3 +288,8 @@
 - The host now drops `act` messages that aren't a Dictionary with a String `a` before they reach its action queue (`Protocol.is_action`). `apply_action` takes an untyped action and rejects junk instead of aborting the caller. `lob`/`spr`/`block` flags are type-checked rather than compared with `== true`.
 - Before the fix, one malformed action raised a script error in `_step_authoritative`. That aborted the host tick and dropped any valid action queued behind it in the same tick.
 - Verified with 4 new unit tests (`test_action_validation.gd`) and a rendered host test (`tests/visual/invalid_actions_test.gd`). Restoring the old `protocol.gd`/`net_session.gd` made both fail: the unit queue test because 16 entries were queued instead of 1, and the visual test because of a script error and a dropped play call. Design notes are in `docs/design/netcode.md` under Validation.
+
+## 041: C06a Forward-progress spotting (2026-11-25, #98, part of #8)
+- Tackles are spotted at the carrier's forward progress: the furthest point reached while an opponent is in contact, capped by how far opposing bodies pushed him back (so a retreating QB still gets sacked where he is). Window: 1.0 yd contact reach, 0.3 s grace. Works in both attack directions. The overlay calls out "FORWARD PROGRESS +N YD" at 0.5 yd or more.
+- Tests: 5 new unit tests in `test_tackling.gd` (337 total), a `game_flow.gd` step (frames 13400-13480) and `tests/visual/forward_progress_test.gd`. Disabling the credit made the driven-back and return-team tests fail.
+- #8 split into #98 (this), #99 fumble variety and #100 return yards in stats. Design: `docs/iterations/041-forward-progress.md`.

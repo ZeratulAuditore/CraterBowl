@@ -24,7 +24,14 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 ### Downs and spotting (`src/sim/downs.gd`, `src/sim/match.gd`)
 - 1st & 10 from the spot; "& Goal" when the line to gain would reach the goal line.
 - The ball is spotted where the carrier is at the whistle (tackle or stepping out of bounds), clamped to
-  the 1 and the opponent's 1. An incompletion returns to the line of scrimmage. No forward-progress rule.
+  the 1 and the opponent's 1. An incompletion returns to the line of scrimmage.
+- **Forward progress** (#98, iter 041): a tackle is spotted at the furthest point the carrier reached
+  while in contact with an opponent (within 1.0 yd, window held 0.3 s after contact breaks), but only
+  as far as opposing bodies actually pushed him back. Driven back = credited; retreating on your own
+  (a QB drifting back with a rusher on him) = spotted where you are. The dead carrier is moved to the
+  spot, and the overlay shows "FORWARD PROGRESS +N YD" when it gives back 0.5 yd or more. Out of
+  bounds and touchdowns are unchanged. Numbers: `CONTACT_REACH`, `FORWARD_PROGRESS_GRACE`,
+  `FORWARD_PROGRESS_BANNER` in `src/sim/tuning.gd`.
 - Four downs; failing on 4th is a turnover on downs, new offense at the mirrored spot (`goal − spot`).
 - Snap: Space by any offensive human. If nobody snaps, the 20 s play clock (`Clock.PLAY_CLOCK`) auto-snaps.
 - Next play starts `NEXT_PLAY_DELAY` (2.0 s) after the whistle; R skips the wait (offline or host only).
