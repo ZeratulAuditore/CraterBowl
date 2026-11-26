@@ -47,6 +47,7 @@ func _initialize() -> void:
 	auto_replay_default = main.auto_replay
 	main.auto_replay = false   # scripted timings assume the offline sim never pauses; B04a steps turn it on
 	# scripted steps drive play changes; auto-advance checked at the end
+	var held := {}   # #142 step: the offense's pre-snap spot
 	steps = [
 		[2, func(): _connect_listeners(); _isolate_user_files(); main.pov_enabled = false],   # legacy target-aim steps; POV steps re-enable it  # world/series are (re)built in main._ready -> connect after
 		# Random toss at boot: a human winner gets the choice; a bot winner takes the ball at once.
@@ -161,13 +162,28 @@ func _initialize() -> void:
 		[4607, func(): check(main.player.athlete.move_charge == 1.0, "R consumes one dash charge")],
 		[4625, func(): _key(KEY_E)],
 		[4626, func(): check(main.player.athlete.is_spinning() and main.player.athlete.move_charge < 1.0, "E (spin right) consumes one spin charge")],
-		# Defense Space unlocks a stance without snapping.
+		# Defense Space double-tap unlocks a stance without snapping; one press does nothing (#142).
 		[4650, func(): main.series.start(1, 25.0)],
 		[4651, func():
 			var me = main.world.get_athlete(main.my_id)
 			check(me.set_lock and main.pres.barrier.visible, "defender starts in stance")
 			_key(KEY_SPACE)
-			check(main.world.phase == main.World.Phase.PRESNAP and not me.set_lock, "Space breaks stance without snapping")],
+			check(main.world.phase == main.World.Phase.PRESNAP and me.set_lock, "one Space press keeps the defender set")
+			_key(KEY_SPACE)
+			check(main.world.phase == main.World.Phase.PRESNAP and not me.set_lock, "Space double-tap breaks stance without snapping")],
+		# #142: the whole offense is frozen until the snap, the human included.
+		[4660, func(): main.series.start(0, 25.0); main.input_override = Vector2(1, 0); main.sprint_override = true],
+		[4662, func():
+			for a in main.world.athletes:
+				if a.team == main.world.offense_team:
+					held[a.id] = a.position],
+		[4690, func():
+			var moved := 0.0
+			for id in held:
+				moved = maxf(moved, main.world.get_athlete(id).position.distance_to(held[id]))
+			check(main.world.phase == main.World.Phase.PRESNAP and held.has(main.controlled_id) and moved < 0.01, "no offensive athlete moves pre-snap, human input included (%.3f yd)" % moved)
+			main.input_override = null
+			main.sprint_override = null],
 		# A17: practice drills through the real game
 		[4700, func(): main.start_practice("passing"); check(main.drill != null and main.world.athletes.size() == 4, "passing drill: 4 athletes")],
 		[4702, func(): check(main.hud.text.find("PRACTICE: Passing") >= 0, "HUD shows drill"); _key(KEY_SPACE)],
