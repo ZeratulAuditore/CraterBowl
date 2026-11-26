@@ -28,6 +28,15 @@ its gold marker is the line to gain. The mini field appears during Classic scrim
 conversion attempts have distinct labels. The period label follows the match rules, which use
 halves today.
 
+**HUD layout (#116).** The scorebug sits on the bottom edge at one fixed width: down & distance
+takes the slack, so the bug doesn't jump when the play-clock cell hides at the snap. The movement
+meters sit to its left. The status line is a small backed pill on the scorebug's top-left edge, so
+nothing floats over the controlled player. After the whistle it summarizes the play in player words
+(`TACKLED · +3`, `SACK · -5`, `OUT OF BOUNDS · +7`, `INCOMPLETE`, `INTERCEPTION`), not the raw whistle
+code. The play-call picker uses the menu theme and is pinned top-right, over the sky. Replay key
+hints are a backed bar of key + action pairs just above the scorebug. Post-game, only the featured
+player stands on stage while their stat card is up, and the hint is a backed pill in the corner.
+
 **Audio today:** only the menu soundtrack. It plays `assets/music/tracks.json` in order, loops the playlist, and has a "now playing" widget (prev / pause / next). Credits are in `assets/music/CREDITS.md`. Volume follows the music and master settings. A match plays no SFX, crowd or whistle (#22).
 
 ## Design decisions
@@ -48,6 +57,7 @@ halves today.
   - `tests/render_budget.gd` and `tests/test_render_perf.gd` cap tris, instances, shadows, materials and skinned meshes (`./scripts/perf.sh`)
   - Visuals are verified with `./scripts/shot.sh` PNGs (`../TESTING.md`)
   - `tests/game_flow.gd` exercises the live overlay. `./scripts/visual_test.sh` checks and captures the scorebug in scrimmage, kickoff and conversion states, and `tests/visual/you_marker_test.gd` checks the ground ring (and no floating chevron) in a match, an instant replay and the training ground.
+  - `tests/visual/hud_polish_test.gd` asserts the fixed scorebug width (presnap, live, whistle), the dead-ball summary, the status pill clearing the scorebug, the themed picker pinned top-right and the meters beside the bug.
 
 ## Open issues
 - #10 C10 Throw readability: landing marker, aim-zoom
