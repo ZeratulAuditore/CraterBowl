@@ -6,6 +6,9 @@ extends "res://tests/test_case.gd"
 const Radial := preload("res://src/game/radial_select.gd")
 const Wheel := preload("res://src/game/taunt_wheel.gd")
 const Emotes := preload("res://src/sim/emotes.gd")
+const World := preload("res://src/sim/world.gd")
+const Match := preload("res://src/sim/match.gd")
+const Athlete := preload("res://src/sim/athlete.gd")
 
 func test_direction_maps_to_slice_clockwise_from_up() -> void:
 	var dirs := [Vector2(0, -1), Vector2(1, -1), Vector2(1, 0), Vector2(1, 1),
@@ -74,3 +77,21 @@ func test_tap_repeats_last_taunt() -> void:
 	w.drag(Vector2(5, 5))   # a twitch inside the dead zone is still a tap
 	assert_eq(w.release(), Emotes.id_at(4), "tap repeats the last taunt picked")
 	w.free()
+
+## #240: athletes stay stance-locked until the snap (#142), and the taunt cooldown
+## must still run so a set player can taunt more than once per pre-snap.
+func test_locked_athlete_taunt_recharges_presnap() -> void:
+	var w := World.new()
+	var cx := w.field.width / 2.0
+	for t in 2:
+		w.add_two_way(t, Athlete.Role.QB, cx, Athlete.Role.LB, cx)
+	var m := Match.new(w)
+	m.start(0, 25.0)
+	var qb := w.find_role(0, Athlete.Role.QB)
+	assert_true(w.phase == World.Phase.PRESNAP and qb.set_lock, "QB lines up set")
+	assert_true(w.emote(qb.id, Emotes.id_at(0)), "first taunt")
+	assert_true(not w.emote(qb.id, Emotes.id_at(1)), "rate-limited right after")
+	for i in int(ceil(Emotes.COOLDOWN * 60.0)) + 2:
+		w.step({}, 1.0 / 60.0)
+	assert_true(w.phase == World.Phase.PRESNAP and qb.set_lock, "still set, not snapped")
+	assert_true(w.emote(qb.id, Emotes.id_at(1)), "taunts again after the cooldown while still set")

@@ -38,6 +38,8 @@ Taunts are cosmetic. There are 8, rate-limited to one per second, and everyone i
   until #140 makes it camera zoom.
 - Opening the menu (Esc), a replay starting or the window losing focus closes the wheel without a taunt.
   Online, only the chosen taunt id is sent (`emote` action), as before.
+- The 1 s taunt cooldown also runs while you're stance-locked before the snap, so you can taunt more than
+  once in a pre-snap (#240: since #142 it only ran for athletes who could move).
 - Gamepad: no pad button opens the wheel yet (#207). Right-stick slice selection is left for #33.
 
 ### Why this layout (#138)
