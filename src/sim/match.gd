@@ -225,14 +225,16 @@ func _kick_next(r: Dictionary, off: int) -> Dictionary:
 		return {"outcome": "kickoff_return" if kind == "kickoff" else "punt_return", "los": downs.los, "offense": def}
 	return {}
 
-## Advance clocks; auto-snap when the play clock expires.
-func tick(dt: float) -> void:
+## Advance clocks; auto-snap when the play clock expires. `snapper` (-> bool) replaces
+## world.snap() for that snap, so a bot offense snaps its own way on the shown clock (#136).
+func tick(dt: float, snapper := Callable()) -> void:
 	if state == State.TOSS:
 		_toss_t += dt
 		if _toss_t >= TOSS_WINDOW:
 			choose_toss(toss_winner, "receive")
 	var live := world.phase == World.Phase.LIVE
-	var presnap := world.phase == World.Phase.PRESNAP
+	# The toss runs on TOSS_WINDOW, not the play clock, so the kickoff gets all 20 s (#136).
+	var presnap := world.phase == World.Phase.PRESNAP and state != State.TOSS
 	var was_running := clock.running_between_plays
 	var snap_now := clock.tick(dt, live and state != State.TRY, presnap)
 	if not live and clock.take_warning():
@@ -244,8 +246,23 @@ func tick(dt: float) -> void:
 		if not _advance_expired_period():
 			_line_up_next_play()
 		return
-	if snap_now and world.snap():
+	if snap_now and (bool(snapper.call()) if snapper.is_valid() else world.snap()):
 		match_event.emit("auto_snap", {})
+
+## #136: the play clock is the one countdown to the next snap. A bot-run offense huddles
+## `seconds` and then snaps when this clock hits 0, so what the HUD shows is when the
+## ball goes. Call every presnap tick while the offense is bot-run (idempotent).
+func huddle(seconds: float) -> void:
+	if world.phase == World.Phase.PRESNAP and state != State.TOSS and not clock.final:
+		clock.play_clock = minf(clock.play_clock, seconds)
+
+## Whole seconds the HUD shows on the play clock, or -1 while it governs no snap (live
+## or dead ball, coin toss, FINAL). Only synced state goes in, so host and clients agree.
+## The 1 ms slack keeps the float32 snapshot copy from landing on the other second.
+func play_clock_shown() -> int:
+	if clock.final or world.phase != World.Phase.PRESNAP or state == State.TOSS:
+		return -1
+	return int(ceil(maxf(0.0, clock.play_clock - 0.001)))
 
 ## C04c (#89): teams switch the goal they attack every period (each quarter, or at
 ## halftime in the halves format). End 0 is the HELIOS-painted end, which team 0

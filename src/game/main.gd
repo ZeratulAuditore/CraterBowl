@@ -1365,7 +1365,7 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 	if maybe_auto_replay():
 		return
 	if drill == null:
-		series.tick(delta)          # practice never runs the clocks
+		series.tick(delta, _clock_snap)   # practice never runs the clocks
 	if drill != null and drill.kind != "scrimmage":
 		if drill.tick(world, delta):
 			drill.start_rep(world)
@@ -1392,6 +1392,10 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 	var snap_delay := T.AI_SNAP_DELAY
 	if drill == null and not world.is_chaos() and not humans.is_empty():
 		snap_delay = T.HUDDLE_SECONDS
+	# #136: in a match the play clock is the bots' snap timer too (one shown countdown).
+	ai.snaps_on_clock = drill == null
+	if drill == null and AI.offense_is_bot(world, humans):
+		series.huddle(AI.huddle_seconds(world, snap_delay))
 	ai.presnap_tick(world, humans, delta, series.downs.down, series.downs.distance(), snap_delay)
 	var inputs := ai.think(world, humans)
 	if drill != null:
@@ -1407,6 +1411,13 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 		net_tick += 1
 		if net_tick % SNAPSHOT_EVERY == 0:
 			net.broadcast_snapshot(Protocol.encode_snapshot(series, net_tick, net.acks()))
+
+## Play clock ran out: a bot offense snaps its own way (kickoff depth), a human one gets
+## the default snap / kick.
+func _clock_snap() -> bool:
+	if AI.offense_is_bot(world, [controlled_id] + roster.humans()):
+		return ai.snap(world)
+	return world.snap()
 
 ## Instant replay of the last play at half speed (V). At FINAL, V plays the highlight
 ## reel instead. Offline the match pauses; online only your view changes.
@@ -1794,8 +1805,8 @@ func _process(delta: float) -> void:
 		clock_txt += " | STREAK %d -> TD %d | BALL %.1fs" % [world.streak, world.streak_points(), maxf(0.0, T.PASS_CLOCK - world.hold_t)]
 	if drill != null:
 		clock_txt = drill.label()
-	if world.phase == World.Phase.PRESNAP:
-		clock_txt += " | PLAY %d" % int(ceil(series.clock.play_clock))
+	if series.play_clock_shown() >= 0 and drill == null:
+		clock_txt += " | PLAY %d" % series.play_clock_shown()
 	if series.is_final():
 		var w := series.winner()
 		phase_name = "FINAL: HOME %d - AWAY %d  %s\n%s" % [series.score[0], series.score[1], "TIE" if w < 0 else ("HOME WINS" if w == 0 else "AWAY WINS"),

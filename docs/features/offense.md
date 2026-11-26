@@ -20,7 +20,8 @@ defenders. Line play is in [line-play.md](line-play.md); scoring, tries and turn
   the goal, otherwise Mesh (`match.gd _setup_formation`).
 - **Space** (gamepad A) snaps. The 20 s play clock (`Clock.PLAY_CLOCK`) auto-snaps if nobody does.
 - Bot-only offenses pick their own call (`ai.choose_play`, about one run in three on early downs when an RB exists) and
-  snap after `AI_SNAP_DELAY` (2.5 s), or `HUDDLE_SECONDS` (5.0 s) when any human is in a classic match.
+  snap after `AI_SNAP_DELAY` (2.5 s), or `HUDDLE_SECONDS` (5.0 s) when any human is in a classic match. The scorebug's
+  play clock counts that huddle down and the snap comes at 0 (#136).
 - Your team's pre-snap turf art shows every route, the RB's run path and each lineman's target; yours is highlighted.
   The defense never sees it.
 

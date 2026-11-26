@@ -344,8 +344,8 @@ func refresh(main, delta: float) -> void:
 		timeout_pips[t].text = "●".repeat(s.clock.timeouts[t]) + "○".repeat(s.clock.timeout_limit - s.clock.timeouts[t])
 	clock_l.text = "FINAL" if final else ("" if main.drill != null else s.clock.label())
 	down_l.text = _down_text(main)
-	var pc := int(ceil(s.clock.play_clock))
-	play_clock_l.text = "PLAY :%02d" % pc if int(w.phase) == 0 and main.drill == null else ""
+	var pc: int = s.play_clock_shown()   # #136: the value the snap obeys, or -1 = hidden
+	play_clock_l.text = "PLAY :%02d" % pc if pc >= 0 and main.drill == null else ""
 	play_clock_l.label_settings.font_color = ALERT if pc <= 5 else ACCENT
 	mode_l.text = _mode_text(main)
 	_refresh_field_position(main, final)

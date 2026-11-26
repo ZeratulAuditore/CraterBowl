@@ -13,6 +13,9 @@ var offense_enabled := true
 
 var _presnap_t := 0.0
 var _presnap_called := false
+## #136: a Match play clock snaps for the bots (Match.huddle + Match.tick's snapper =
+## snap()), so presnap_tick only calls plays. Off for bare-World use (drills, sim tests).
+var snaps_on_clock := false
 var _calls := 0           # plays called so far: deterministic variety
 var _man := {}            # defender id -> receiver id (set at snap)
 var _man_ref = null
@@ -28,19 +31,11 @@ func presnap_tick(world, human_ids: Array, dt: float, down: int = 1, distance: f
 		reset_presnap()
 		return
 	_presnap_t += dt
-	var humans_on_offense := false
-	for id in human_ids:
-		var h = world.get_athlete(id)
-		if h and h.team == world.offense_team:
-			humans_on_offense = true
+	var humans_on_offense := not offense_is_bot(world, human_ids)
 	var qb = world.find_role(world.offense_team, Athlete.Role.QB)
 	if world.kick_play == "kickoff":
-		if not humans_on_offense and _presnap_t >= T.AI_SNAP_DELAY and qb and world.ball.is_held_by(qb.id):
-			# Vary depth so some kicks are returnable and some go for touchbacks.
-			var p := 0.74 + 0.04 * float(_calls % 4)
-			var aim := Vector2(world.field.width * (0.5 + 0.12 * float(_calls % 3 - 1)), world.field.length)
-			if world.kick(qb.id, aim, p):
-				_calls += 1
+		if not humans_on_offense and not snaps_on_clock and _presnap_t >= T.AI_SNAP_DELAY:
+			snap(world)
 		return
 	if not _presnap_called and qb and not humans_on_offense:
 		if world.kick_play == "":   # PAT kicks are called by the match
@@ -52,8 +47,34 @@ func presnap_tick(world, human_ids: Array, dt: float, down: int = 1, distance: f
 				world.call_kick(fourth_down_call(world.los_y, world.field.length, world.field.endzone_depth, distance))
 		_calls += 1
 		_presnap_called = true
-	if not humans_on_offense and _presnap_t >= snap_delay:
+	if not humans_on_offense and not snaps_on_clock and _presnap_t >= snap_delay:
 		world.snap()
+
+## True when no human is on the offense (the bots own the snap).
+static func offense_is_bot(world, human_ids: Array) -> bool:
+	for id in human_ids:
+		var h = world.get_athlete(id)
+		if h and h.team == world.offense_team:
+			return false
+	return true
+
+## How long a bot offense huddles before it snaps: kickoffs go after AI_SNAP_DELAY.
+static func huddle_seconds(world, snap_delay: float) -> float:
+	return T.AI_SNAP_DELAY if world.kick_play == "kickoff" else snap_delay
+
+## A bot offense's snap. Kickoffs vary depth so some are returnable and some go for touchbacks.
+func snap(world) -> bool:
+	if world.kick_play != "kickoff":
+		return world.snap()
+	var qb = world.find_role(world.offense_team, Athlete.Role.QB)
+	if qb == null or not world.ball.is_held_by(qb.id):
+		return false
+	var p := 0.74 + 0.04 * float(_calls % 4)
+	var aim := Vector2(world.field.width * (0.5 + 0.12 * float(_calls % 3 - 1)), world.field.length)
+	if not world.kick(qb.id, aim, p):
+		return false
+	_calls += 1
+	return true
 
 ## 4th down: kick a field goal in range, go for it on short yardage past midfield, else punt.
 static func fourth_down_call(los: float, goal: float, endzone: float, distance: float) -> String:
