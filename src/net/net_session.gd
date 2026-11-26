@@ -200,10 +200,20 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 				lobby_received.emit(msg["s"])
 		"welcome":
 			if mode == Mode.CLIENT and from == 1:
-				my_athlete = int(msg.get("aid", -1))
-				var sz = msg.get("size", 7)
-				host_size = int(sz) if (sz is int and (sz == 3 or sz == 5 or sz == 7)) else 7
-				host_mode = "chaosball" if msg.get("mode", "") == "chaosball" else "classic"
+				var size = msg.get("size", 7)
+				var rules = msg.get("mode", "classic")
+				var aid = msg.get("aid")
+				if not (size is int and size in [3, 5, 7]):
+					return
+				if not (rules is String and rules in ["classic", "chaosball"]):
+					return
+				# Chaosball always creates a 3v3 world, independently of the supplied size.
+				var team_size: int = 3 if rules == "chaosball" else size
+				if not (aid is int and aid >= 0 and aid < team_size * 2):
+					return
+				host_size = team_size
+				host_mode = rules
+				my_athlete = aid
 				welcomed.emit(my_athlete)
 		"snap":
 			var tick = msg.get("t")
