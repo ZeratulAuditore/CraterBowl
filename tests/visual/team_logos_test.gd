@@ -1,7 +1,7 @@
 extends "res://tests/visual/harness.gd"
 ## #233 (part of #132): each team's logo sits beside its score on the scorebug, and both
 ## logos flank the hold-Tab scoreboard. Fixed state (Q1 7-3, HELIOS ball, presnap) so the
-## captures are reproducible; the overlay has no easing to settle.
+## captures are reproducible: physics is frozen and the camera snapped before each capture.
 
 ## No preload of the new scripts: before_after.sh carries this test onto a base without them.
 const LOGO := "res://assets/teams/%s.png"
@@ -21,8 +21,9 @@ func _run() -> void:
 	series.score = [7, 3]
 	series.clock.remaining = 300.0   # Q1: a Q2 start would raise the animated SWITCH ENDS banner
 	series.clock.play_clock = 20.0
+	game.set_physics_process(false)   # exact state: no play clock tick, no athlete drift
 	var overlay = game.pres.overlay
-	await _refresh()
+	await _settle(game)
 	# Guarded so before_after.sh can still photograph a base without logos (its checks fail).
 	var has_logos: bool = "team_logo" in overlay
 	check(has_logos, "overlay has team logos")
@@ -46,7 +47,7 @@ func _run() -> void:
 	tab.keycode = KEY_TAB
 	tab.pressed = true
 	game._input(tab)
-	await _refresh()
+	await _settle(game)
 	check(overlay.scoreboard.is_visible_in_tree(), "holding Tab shows the scoreboard")
 	var text_rect: Rect2 = overlay.scoreboard_label.get_global_rect()
 	for t in (2 if has_logos else 0):
@@ -64,3 +65,14 @@ func _run() -> void:
 func _refresh() -> void:
 	for frame in 5:
 		await process_frame
+
+## Snap the views and the follow camera to the sim state (as presnap_locks_test.gd does).
+func _settle(game) -> void:
+	game._render()
+	for v in game.views:
+		v.interpolate(1.0)
+	await _refresh()
+	game.cam_yaw = game._camera_target_yaw()
+	game.camera_follow = game.player.global_position
+	game._update_camera(1.0 / 60.0)
+	await _refresh()
