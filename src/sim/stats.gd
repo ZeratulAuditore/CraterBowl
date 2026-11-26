@@ -4,7 +4,8 @@ extends RefCounted
 const Athlete := preload("res://src/sim/athlete.gd")
 const ROLE := {0: "QB", 1: "C", 2: "WR", 3: "RB", 4: "LB", 5: "CB", 6: "S", 7: "OL", 8: "DL"}
 const FIELDS := ["att", "comp", "pass_yds", "pass_td", "int_thrown", "rec", "rec_yds", "rec_td",
-	"car", "rush_yds", "rush_td", "tkl", "sack", "int", "pbu", "ff", "fr", "pts", "blk", "def_td", "max_td_pts"]
+	"car", "rush_yds", "rush_td", "tkl", "sack", "int", "pbu", "ff", "fr", "pts", "blk", "def_td", "max_td_pts",
+	"int_ret_yds", "fr_ret_yds"]
 
 var world
 var owner_fn: Callable     # athlete_id -> owner name ("Bot" for AI)
@@ -16,6 +17,10 @@ var _receiver := -1
 var _thrown := false
 var _handoff_runner := -1
 var _rushing_fumble := false
+## Takeaway return in progress (#100): who has the ball, where he took it, which field.
+var _returner := -1
+var _ret_from := 0.0
+var _ret_field := ""
 
 func attach(w, owner: Callable) -> void:
 	world = w
@@ -63,9 +68,12 @@ func _on_event(n: String, d: Dictionary) -> void:
 			_thrown = false
 			_handoff_runner = -1
 			_rushing_fumble = false
+			_returner = -1
 		"handoff":
 			_handoff_runner = d["to"]
 		"throw":
+			if d["by"] == _returner:   # a pass/lateral (chaosball swings) ends the return at the throw
+				_credit_return(world.get_athlete(_returner).position.y)
 			if not _thrown:
 				_passer = d["by"]
 			_thrown = true
@@ -79,18 +87,24 @@ func _on_event(n: String, d: Dictionary) -> void:
 			if _passer >= 0:
 				_add(_passer, "int_thrown")
 			_add(d["by"], "int")
+			var at: Vector2 = d.get("at", world.get_athlete(d["by"]).position)
+			_start_return(d["by"], at.y, "int_ret_yds")
 		"breakup":
 			_add(d["by"], "pbu")
 		"block":
 			_add(d["blocker"], "blk")
 		"fumble":
 			_add(d["by"], "ff")
+			if d["carrier"] == _returner:   # fumbled mid-return: the return ends where he lost it
+				_credit_return(d["at"].y)
 			if _handoff_runner == d["carrier"] and not _rushing_fumble and not _thrown:
 				_rushing_fumble = true
 				_add(_handoff_runner, "car")
 				_add(_handoff_runner, "rush_yds", d["at"].y - _los)
 		"recovery":
 			_add(d["by"], "fr")
+			if d.get("turnover", false):
+				_start_return(d["by"], world.get_athlete(d["by"]).position.y, "fr_ret_yds")
 		"tackle", "out_of_bounds", "touchdown":
 			_end_play(n, d)
 
@@ -102,6 +116,11 @@ func _end_play(n: String, d: Dictionary) -> void:
 	var on_offense: bool = c.team == world.offense_team
 	if n == "tackle":
 		_add(d.get("by", -1), "tkl")
+	if carrier == _returner:
+		var end_y: float = d["spot"].y
+		if n == "touchdown":
+			end_y = world.field.length if on_offense else 0.0
+		_credit_return(end_y)
 	var gain: float = d["spot"].y - _los if on_offense else 0.0
 	if n == "touchdown" and on_offense:
 		gain = world.field.length - _los
@@ -113,7 +132,7 @@ func _end_play(n: String, d: Dictionary) -> void:
 			_add(carrier, "pts", d.get("points", 6))
 			_add(carrier, "def_td")
 			_note_td_points(carrier, d.get("points", 6))
-		return   # return yards not tracked yet
+		return   # kick returns aren't tracked yet (#67); takeaway returns are credited above
 	if _receiver >= 0 and carrier == _receiver:
 		_add(_passer, "pass_yds", gain)
 		_add(_receiver, "rec_yds", gain)
@@ -128,6 +147,21 @@ func _end_play(n: String, d: Dictionary) -> void:
 	if n == "touchdown":
 		_add(carrier, "pts", d.get("points", 6))
 		_note_td_points(carrier, d.get("points", 6))
+
+## A takeaway (interception or a fumble recovered by the other team) starts a return at
+## the catch / recovery spot. The returner may be on either team (a double turnover).
+func _start_return(aid: int, from_y: float, field: String) -> void:
+	_returner = aid
+	_ret_from = from_y
+	_ret_field = field
+
+## Credit the return from the takeaway spot to `end_y`, measured toward the returner's
+## scoring end zone (negative when he is driven back), then close it.
+func _credit_return(end_y: float) -> void:
+	var a = world.get_athlete(_returner)
+	if a:
+		_add(_returner, _ret_field, (end_y - _ret_from) * world.attack_sign(a.team))
+	_returner = -1
 
 func _note_td_points(aid: int, pts) -> void:
 	_add(aid, "max_td_pts", 0.0)
@@ -161,6 +195,8 @@ func summary_lines() -> Array:
 		var dfn := []
 		for f in ["tkl", "sack", "int", "pbu", "ff", "fr"]:
 			if l[f] > 0: dfn.append("%d %s" % [l[f], f])
+		for f in [["int_ret_yds", "int ret"], ["fr_ret_yds", "fum ret"]]:
+			if roundi(l[f[0]]) != 0: dfn.append("%dyd %s" % [roundi(l[f[0]]), f[1]])
 		if not dfn.is_empty(): parts.append(", ".join(dfn))
 		if parts.is_empty():
 			continue

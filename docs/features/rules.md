@@ -48,6 +48,7 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 - During try pre-snap the offense presses **1** for the PAT kick or **2** for the scrimmage try (gamepad D-pad left/right).
   The PAT is the default. The two-point try scores when the trying team reaches the end zone, and both tries are untimed.
 - A defensive touchdown (return of an INT or fumble) scores 6 for the defense, which then attempts the try.
+  The returner is credited with INT or fumble return yards from the takeaway spot ([progression.md](progression.md#stats-srcsimstatsgd)).
 
 ### Turnovers
 - **Interception:** a defender squarely at the ball (`INT_RADIUS` 0.6 yd) with no offensive receiver in reach.

@@ -13,11 +13,12 @@ const TEAM_NAMES := ["HELIOS", "NEBULA"]
 ## Fantasy-style weights: a touchdown ~ 6, ten scrimmage yards ~ 1.
 const WEIGHTS := {"pass_yds": 0.04, "pass_td": 4.0, "int_thrown": -2.0, "comp": 0.2,
 	"rec": 0.5, "rec_yds": 0.1, "rec_td": 6.0, "rush_yds": 0.1, "rush_td": 6.0,
-	"tkl": 1.0, "sack": 3.0, "int": 5.0, "pbu": 1.5, "ff": 3.0, "fr": 2.0, "def_td": 6.0, "blk": 0.3}
+	"tkl": 1.0, "sack": 3.0, "int": 5.0, "pbu": 1.5, "ff": 3.0, "fr": 2.0, "def_td": 6.0, "blk": 0.3,
+	"int_ret_yds": 0.1, "fr_ret_yds": 0.1}
 ## Category -> fields, for the card title of picks after the first.
 const CATEGORIES := [["TOP PASSER", ["pass_yds", "pass_td", "comp", "int_thrown"]],
 	["TOP RECEIVER", ["rec", "rec_yds", "rec_td"]], ["TOP RUSHER", ["rush_yds", "rush_td"]],
-	["DEFENSIVE STANDOUT", ["tkl", "sack", "int", "pbu", "ff", "fr", "def_td"]], ["TRENCH ANCHOR", ["blk"]]]
+	["DEFENSIVE STANDOUT", ["tkl", "sack", "int", "pbu", "ff", "fr", "def_td", "int_ret_yds", "fr_ret_yds"]], ["TRENCH ANCHOR", ["blk"]]]
 
 static func impact(line: Dictionary) -> float:
 	var s := 0.0
@@ -86,6 +87,10 @@ static func stat_lines(l: Dictionary) -> Array:
 	var dw := 0.0
 	for f in [["tkl", "TKL"], ["sack", "SACK"], ["int", "INT"], ["pbu", "PBU"], ["ff", "FF"], ["fr", "FR"], ["def_td", "DEF TD"]]:
 		if g.call(f[0]) > 0:
+			dfn.append("%d %s" % [g.call(f[0]), f[1]])
+			dw += g.call(f[0]) * WEIGHTS[f[0]]
+	for f in [["int_ret_yds", "INT RET YDS"], ["fr_ret_yds", "FUM RET YDS"]]:
+		if g.call(f[0]) != 0:
 			dfn.append("%d %s" % [g.call(f[0]), f[1]])
 			dw += g.call(f[0]) * WEIGHTS[f[0]]
 	if not dfn.is_empty():

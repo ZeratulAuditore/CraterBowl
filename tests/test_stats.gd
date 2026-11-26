@@ -101,6 +101,81 @@ func test_passing_td_and_fumble() -> void:
 	assert_eq(int(s.get_line("Bot", "LB")["ff"]), 1)
 	assert_eq(int(s.get_line("Bot", "CB")["fr"]), 1)
 
+## #100: takeaway returns. Team 0 attacks +y from the 25; the defense (team 1) returns toward y = 0.
+func test_int_return_yards() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	owners[i["cb"]] = "Ann"
+	w.event.emit("snap", {})
+	w.event.emit("throw", {"by": i["qb"]})
+	w.event.emit("interception", {"by": i["cb"], "at": Vector2(20, 40), "team": 1})
+	w.event.emit("tackle", {"by": i["wr"], "carrier": i["cb"], "spot": Vector2(18, 12), "team": 1})
+	var cb := s.get_line("Ann", "CB")
+	assert_eq(int(cb["int"]), 1)
+	assert_near(cb["int_ret_yds"], 28.0, 0.001, "catch at 40, down at 12, toward his goal")
+	assert_near(cb["fr_ret_yds"], 0.0)
+	assert_near(s.total("rush_yds") + s.total("rec_yds") + s.total("pass_yds"), 0.0, 0.001, "no scrimmage yards")
+	assert_eq(int(s.get_line("Bot", "WR")["tkl"]), 1)
+	assert_true(s.summary_lines().any(func(l): return l.begins_with("Ann CB:") and l.contains("28yd int ret")),
+		"post-game line shows it: %s" % str(s.summary_lines()))
+	assert_near(s.athletes[i["cb"]]["int_ret_yds"], 28.0, 0.001, "players-of-the-game line too")
+	# Next play starts clean: a later tackle of the same CB isn't another return.
+	w.event.emit("snap", {})
+	w.event.emit("tackle", {"by": i["wr"], "carrier": i["cb"], "spot": Vector2(18, 2), "team": 1})
+	assert_near(s.get_line("Ann", "CB")["int_ret_yds"], 28.0, 0.001, "snap closes the return")
+
+func test_fumble_return_yards() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	w.event.emit("snap", {})
+	w.event.emit("handoff", {"to": i["rb"]})
+	w.event.emit("fumble", {"carrier": i["rb"], "by": i["lb"], "at": Vector2(26, 30)})
+	w.get_athlete(i["cb"]).position = Vector2(27, 33)
+	w.event.emit("recovery", {"by": i["cb"], "team": 1, "turnover": true})
+	w.event.emit("out_of_bounds", {"carrier": i["cb"], "spot": Vector2(0, 21), "team": 1})
+	var cb := s.get_line("Bot", "CB")
+	assert_eq(int(cb["fr"]), 1)
+	assert_near(cb["fr_ret_yds"], 12.0, 0.001, "recovered at 33, out at 21")
+	assert_near(cb["int_ret_yds"], 0.0)
+	assert_near(s.get_line("Bot", "RB")["rush_yds"], 5.0, 0.001, "run still ends at the fumble")
+	assert_true(s.summary_lines().any(func(l): return l.contains("12yd fum ret")), str(s.summary_lines()))
+	# Own-team recovery isn't a takeaway: no return yards.
+	w.event.emit("snap", {})
+	w.event.emit("handoff", {"to": i["rb"]})
+	w.event.emit("fumble", {"carrier": i["rb"], "by": i["lb"], "at": Vector2(26, 30)})
+	w.event.emit("recovery", {"by": i["wr"], "team": 0, "turnover": false})
+	w.event.emit("tackle", {"by": i["lb"], "carrier": i["wr"], "spot": Vector2(26, 40), "team": 0})
+	assert_near(s.total("fr_ret_yds"), 12.0, 0.001, "own recovery adds nothing")
+
+func test_return_td_and_fumbled_return() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	w.event.emit("snap", {})
+	w.event.emit("throw", {"by": i["qb"]})
+	w.event.emit("interception", {"by": i["lb"], "at": Vector2(20, 31), "team": 1})
+	w.event.emit("touchdown", {"carrier": i["lb"], "spot": Vector2(20, -3), "team": 1, "points": 6})
+	var lb := s.get_line("Bot", "LB")
+	assert_near(lb["int_ret_yds"], 31.0, 0.001, "pick-six credited to the goal line, not the spot in the end zone")
+	assert_eq(int(lb["def_td"]), 1)
+	assert_eq(int(lb["pts"]), 6)
+	# Return fumbled away: the return ends at the fumble, and the offense's recovery is its own return.
+	w.event.emit("snap", {})
+	w.event.emit("throw", {"by": i["qb"]})
+	w.event.emit("interception", {"by": i["cb"], "at": Vector2(20, 50), "team": 1})
+	w.event.emit("fumble", {"carrier": i["cb"], "by": i["wr"], "at": Vector2(20, 42)})
+	w.get_athlete(i["wr"]).position = Vector2(21, 41)
+	w.event.emit("recovery", {"by": i["wr"], "team": 0, "turnover": true})
+	w.event.emit("tackle", {"by": i["cb"], "carrier": i["wr"], "spot": Vector2(21, 47), "team": 0})
+	assert_near(s.get_line("Bot", "CB")["int_ret_yds"], 8.0, 0.001, "50 -> fumbled at 42")
+	assert_near(s.get_line("Bot", "WR")["fr_ret_yds"], 6.0, 0.001, "offense re-recovers at 41, runs to 47")
+	assert_near(s.get_line("Bot", "WR")["rec_yds"], 0.0, 0.001, "not a reception")
+
 func test_owner_change_splits_lines() -> void:
 	var r := _setup()
 	var w: World = r[0]
