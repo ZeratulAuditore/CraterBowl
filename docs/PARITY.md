@@ -2,7 +2,7 @@
 
 Source of truth for "does our game match Gridiron's features" (Steam 708720 / Gridiron Remastered 3878710, researched 2026-11-24). Mechanics and modes only. Name, art, UI and audio are original.
 
-`./scripts/parity_audit.sh` runs every suite and checks each evidence line below against the real test logs. A feature passes only if **all** its evidence passed. `PENDING` = owned by a parallel session; `GAP` = missing, tracked in FEATURES.md "Discovered".
+`./scripts/parity_audit.sh` runs every suite and checks each evidence line below against the real test logs. A feature passes only if **all** its evidence passed. `PENDING` = owned by a parallel session; `GAP` = missing, tracked as a GitHub issue labelled `parity`.
 
 | ID | Gridiron feature | Where | Status |
 |---|---|---|---|

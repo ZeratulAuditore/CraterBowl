@@ -1,5 +1,7 @@
 # Gap analysis
 
+> The TODO ids in this matrix (`C##`, `B##`, `D##`) are legacy. Resolve them to GitHub issues with `../backlog/legacy-ids.md`. New gaps become issues (`REEVALUATE.md`).
+
 Last evaluated: **2026-11-25**: baseline plus a screenshot pass (see `reviews/2026-11-25.md`). State of `main` at `2343e57` (iter 029), plus uncommitted A26/A27 worktrees.
 
 - **R-ss** = seen in the user's Gridiron Remastered open-beta screenshots (build 6763c93).

@@ -31,7 +31,7 @@ var dead_ball_spot := Vector2.ZERO
 var last_possession := 0
 var dead_ball_team := 0
 var play_time := 0.0
-var _impact_rng := RandomNumberGenerator.new()
+var _impact_rolls := 0   # deterministic per-match counter for fumble rolls (no RNG in the sim)
 var play_name := "Verticals"
 var run_flipped := false
 var run_blocks := {}    # blocker id -> defender id (set at snap)
@@ -59,7 +59,7 @@ var kick_spot := Vector2.ZERO
 var _kick_rest_t := 0.0
 
 func _init() -> void:
-	_impact_rng.seed = 1837
+	_impact_rolls = 0
 
 ## role/pos are for the athlete's current side. Optional two-way setup:
 ## off/def roles + x via set_two_way().
@@ -769,7 +769,13 @@ func _is_strip(diver: Athlete, c: Athlete) -> bool:
 	var risk := fumble_risk(impact, c.stamina)
 	if rear_strip:
 		risk = maxf(risk, 0.97)
-	return _impact_rng.randf() < risk
+	return _impact_roll(diver.id, c.id) < risk
+
+## Deterministic pseudo-random roll in [0, 1) from the play situation (sim must stay pure).
+func _impact_roll(a: int, b: int) -> float:
+	_impact_rolls += 1
+	var h := hash([1837, a, b, int(round(play_time * 60.0)), _impact_rolls])
+	return float(posmod(h, 100000)) / 100000.0
 
 static func fumble_risk(impact: float, stamina: float) -> float:
 	var force := clampf(impact / (T.DIVE_SPEED + T.SPRINT_SPEED), 0.0, 1.0)
