@@ -124,3 +124,40 @@ func test_ai_route_runner_avoids_defender_in_lane() -> void:
 	for i in 120:
 		w.step(ai.think(w, [w.find_role(0, Athlete.Role.QB).id]), DT)
 	assert_true(wr.position.y > 32.0, "WR got past the CB (y=%f)" % wr.position.y)
+
+# #62: human vs bot input is an explicit flag, not the presence of a "block" key.
+func _engage_setup() -> World:
+	var w := _setup([[0, Athlete.Role.OL, Vector2(40, 24.6)], [1, Athlete.Role.DL, Vector2(40, 25.5)]])
+	w.athletes[2].facing = Vector2(0, 1)
+	return w
+
+func test_is_human_input_flag() -> void:
+	assert_true(World.is_human_input({World.HUMAN: true}), "flagged input is human")
+	assert_true(World.is_human_input({World.HUMAN: true, "dir": Vector2.ZERO}), "no block key, still human")
+	assert_true(not World.is_human_input({}), "empty input is a bot")
+	assert_true(not World.is_human_input({"dir": Vector2.ZERO, "block": false}), "block key alone is not human")
+
+func test_human_without_block_key_does_not_auto_engage() -> void:
+	var w := _engage_setup()
+	var ol: Athlete = w.athletes[2]
+	var dl: Athlete = w.athletes[3]
+	_run(w, {ol.id: {World.HUMAN: true, "dir": Vector2.ZERO}}, 0.1)
+	assert_eq(dl.engaged_with, -1, "human OL blocks only with the shield held")
+
+func test_human_without_block_key_releases_engagement() -> void:
+	var w := _engage_setup()
+	var ol: Athlete = w.athletes[2]
+	var dl: Athlete = w.athletes[3]
+	_run(w, {}, 0.05)
+	assert_eq(dl.engaged_with, ol.id, "bot OL engaged")
+	w.step({ol.id: {World.HUMAN: true}}, DT)
+	assert_eq(dl.engaged_with, -1, "human taking over without the shield releases the block")
+
+func test_bot_input_with_block_key_stays_bot() -> void:
+	var w := _engage_setup()
+	var ol: Athlete = w.athletes[2]
+	var dl: Athlete = w.athletes[3]
+	_run(w, {ol.id: {"dir": Vector2.ZERO, "sprint": false, "block": false}}, 0.05)
+	assert_eq(dl.engaged_with, ol.id, "bot with a block key still auto-engages")
+	_run(w, {ol.id: {"dir": Vector2.ZERO, "sprint": false, "block": false}}, 0.05)
+	assert_eq(dl.engaged_with, ol.id, "bot with block=false is not released like a human")
