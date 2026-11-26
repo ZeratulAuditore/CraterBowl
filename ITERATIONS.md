@@ -289,6 +289,10 @@
 - Before the fix, one malformed action raised a script error in `_step_authoritative`. That aborted the host tick and dropped any valid action queued behind it in the same tick.
 - Verified with 4 new unit tests (`test_action_validation.gd`) and a rendered host test (`tests/visual/invalid_actions_test.gd`). Restoring the old `protocol.gd`/`net_session.gd` made both fail: the unit queue test because 16 entries were queued instead of 1, and the visual test because of a script error and a dropped play call. Design notes are in `docs/design/netcode.md` under Validation.
 
+## Fix: Explicit human flag on sim inputs (#62)
+- `world.step` used to treat an input as human iff it had a `"block"` key, so a bot input that ever carried `block` would silently switch to human blocking rules (no auto-engage, release on letting go of the shield). Inputs now carry an explicit `World.HUMAN` flag (`World.is_human_input`). `main.gd` sets it on the local player's input and, on the host, on every peer's sanitized input; the wire never carries it. Player-facing behavior is unchanged.
+- Verified with 4 new unit tests in `test_blocking.gd` (human input without a `block` key doesn't auto-engage and releases a block; a bot input with `block: false` still auto-engages and isn't released) and a rendered host test (`tests/visual/peer_human_block_test.gd`). Restoring the old `has("block")` rule failed 3 of the unit tests; dropping the host-side flag in `main.gd` failed the visual test (the peer lineman auto-engaged). Determinism tests unchanged (all-bot games).
+
 ## Fix: Chaosball locks the menu Size picker (#83)
 - On the Online and VS Bots screens, picking Chaosball now shows the Size row as a dimmed, disabled 3v3 (Chaosball is always 3v3). `pick_size` is left untouched, so switching back to Classic re-highlights the earlier 3v3/5v5/7v7 pick. Before, the row stayed live with 5v5/7v7 highlighted, implying a 7v7 Chaosball match.
 - The theme's disabled box hides the pressed state, so the locked 3v3 gets a dimmed cyan override to still read as the pick.
