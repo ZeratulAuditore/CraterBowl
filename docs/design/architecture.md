@@ -139,5 +139,4 @@ trustworthy yet (#28).
 - #1 Migrate backlog to GitHub issues; restructure docs into feature/design levels
 - #61 Tick rate (60 Hz) hard-coded in several places
 - #62 world.step treats an input as human only if it has a 'block' key
-- #63 test_determinism.gd header vs replay recording
 - #66 Lint gate red on origin/main since ec09b1e (seeded RNG in world.gd vs the purity rule)

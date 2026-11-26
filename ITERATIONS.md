@@ -288,3 +288,7 @@
 - The host now drops `act` messages that aren't a Dictionary with a String `a` before they reach its action queue (`Protocol.is_action`). `apply_action` takes an untyped action and rejects junk instead of aborting the caller. `lob`/`spr`/`block` flags are type-checked rather than compared with `== true`.
 - Before the fix, one malformed action raised a script error in `_step_authoritative`. That aborted the host tick and dropped any valid action queued behind it in the same tick.
 - Verified with 4 new unit tests (`test_action_validation.gd`) and a rendered host test (`tests/visual/invalid_actions_test.gd`). Restoring the old `protocol.gd`/`net_session.gd` made both fail: the unit queue test because 16 entries were queued instead of 1, and the visual test because of a script error and a dropped play call. Design notes are in `docs/design/netcode.md` under Validation.
+
+## Docs: Determinism test header (#63)
+- `tests/test_determinism.gd` no longer says replays rely on sim determinism. `src/sim/replay.gd` records positions every frame (phase, ball xyz, per-athlete x/y/flags), not inputs, so playback doesn't re-run the sim. The header now names what does rely on it: netcode reconciliation (`World.predict_step` replaying unacked inputs) and perf refactors of `src/sim`. `docs/design/architecture.md` already said this correctly; #63 is dropped from its open-issues list.
+- Comment and docs only; no behavior change, so no new test or screenshot.
