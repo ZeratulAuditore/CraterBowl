@@ -230,8 +230,10 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 				host_mode = "chaosball" if msg.get("mode", "") == "chaosball" else "classic"
 				welcomed.emit(my_athlete)
 		"snap":
-			if mode == Mode.CLIENT and from == 1 and int(msg.get("t", -1)) > last_snapshot_tick:
-				last_snapshot_tick = int(msg["t"])
+			var tick = msg.get("t")
+			if (mode == Mode.CLIENT and from == 1 and tick is int and tick > last_snapshot_tick
+					and P.valid_snapshot(msg, host_size * 2)):
+				last_snapshot_tick = tick
 				snapshot_received.emit(msg)
 		"ev":
 			if mode == Mode.CLIENT and from == 1:

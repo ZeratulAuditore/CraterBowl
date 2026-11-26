@@ -618,13 +618,17 @@ func _match_contexts(ratings: Dictionary) -> Dictionary:
 ## Every machine credits only its own player's local profile (XP + achievements).
 func _apply_award(xp: Dictionary, ctx: Dictionary = {}) -> void:
 	var me := owner_name(my_id) if not is_client() else player_name
-	if not xp.has(me):
+	var amount = xp.get(me)
+	if not (amount is int and amount >= 0 and amount <= Cosmetics.MAX_MATCH_XP):
 		return
-	var total := int(xp[me])
+	var context = ctx.get(me)
+	if ctx.has(me) and not Achievements.valid_match_context(context):
+		return
+	var total: int = amount
 	profile.games += 1
 	var unlocked := []
-	if ctx.has(me):
-		var c: Dictionary = ctx[me].duplicate()
+	if context is Dictionary:
+		var c: Dictionary = context.duplicate()
 		c["games"] = profile.games
 		for a in Achievements.evaluate(c, profile.achievements):
 			profile.achievements.append(a["id"])
