@@ -427,8 +427,8 @@ func refresh(main, delta: float) -> void:
 		timeout_pips[t].text = "●".repeat(s.clock.timeouts[t]) + "○".repeat(s.clock.timeout_limit - s.clock.timeouts[t])
 	clock_l.text = "FINAL" if final else ("" if main.drill != null else s.clock.label())
 	down_l.text = _down_text(main)
-	var pc := int(ceil(s.clock.play_clock))
-	var clock_up: bool = int(w.phase) == 0 and main.drill == null
+	var pc: int = s.play_clock_shown()   # #136: the value the snap obeys, or -1 = hidden
+	var clock_up: bool = pc >= 0 and main.drill == null
 	play_clock_l.text = "PLAY :%02d" % pc if clock_up else ""
 	play_clock_l.visible = clock_up
 	play_clock_div.visible = clock_up

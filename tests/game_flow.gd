@@ -23,6 +23,7 @@ var kick_events: Array = []
 var fp_lb = null          # C06a forward progress: the defender driving the carrier back
 var fp_contact_y := INF
 var fp_driven_y := 0.0
+var bot_snap_clock := INF   # #136: play clock when the bot offense snapped (frames 4171-4481)
 
 func check(cond: bool, msg: String) -> void:
 	print(("  FLOW OK   " if cond else "  FLOW FAIL ") + msg)
@@ -133,7 +134,14 @@ func _initialize() -> void:
 			check(-main.camera.global_transform.basis.z.z > 0.5, "defense camera looks back up the field toward the ball")
 			check(main.screen_to_field(Vector2(0, 1)).y < -0.9, "W moves a defender toward the ball (up the screen)")
 			check(main.screen_to_field(Vector2(1, 0)).x < -0.9, "D moves a defender screen-right")],
-		[4171 + int(60 * 5.0) + 10, func(): check(main.world.phase != main.World.Phase.PRESNAP, "bot offense snapped by itself")],
+		# #136: the scorebug counts down the bots' huddle and they snap when it reads 0, not at :15.
+		[4300, func():
+			var shown: int = main.series.play_clock_shown()
+			check(shown >= 0 and shown <= int(main.T.HUDDLE_SECONDS) and main.pres.overlay.play_clock_l.text == "PLAY :%02d" % shown,
+				"bot huddle on the scorebug (%s)" % main.pres.overlay.play_clock_l.text)],
+		[4171 + int(60 * 5.0) + 10, func():
+			check(main.world.phase != main.World.Phase.PRESNAP, "bot offense snapped by itself")
+			check(bot_snap_clock <= 0.0, "bot snap waited for the shown play clock (%.2f s left)" % bot_snap_clock)],
 		# A15: rebuild as 3v3 in place
 		[4500, func(): main.configure(3)],
 		[4502, func(): check(main.world.athletes.size() == 6 and main.athlete_root.get_child_count() == 6, "3v3: 6 athletes + views"); check(absf(main.field.width - 30.0) < 0.01, "3v3 field width 30"); check(main.hud.text.find("3v3") >= 0, "HUD shows 3v3")],
@@ -505,6 +513,7 @@ func _connect_listeners() -> void:
 				main.ai.defense_enabled = true)
 	main.world.event.connect(func(n, d): if n == "tackle" and caught_by >= 0: tackled = true)
 	main.world.event.connect(func(n, _d): if n == "interception": picked = true)
+	main.world.event.connect(func(n, _d): if n == "snap" and frame > 4171 and frame <= 4481: bot_snap_clock = main.series.clock.play_clock)
 
 func _setup_ranked_rival() -> void:
 	main.ranked_match = true
