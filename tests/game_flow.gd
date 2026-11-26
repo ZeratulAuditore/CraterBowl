@@ -114,6 +114,15 @@ func _initialize() -> void:
 			check(not main.play_picker_open, "Q toggles the picker")
 			_key(KEY_Q)
 			check(main.play_picker_open, "Q reopens the picker")],
+		# On defense the follow camera turns around to face the offense/ball, and WASD turns with it.
+		[4240, func():
+			var me_z: float = main.player.global_position.z
+			check(absf(angle_difference(main.cam_yaw, PI)) < 0.05, "defense camera swung around (yaw %.2f)" % main.cam_yaw)
+			check(main.camera.global_position.z < me_z - 3.0, "defense camera sits on the far side, looking at the offense")
+			check(-main.camera.global_transform.basis.z.z > 0.5, "defense camera looks back up the field toward the ball")
+			_key(KEY_W)
+			check(main.read_input().y < -0.9, "W moves a defender toward the ball (up the screen)")
+			_key(KEY_W, false)],
 		[4171 + int(60 * 5.0) + 10, func(): check(main.world.phase != main.World.Phase.PRESNAP, "bot offense snapped by itself")],
 		# A15: rebuild as 3v3 in place
 		[4500, func(): main.configure(3)],
