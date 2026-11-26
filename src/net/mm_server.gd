@@ -4,6 +4,7 @@ extends Node
 
 const MM := preload("res://src/net/matchmaker.gd")
 const Registry := preload("res://src/net/lobby_registry.gd")
+const P := preload("res://src/net/protocol.gd")
 const DEFAULT_PORT := 24600
 
 var api: SceneMultiplayer
@@ -11,6 +12,7 @@ var peer: ENetMultiplayerPeer
 var mm := MM.new()
 var registry := Registry.new()   # public lobbies for the server browser
 var pending := {}   # host peer id -> {"others": [ids], "match": Dictionary}
+var protocol_version := P.local_version()   # queuers must match it (#165)
 
 func start(port: int) -> Error:
 	api = SceneMultiplayer.new()
@@ -43,6 +45,11 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 		"unregister":
 			registry.remove(from)
 		"enq":
+			var why := P.version_refusal(msg.get("v"), protocol_version)
+			if why != "":   # #165: never match players whose builds can't play together
+				_send(from, {"k": "refused", "why": why, "v": protocol_version})
+				print("MM refused %d: %s" % [from, why])
+				return
 			var size = msg.get("size", 7)
 			var rating = msg.get("rating", 1000.0)
 			var ok := mm.enqueue(from, str(msg.get("mode", "")), int(size) if size is int else 7,
