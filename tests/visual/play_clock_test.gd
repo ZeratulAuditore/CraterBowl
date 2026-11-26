@@ -30,7 +30,7 @@ func _run() -> void:
 	await _ticks(TICKS)
 	game.set_physics_process(false)
 	await _refresh()
-	var shown: int = series.play_clock_shown()
+	var shown := _shown(series)
 	check(game.world.phase == game.World.Phase.PRESNAP, "bots still huddling")
 	check(shown == 3 and overlay.play_clock_l.text == "PLAY :03",
 		"scorebug counts the bots' 5 s huddle (%s, %d)" % [overlay.play_clock_l.text, shown])
@@ -49,11 +49,15 @@ func _run() -> void:
 	game.set_physics_process(false)
 	await _refresh()
 	check(series.state == series.State.TOSS, "toss pending")
-	check(series.play_clock_shown() == -1 and overlay.play_clock_l.text == "",
+	check(_shown(series) == -1 and overlay.play_clock_l.text == "",
 		"no play clock during the toss (%s)" % overlay.play_clock_l.text)
 	check(absf(series.clock.play_clock - series.clock.PLAY_CLOCK) < 0.001, "play clock held for the kickoff")
 	await capture("play-clock-coin-toss")
 	finish()
+
+## Match.play_clock_shown(), guarded so before_after.sh can run this test on an older base.
+func _shown(series) -> int:
+	return series.play_clock_shown() if series.has_method("play_clock_shown") else -99
 
 func _ticks(n: int) -> void:
 	for i in n:
