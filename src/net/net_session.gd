@@ -126,9 +126,9 @@ func take_actions() -> Array:
 	return out
 
 # ---- client ----
-func send_input(dir: Vector2, sprint: bool, seq: int = 0) -> void:
+func send_input(dir: Vector2, sprint: bool, seq: int = 0, block := false) -> void:
 	if mode == Mode.CLIENT and my_athlete >= 0:
-		_send(1, {"k": "in", "dir": dir, "spr": sprint, "seq": seq}, false)
+		_send(1, {"k": "in", "dir": dir, "spr": sprint, "seq": seq, "block": block}, false)
 
 ## Server: athlete_id -> last processed input seq (for client reconciliation).
 func acks() -> Dictionary:

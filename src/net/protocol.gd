@@ -1,24 +1,30 @@
 extends RefCounted
 ## Wire protocol: snapshot codec, input sanitizing, authoritative action routing. Pure.
 
+const T := preload("res://src/sim/tuning.gd")
 const Routes := preload("res://src/sim/routes.gd")
 const DefensivePlaybook := preload("res://src/sim/defensive_playbook.gd")
 const DIVE_FLAG := 1
 const GROUND_FLAG := 2
 const LOCK_FLAG := 4
+const BLOCK_FLAG := 8
+const SPIN_FLAG := 16
 
 static func encode_snapshot(m, tick: int, acks: Dictionary = {}) -> Dictionary:
 	var w = m.world
 	var a := PackedFloat32Array()
 	var r := PackedInt32Array()
+	var moves := PackedFloat32Array()
 	for ath in w.athletes:
 		a.append_array([ath.position.x, ath.position.y, ath.velocity.x, ath.velocity.y, ath.facing.x, ath.facing.y, ath.stamina])
 		var flags := (DIVE_FLAG if ath.is_diving() else 0) | (GROUND_FLAG if ath.is_grounded() else 0) | (LOCK_FLAG if ath.set_lock else 0)
+		flags |= (BLOCK_FLAG if ath.blocking else 0) | (SPIN_FLAG if ath.is_spinning() else 0)
 		r.append_array([ath.role, flags, ath.team])
+		moves.append_array([ath.move_charge, ath.move_t])
 	var b = w.ball
 	return {
-		"k": "snap", "t": tick, "ph": w.phase, "off": w.offense_team, "los": w.los_y, "fpt": w.forward_pass_thrown,
-		"a": a, "r": r,
+		"k": "snap", "t": tick, "ph": w.phase, "off": w.offense_team, "los": w.los_y, "fpt": w.forward_pass_thrown, "pt": w.last_possession,
+		"a": a, "r": r, "moves": moves,
 		"b": PackedFloat32Array([b.state, b.holder_id, b.position.x, b.position.y, b.position.z, b.velocity.x, b.velocity.y, b.velocity.z]),
 		"d": PackedFloat32Array([m.downs.offense_team, m.downs.down, m.downs.los, m.downs.first_down_y]),
 		"s": PackedInt32Array(m.score),
@@ -43,8 +49,10 @@ static func apply_snapshot(m, s: Dictionary) -> void:
 	w.offense_team = s["off"]
 	w.los_y = s["los"]
 	w.forward_pass_thrown = s["fpt"]
+	w.last_possession = s.get("pt", w.offense_team)
 	var a: PackedFloat32Array = s["a"]
 	var r: PackedInt32Array = s["r"]
+	var moves: PackedFloat32Array = s.get("moves", PackedFloat32Array())
 	for i in mini(w.athletes.size(), r.size() / 3):
 		var ath = w.athletes[i]
 		var o := i * 7
@@ -57,6 +65,11 @@ static func apply_snapshot(m, s: Dictionary) -> void:
 		ath.dive_t = 0.01 if flags & DIVE_FLAG else 0.0
 		ath.recover_t = 0.01 if flags & GROUND_FLAG else 0.0
 		ath.set_lock = (flags & LOCK_FLAG) != 0
+		ath.blocking = (flags & BLOCK_FLAG) != 0
+		ath.spin_move = (flags & SPIN_FLAG) != 0
+		if moves.size() >= i * 2 + 2:
+			ath.move_charge = moves[i * 2]
+			ath.move_t = moves[i * 2 + 1]
 	var b: PackedFloat32Array = s["b"]
 	w.ball.state = int(b[0])
 	w.ball.holder_id = int(b[1])
@@ -107,7 +120,7 @@ static func sanitize_input(msg) -> Dictionary:
 	var seq = msg.get("seq", 0)
 	if not (seq is int) or seq < 0:
 		seq = 0
-	return {"dir": (dir as Vector2).limit_length(1.0), "sprint": msg.get("spr", false) == true, "seq": seq}
+	return {"dir": (dir as Vector2).limit_length(1.0), "sprint": msg.get("spr", false) == true, "seq": seq, "block": msg.get("block", false) == true}
 
 static func sanitize_action(act) -> Dictionary:
 	if not (act is Dictionary):
@@ -115,12 +128,15 @@ static func sanitize_action(act) -> Dictionary:
 	match act.get("a", ""):
 		"snap", "tackle", "recall_call", "flip_play", "handoff", "timeout":
 			return {"a": act["a"]}
+		"dash", "spin":
+			var dir = act.get("dir", Vector2.ZERO)
+			return {"a": act["a"], "dir": dir.limit_length(1.0)} if _finite_v(dir) else {}
 		"throw":
 			var t = act.get("t", Vector2.ZERO)
 			var p = act.get("p", 0.0)
 			if not _finite_v(t) or not (p is float or p is int) or not is_finite(float(p)):
 				return {}
-			return {"a": "throw", "t": t, "p": clampf(float(p), 0.0, 1.0), "lob": act.get("lob", false) == true}
+			return {"a": act["a"], "t": t, "p": clampf(float(p), 0.0, 1.0), "lob": act.get("lob", false) == true}
 		"kick":
 			var kt = act.get("t", Vector2.ZERO)
 			var kp = act.get("p", 0.0)
@@ -164,8 +180,10 @@ static func apply_action(m, athlete_id: int, action: Dictionary) -> bool:
 			return w.break_stance(athlete_id)
 		"tackle":
 			return w.tackle(athlete_id)
+		"dash", "spin":
+			return w.evade(athlete_id, act["a"] == "spin", act["dir"])
 		"throw":
-			return w.throw(athlete_id, act["t"], act["p"], act["lob"])
+			return w.throw(athlete_id, act["t"], T.PLAYER_PASS_POWER, act["lob"], false)
 		"handoff":
 			return w.handoff(athlete_id)
 		"timeout":

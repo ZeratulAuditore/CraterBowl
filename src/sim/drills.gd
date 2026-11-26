@@ -467,7 +467,7 @@ func card() -> Array:
 		"hub":
 			return ["PICK A STATION", "WALK INTO ITS PORTAL\nBACKSPACE FROM ANY STATION RETURNS HERE"]
 		"blocking":
-			return ["BLOCKING · LEVEL %d" % level, "KEEP THE QB CLEAN FOR %.1fs\nSTEP INTO THE RUSHER'S PATH, FACE HIM\nA BLOCK HOLDS 1.5s, THEN RE-FIT" % POCKET_TIME[level - 1]]
+			return ["BLOCKING · LEVEL %d" % level, "KEEP THE QB CLEAN FOR %.1fs\nFACE THE RUSHER AND RAISE YOUR SHIELD\nA BLOCK HOLDS 1.5s, THEN RE-FIT" % POCKET_TIME[level - 1]]
 		"catching":
 			return ["CATCHING · LEVEL %d" % level, "YOUR ROUTE  %s\nRUN IT, THEN BEAT THE CORNER TO THE BALL\nRACE TO %d CATCHES%s" % [route, CATCH_RACE,
 				("  ·  BEST %s" % clock_text(float(bests["catch_race_time"]))) if bests.has("catch_race_time") else ""]]

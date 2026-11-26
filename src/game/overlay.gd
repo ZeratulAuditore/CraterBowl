@@ -1,6 +1,6 @@
 extends CanvasLayer
 ## Broadcast-style match overlay: scorebug, play clock, status line, play-call
-## card, athlete card (stamina), throw meter, big-play banners, control hints.
+## picker, movement meters, hold-to-view scoreboard, and event banners.
 ## Reads main's state each frame. Text/debug HUD (main.hud) is kept for lobby,
 ## search and the final summary.
 
@@ -22,21 +22,23 @@ var down_l: Label
 var play_clock_l: Label
 var status_l: Label
 var mode_l: Label
-var card: PanelContainer
-var card_title: Label
-var card_body: Label
+var picker: PanelContainer
+var picker_title: Label
+var coaching_text: Label
+var picker_grid: GridContainer
+var route_select: OptionButton
+var picker_side := -1
+var picker_calls: Array = []
+var scoreboard: PanelContainer
+var scoreboard_label: Label
 var me_panel: PanelContainer
-var me_name: Label
 var stamina_bar: ProgressBar
 var stamina_fill: StyleBoxFlat
-var winded_l: Label
-var throw_panel: PanelContainer
-var throw_bar: ProgressBar
-var throw_l: Label
+var move_circles: Array[Control] = []
+var move_charge := 2.0
 var banner: Label
 var banner_sub: Label
 var banner_t := 0.0
-var hints: Label
 var _prev := {}
 ## HUD text/state refresh rate. Nothing on the scorebug changes faster than ~10 Hz, and
 ## rebuilding a dozen strings + label layouts every render frame cost ~1 ms/frame
@@ -53,13 +55,10 @@ func _ready() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
 	_build_scorebug()
-	_build_card()
+	_build_picker()
 	_build_me()
-	_build_throw()
 	_build_banner()
-	hints = _label(13, Color(0.85, 0.9, 1.0, 0.7), 600)
-	hints.position = Vector2(18, 36)
-	root.add_child(hints)
+	_build_scoreboard()
 	mode_l = _label(15, Color(0.85, 0.9, 1.0, 0.85), 700)
 	mode_l.position = Vector2(18, 14)
 	root.add_child(mode_l)
@@ -148,7 +147,7 @@ func _build_scorebug() -> void:
 	status_l.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	status_l.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	status_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	status_l.position.y = -96
+	status_l.position.y = -153
 	root.add_child(status_l)
 
 func _divider() -> ColorRect:
@@ -157,76 +156,82 @@ func _divider() -> ColorRect:
 	d.custom_minimum_size = Vector2(1, 30)
 	return d
 
-func _build_card() -> void:
-	card = PanelContainer.new()
-	card.name = "PlayCard"
-	card.add_theme_stylebox_override("panel", _box(NAVY, 8, ACCENT * Color(1, 1, 1, 0.5), 1))
-	card.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	card.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	card.position = Vector2(-18, 16)
-	root.add_child(card)
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 2)
-	card.add_child(v)
-	card_title = _label(14, ACCENT, 700)
-	v.add_child(card_title)
-	card_body = _label(20, Color.WHITE, 700)
-	v.add_child(card_body)
+func _build_picker() -> void:
+	picker = PanelContainer.new()
+	picker.name = "PlayPicker"
+	picker.add_theme_stylebox_override("panel", _box(NAVY, 8, ACCENT.darkened(0.5), 1))
+	picker.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+	picker.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	picker.grow_vertical = Control.GROW_DIRECTION_BOTH
+	picker.position.x = -20
+	root.add_child(picker)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 6)
+	picker.add_child(column)
+	picker_title = _label(17, ACCENT)
+	column.add_child(picker_title)
+	coaching_text = _label(16)
+	column.add_child(coaching_text)
+	picker_grid = GridContainer.new()
+	picker_grid.columns = 2
+	column.add_child(picker_grid)
+	route_select = OptionButton.new()
+	route_select.focus_mode = Control.FOCUS_NONE
+	column.add_child(route_select)
 
 func _build_me() -> void:
 	me_panel = PanelContainer.new()
-	me_panel.name = "AthleteCard"
+	me_panel.name = "MovementMeters"
 	me_panel.add_theme_stylebox_override("panel", _box(NAVY, 8))
-	me_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	me_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	me_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	me_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	me_panel.position = Vector2(18, -22)
+	me_panel.position.y = -87
 	root.add_child(me_panel)
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 4)
-	me_panel.add_child(v)
-	var top := HBoxContainer.new()
-	v.add_child(top)
-	me_name = _label(18, Color.WHITE, 700)
-	top.add_child(me_name)
-	winded_l = _label(14, ALERT, 800)
-	winded_l.text = "  WINDED"
-	top.add_child(winded_l)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 9)
+	me_panel.add_child(row)
 	stamina_bar = ProgressBar.new()
 	stamina_bar.show_percentage = false
-	stamina_bar.custom_minimum_size = Vector2(220, 9)
+	stamina_bar.custom_minimum_size = Vector2(175, 10)
+	stamina_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	stamina_bar.max_value = 1.0
-	stamina_bar.add_theme_stylebox_override("background", _box(Color(1, 1, 1, 0.1), 4))
+	stamina_bar.add_theme_stylebox_override("background", _box(Color(1, 1, 1, 0.15), 4))
 	stamina_fill = _box(ACCENT, 4)
 	stamina_fill.content_margin_top = 0
 	stamina_fill.content_margin_bottom = 0
 	stamina_bar.add_theme_stylebox_override("fill", stamina_fill)
-	v.add_child(stamina_bar)
+	row.add_child(stamina_bar)
+	for i in 2:
+		var circle := Control.new()
+		circle.custom_minimum_size = Vector2(21, 21)
+		circle.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		circle.draw.connect(_draw_move_circle.bind(circle, i))
+		row.add_child(circle)
+		move_circles.append(circle)
 
-func _build_throw() -> void:
-	throw_panel = PanelContainer.new()
-	throw_panel.name = "ThrowMeter"
-	throw_panel.add_theme_stylebox_override("panel", _box(NAVY, 8))
-	throw_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	throw_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	throw_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	throw_panel.position.y = -132
-	root.add_child(throw_panel)
-	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 10)
-	throw_panel.add_child(h)
-	throw_l = _label(16, Color.WHITE, 800)
-	h.add_child(throw_l)
-	throw_bar = ProgressBar.new()
-	throw_bar.show_percentage = false
-	throw_bar.custom_minimum_size = Vector2(260, 12)
-	throw_bar.max_value = 1.0
-	throw_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	throw_bar.add_theme_stylebox_override("background", _box(Color(1, 1, 1, 0.1), 5))
-	var f := _box(Color(1.0, 0.8, 0.3), 5)
-	f.content_margin_top = 0
-	f.content_margin_bottom = 0
-	throw_bar.add_theme_stylebox_override("fill", f)
-	h.add_child(throw_bar)
+func _draw_move_circle(circle: Control, index: int) -> void:
+	var center := circle.size * 0.5
+	var fraction := clampf(move_charge - index, 0.0, 1.0)
+	circle.draw_circle(center, 8.0, Color(1, 1, 1, 0.12), true, -1.0, true)
+	circle.draw_arc(center, 8.0, -PI / 2.0, TAU - PI / 2.0, 32, Color(1, 1, 1, 0.25), 2.0, true)
+	if fraction > 0.0:
+		circle.draw_arc(center, 8.0, -PI / 2.0, fraction * TAU - PI / 2.0, 32, ACCENT, 4.0, true)
+
+func _build_scoreboard() -> void:
+	scoreboard = PanelContainer.new()
+	scoreboard.name = "Scoreboard"
+	scoreboard.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	scoreboard.add_theme_stylebox_override("panel", _box(NAVY, 10, ACCENT.darkened(0.5), 1))
+	scoreboard.set_anchors_preset(Control.PRESET_CENTER)
+	scoreboard.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	scoreboard.grow_vertical = Control.GROW_DIRECTION_BOTH
+	root.add_child(scoreboard)
+	scoreboard_label = _label(23)
+	scoreboard_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	scoreboard_label.custom_minimum_size = Vector2(440, 0)
+	scoreboard.add_child(scoreboard_label)
+	scoreboard.hide()
 
 func _build_banner() -> void:
 	banner = _label(84, Color.WHITE, 800)
@@ -278,9 +283,14 @@ func on_event(n: String, d: Dictionary) -> void:
 
 # --- per frame --------------------------------------------------------------
 
+var _last_world
+
 func refresh(main, delta: float) -> void:
 	var s = main.series
 	var w = main.world
+	if _last_world != w:
+		_last_world = w
+		_text_t = 0.0
 	var pre_game: bool = main.in_lobby()   # queued + warming up on the training ground still shows the overlay
 	var final: bool = s != null and s.is_final()
 	root.visible = not pre_game
@@ -297,11 +307,8 @@ func refresh(main, delta: float) -> void:
 	if pre_game or s == null:
 		_was_pre_game = true
 		return
-	# Per frame: the throw meter (it fills while you hold) and the banner animation.
-	throw_panel.visible = main.charging
-	if main.charging:
-		throw_bar.value = main.charge
-		throw_l.text = "LOB" if main.lob_held() else "THROW"
+	_refresh_picker(main, final)
+	scoreboard.visible = main.scoreboard_held
 	_animate_banner(delta)
 	_text_t -= delta
 	if _text_t > 0.0 and not _was_pre_game:
@@ -311,7 +318,7 @@ func refresh(main, delta: float) -> void:
 	for t in 2:
 		(team_tab[t] as ColorRect).color = main.TEAM_COLORS[t]
 		(team_score[t] as Label).text = str(s.score[t])
-		(poss[t] as Label).modulate.a = 1.0 if w.offense_team == t and not final else 0.0
+		(poss[t] as Label).modulate.a = 1.0 if w.possession_team() == t and not final else 0.0
 		timeout_pips[t].visible = main.drill == null
 		timeout_pips[t].text = "●".repeat(s.clock.timeouts[t]) + "○".repeat(s.clock.timeout_limit - s.clock.timeouts[t])
 	clock_l.text = "FINAL" if final else ("" if main.drill != null else s.clock.label())
@@ -321,11 +328,13 @@ func refresh(main, delta: float) -> void:
 	play_clock_l.label_settings.font_color = ALERT if pc <= 5 else ACCENT
 	mode_l.text = _mode_text(main)
 	status_l.text = _status_text(main)
-	_refresh_card(main)
 	_refresh_me(main)
 	me_panel.visible = not final
-	card.visible = not final
 	bug.visible = true
+	if scoreboard.visible:
+		scoreboard_label.text = "%s     %d – %d     %s\n%s     ·     %s\n%s possession" % [
+			TEAM_NAMES[0], s.score[0], s.score[1], TEAM_NAMES[1], clock_l.text,
+			_down_text(main), TEAM_NAMES[w.possession_team()]]
 	# First down detection (same offense, down reset, chains moved).
 	var key := [w.offense_team, s.downs.down, snappedf(s.downs.first_down_y, 0.1)]
 	if not _prev.is_empty() and _prev["k"][0] == key[0] and key[1] == 1 and _prev["k"][1] > 1 and int(s.state) == 0:
@@ -333,7 +342,6 @@ func refresh(main, delta: float) -> void:
 	elif not _prev.is_empty() and _prev["k"][0] != key[0] and _prev["k"][1] == 4 and _prev.get("score", []) == s.score and not final:
 		show_banner("TURNOVER ON DOWNS", "", ALERT, 1.8)
 	_prev = {"k": key, "score": s.score.duplicate()}
-	hints.text = _hints(main)
 
 ## Banner animation: punch in, hold, fade (every frame).
 func _animate_banner(delta: float) -> void:
@@ -398,95 +406,76 @@ func _status_text(main) -> String:
 	match int(w.phase):
 		0:
 			var mine: bool = w.offense_team == w.get_athlete(main.my_id).team
-			var t := "BALL ON %s  ·  " % spot if spot != "" else ""
 			if int(s.state) == 3:
 				var won: bool = s.toss_winner == w.get_athlete(main.my_id).team
 				return ("YOU WON THE TOSS  ·  1 RECEIVE  ·  2 KICK" if won else "COIN TOSS  ·  %s CHOOSING" % ("HOME" if s.toss_winner == 0 else "AWAY"))
 			if w.kick_play == "kickoff":
-				return "KICKOFF  ·  " + ("SPACE / HOLD J TO KICK" if mine else "RETURN TEAM")
+				return "KICKOFF  ·  " + ("J / CLICK TO KICK" if mine else "RETURN TEAM")
 			if w.kick_play != "" and mine:
-				t += ("PUNT" if w.kick_play == "punt" else "FIELD GOAL") + "  ·  "
-			return t + ("SPACE TO SNAP" if mine else "DEFENSE  ·  Q CHANGE CALL" if not w.defensive_call.is_empty() else "DEFENSE")
+				return ("BALL ON %s  ·  " % spot if spot != "" else "") + ("PUNT" if w.kick_play == "punt" else "FIELD GOAL") + "  ·  K CHANGE"
+			return "BALL ON %s" % spot if spot != "" else ""
 		1:
 			if main.world.is_chaos():
 				return "PASS CLOCK %.1f" % maxf(0.0, main.T.PASS_CLOCK - w.hold_t)
-			return main.handoff_hint()
+			return "MEET THE BACK" if w.handoff_receiver(main.my_id) == null and w.is_run_play() and w.ball.is_held_by(main.my_id) else ""
 		_:
-			return ("%s  ·  R FOR NEXT PLAY" % main.last_whistle) if main.last_whistle != "" else ""
+			return main.last_whistle
 
-func _refresh_card(main) -> void:
+func _refresh_picker(main, final: bool) -> void:
 	var w = main.world
-	var me = w.get_athlete(main.my_id)
-	var offense: bool = me != null and w.offense_team == me.team
-	var remaining: int = main.huddle_remaining()
-	if _training(main):
-		var cd: Array = main.drill.card()
-		card_title.text = cd[0]
-		card_body.text = cd[1]
-	elif w.kick_play != "" and not w.kicked and me != null and (w.kick_play == "kickoff" or offense):
-		card_title.text = {"kickoff": "KICKOFF", "punt": "PUNT  [K]", "fg": "FIELD GOAL  [K]"}.get(w.kick_play, "KICK")
-		if not offense:
-			card_body.text = "RETURN TEAM\nFIELD IT · RUN IT BACK"
-		elif w.ball.is_held_by(main.controlled_id) or main.controlled_id == w.kicker().id:
-			card_body.text = "HOLD J / LMB  AIM + CHARGE\nRELEASE TO KICK"
-		else:
-			card_body.text = "PROTECT · COVER THE KICK"
-	elif remaining > 0 and me != null:
-		card_title.text = "%s HUDDLE  ·  %ds  ·  Q NEXT" % ["OFFENSE" if offense else "DEFENSE", remaining]
-		card_body.text = main.huddle_calls(me.team) + ("\nL Last   ·   X Flip   ·   Y Auto" if offense else "\nL Last   ·   Y Auto")
-	elif offense:
-		card_title.text = "AUTO CALL  [Y]" if main.auto_call else "PLAY CALL  [Q]"
-		var body: String = str(w.play_name).to_upper()
-		if w.route_of.has(main.my_id):
-			body += "\nYOUR ROUTE  %s  [F]" % w.route_of[main.my_id]
-		card_body.text = body
-	elif int(w.phase) == 0 and not w.defensive_call.is_empty():
-		card_title.text = "AUTO CALL  [Y]" if main.auto_call else "DEFENSIVE CALL  [Q]"
-		card_body.text = w.DefensivePlaybook.CALLS[w.defensive_call].name
-	else:
-		card_title.text = "DEFENSE"
-		card_body.text = "E / RMB  TACKLE\nSHIFT  SPRINT"
+	var training := _training(main)
+	coaching_text.visible = training
+	picker_grid.visible = not training
+	if training:
+		picker.visible = not main.scoreboard_held
+		var card: Array = main.drill.card()
+		picker_title.text = card[0]
+		coaching_text.text = card[1]
+		route_select.hide()
+		return
+	picker.visible = not final and w.phase == w.Phase.PRESNAP and w.kick_play != "kickoff" and main.play_picker_open and not main.scoreboard_held and not main.replay_active
+	if not picker.visible:
+		return
+	var side := 0 if w.get_athlete(main.my_id).team == w.offense_team else 1
+	var offense := side == 0
+	var calls: Array = w.available_plays() if offense else w.DefensivePlaybook.CALLS.keys()
+	if picker_side != side or picker_calls != calls:
+		picker_side = side
+		picker_calls = calls
+		for child in picker_grid.get_children():
+			picker_grid.remove_child(child)
+			child.queue_free()
+		for call in calls:
+			var b := Button.new()
+			b.text = call if offense else w.DefensivePlaybook.CALLS[call].name
+			b.focus_mode = Control.FOCUS_NONE
+			b.toggle_mode = true
+			b.pressed.connect(func(): main.do_action({"a": "play" if offense else "defense", "p": call}))
+			picker_grid.add_child(b)
+		for action in ([["Last play", "recall_call"], ["Flip play", "flip_play"]] if offense else [["Last call", "recall_call"]]):
+			var b := Button.new()
+			b.text = action[0]
+			b.focus_mode = Control.FOCUS_NONE
+			b.pressed.connect(func(): main.do_action({"a": action[1]}))
+			picker_grid.add_child(b)
+		if route_select.item_count == 0:
+			for route in main.Routes.ROUTE_NAMES:
+				route_select.add_item(route)
+			route_select.item_selected.connect(func(index: int): main.do_action({"a": "route", "r": route_select.get_item_text(index)}))
+	var called: String = w.play_name if offense else w.defensive_call
+	picker_title.text = "Call an offensive play" if offense else "Call a defense"
+	for i in calls.size():
+		picker_grid.get_child(i).set_pressed_no_signal(calls[i] == called)
+	route_select.visible = offense and w.route_of.has(main.my_id)
+	if route_select.visible:
+		route_select.select(main.Routes.ROUTE_NAMES.find(w.route_of[main.my_id]))
 
 func _refresh_me(main) -> void:
-	var pv = main.player
-	if pv == null:
-		return
-	var a = pv.athlete
-	var slot: int = main.roster.slot_of_athlete(a.id)
-	var pos_l: String = main.roster.label(slot) if slot >= 0 else ""
-	var nm: String = main.player_name if a.id == main.controlled_id else main.owner_name(a.id)
-	me_name.text = "#%s  %s  %s" % [pv.number_text, nm.to_upper(), pos_l]
+	var a = main.player.athlete
 	stamina_bar.value = a.stamina
 	var low: bool = a.sprint_locked or a.stamina < 0.25
 	stamina_fill.bg_color = ALERT if low else ACCENT.lerp(Color(0.4, 1.0, 0.55), a.stamina)
-	winded_l.visible = a.sprint_locked
-
-func _hints(main) -> String:
-	if _training(main):
-		return main.drill.hints()
-	var w = main.world
-	var me = w.get_athlete(main.my_id)
-	var offense: bool = me != null and w.offense_team == me.team
-	var timeout_hint := ""
-	if main.drill == null and me != null and main.series.clock.timeouts[me.team] > 0:
-		timeout_hint = " · %s TIMEOUT" % main.bound_key_name("timeout")
-	if int(w.phase) == 0:
-		if w.kick_play == "kickoff":
-			return "HOLD J / LMB AIM + CHARGE · RELEASE TO KICK" if offense else "WASD MOVE · SHIFT SPRINT"
-		var hints := "WASD MOVE · SHIFT SPRINT · TAB POSITION · T TEAM"
-		if offense:
-			hints += " · Q PLAY" if not w.route_of.has(main.my_id) else " · Q PLAY · F ROUTE"
-			if not w.is_chaos():
-				hints += " · K KICK"
-		return hints + timeout_hint
-	if int(w.phase) == 2:
-		return "TAB POSITION · T TEAM" + timeout_hint
-	if int(w.phase) == 1 and main.world.ball.is_held_by(main.controlled_id):
-		if main.kicking():
-			return "HOLD J / LMB AIM + CHARGE · RELEASE TO KICK"
-		if w.is_run_play():
-			return "WASD MOVE · SHIFT SPRINT"
-		if w.is_chaos() or (offense and not w.forward_pass_thrown and w.get_athlete(main.controlled_id).team == w.offense_team):
-			return "HOLD J / LMB AIM + CHARGE · RELEASE TO THROW · CTRL LOB"
-		return "WASD MOVE · SHIFT SPRINT · RUN IT BACK"
-	return "WASD MOVE · SHIFT SPRINT · E / RMB TACKLE"
+	if not is_equal_approx(move_charge, a.move_charge):
+		move_charge = a.move_charge
+		for circle in move_circles:
+			circle.queue_redraw()

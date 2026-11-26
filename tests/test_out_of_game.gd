@@ -116,7 +116,7 @@ func test_controls_rebind_moves_and_swaps() -> void:
 	# swapping back restores defaults (no leftover overrides)
 	assert_eq(Controls.rebind(c, "snap", KEY_SPACE), {}, "back to defaults")
 	assert_eq(Controls.translation({}), {}, "defaults translate nothing")
-	assert_eq(Controls.action_for_key(KEY_TAB, {}), "position", "lookup")
+	assert_eq(Controls.action_for_key(KEY_TAB, {}), "scoreboard", "lookup")
 
 func test_gamepad_mapping() -> void:
 	assert_eq(Controls.default_key(Controls.PAD_BUTTONS[JOY_BUTTON_A]), KEY_SPACE, "A snaps")

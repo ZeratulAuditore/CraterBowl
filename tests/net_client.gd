@@ -16,7 +16,7 @@ var bad_snap_rejected := false
 var last_server_x := INF
 var aid_before_swap := -1
 var aid_before_pick := -1
-var swapped_to_team0 := false
+var team_swap_rejected := false
 var pick_rejected := false
 var equipped_number := ""
 var first_team := -1
@@ -29,7 +29,6 @@ var broke_stance := false   # host snapshot shows the lock cleared after our Spa
 var crossed_line := false   # predicted defender ever past the neutral zone
 var defense_call_seen := false
 var defense_recall_seen := false
-var requested_qb_slot := false
 var sent_timeout := false
 var got_timeout_event := false
 var timeout_confirmed := false
@@ -116,13 +115,12 @@ func _physics_process(_dt: float) -> bool:
 		aid_before_swap = aid
 		main.do_action({"a": "team"})
 	if bad_snap_sent_at > 0 and f == bad_snap_sent_at + 60:
-		swapped_to_team0 = aid != aid_before_swap and main.world.get_athlete(aid).team == 0
+		team_swap_rejected = aid == aid_before_swap and main.world.get_athlete(aid).team == first_team
 		aid_before_pick = aid
 		main.do_action({"a": "pick", "slot": 0})  # host's QB/LB slot: must be rejected
 	if bad_snap_sent_at > 0 and f == bad_snap_sent_at + 90:
 		pick_rejected = aid == aid_before_pick
 		equipped_number = main.views[aid].number_text
-		main.do_action({"a": "team"})
 	if bad_snap_sent_at > 0 and f > bad_snap_sent_at + 90:
 		_test_remote_handoff()
 	if f == 1500 or remote_handoff_confirmed:
@@ -140,7 +138,7 @@ func _physics_process(_dt: float) -> bool:
 		check(defense_recall_seen, "remote defender recalled the previous snap's call")
 		check(defense_call_seen, "defensive selection reached host and returned in a snapshot")
 		check(bad_snap_rejected, "defense snap rejected by server")
-		check(swapped_to_team0, "team swap request -> server reassigned to team 0")
+		check(team_swap_rejected, "server rejected in-match team swap")
 		check(equipped_number == "88", "my equipped #88 round-tripped through the host (%s)" % equipped_number)
 		check(pick_rejected, "picking the host's occupied slot rejected")
 		check(timeout_confirmed and got_timeout_event, "remote U decrements only its team's timeouts and broadcasts the event")
@@ -155,9 +153,6 @@ func _test_remote_handoff() -> void:
 	var me = w.get_athlete(aid)
 	if me == null or me.team != 1:
 		return
-	if not requested_qb_slot:
-		main.do_action({"a": "pick", "slot": main.match_size})
-		requested_qb_slot = true
 	if w.offense_team != 1 or me.role != main.Athlete.Role.QB:
 		return
 	if not sent_timeout and w.phase == w.Phase.PRESNAP:

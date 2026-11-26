@@ -31,6 +31,7 @@ var dead_ball_spot := Vector2.ZERO
 var last_possession := 0
 var dead_ball_team := 0
 var play_time := 0.0
+var _impact_rng := RandomNumberGenerator.new()
 var play_name := "Verticals"
 var run_flipped := false
 var run_blocks := {}    # blocker id -> defender id (set at snap)
@@ -56,6 +57,9 @@ var kick_free := false   # kicked ball not yet possessed by anyone (and not bloc
 var kick_blocked := false
 var kick_spot := Vector2.ZERO
 var _kick_rest_t := 0.0
+
+func _init() -> void:
+	_impact_rng.seed = 1837
 
 ## role/pos are for the athlete's current side. Optional two-way setup:
 ## off/def roles + x via set_two_way().
@@ -462,11 +466,16 @@ func is_stance_locked(a: Athlete) -> bool:
 
 ## Pre-snap rules for one athlete's input + resulting position. Shared by the
 ## authoritative step and client prediction so both clamp identically.
-func step_athlete(a: Athlete, dir: Vector2, sprint: bool, dt: float) -> void:
+func step_athlete(a: Athlete, dir: Vector2, sprint: bool, dt: float, block := false) -> void:
 	if is_stance_locked(a):
 		a.face(dir)
 	else:
-		a.step(dir, sprint, dt)
+		var start := a.position
+		var moving_special := a.move_t > 0.0
+		var active := phase == Phase.LIVE and a.can_act()
+		a.step(dir, sprint, dt, active and block and a.team == possession_team() and not ball.is_held_by(a.id))
+		if active and not moving_special:
+			a.move_charge = minf(2.0, a.move_charge + start.distance_to(a.position) * T.MOVE_CHARGE_PER_YARD)
 
 func _go_live() -> void:
 	phase = Phase.LIVE
@@ -474,8 +483,10 @@ func _go_live() -> void:
 		a.set_lock = false
 
 ## Client prediction: one athlete's step with the same pre-snap rules as step().
-func predict_step(a: Athlete, dir: Vector2, sprint: bool, dt: float) -> void:
-	step_athlete(a, dir, sprint, dt)
+func predict_step(a: Athlete, dir: Vector2, sprint: bool, dt: float, block := false) -> void:
+	if phase == Phase.DEAD and ball.holder_id == a.id:
+		return
+	step_athlete(a, dir, sprint, dt, block)
 	if phase == Phase.PRESNAP:
 		enforce_neutral_zone(a)
 
@@ -556,16 +567,21 @@ func handoff(id: int) -> bool:
 	event.emit("handoff", {"by": id, "to": back.id})
 	return true
 
-## Throw from the holder toward target (field plane) with power 0..1.
-func throw(id: int, target: Vector2, power: float, lob: bool = false) -> bool:
+func can_throw(id: int) -> bool:
 	var a := get_athlete(id)
-	if a == null or phase != Phase.LIVE or not ball.is_held_by(id):
+	if a == null or phase != Phase.LIVE or not ball.is_held_by(id) or not a.can_act() or a.move_t > 0.0:
 		return false
-	if not rules["anyone_throws"] and (forward_pass_thrown or a.position.y > los_y):
+	return rules["anyone_throws"] or (not forward_pass_thrown and a.position.y <= los_y)
+
+## Throw from the holder toward target (field plane) with power 0..1.
+func throw(id: int, target: Vector2, power: float, lob: bool = false, inherit_motion := true) -> bool:
+	if not can_throw(id):
 		return false
+	var a := get_athlete(id)
 	var from := Vector3(a.position.x, a.position.y, T.RELEASE_HEIGHT)
 	var v := Passing.solve_velocity(from, target, power, gravity(), lob)
-	v += Vector3(a.velocity.x, a.velocity.y, 0.0) * T.THROW_INHERIT
+	if inherit_motion:
+		v += Vector3(a.velocity.x, a.velocity.y, 0.0) * T.THROW_INHERIT
 	ball.state = Ball.State.IN_FLIGHT
 	ball.holder_id = -1
 	ball.position = from
@@ -584,6 +600,19 @@ func tackle(id: int) -> bool:
 	if a == null or phase != Phase.LIVE:
 		return false
 	return a.start_dive()
+
+## Spend an evasion charge and disengage from a block.
+func evade(id: int, spin: bool, direction: Vector2) -> bool:
+	var a := get_athlete(id)
+	if a == null or phase != Phase.LIVE or not a.start_move(spin, direction):
+		return false
+	if a.engaged_with >= 0:
+		var other := get_athlete(a.engaged_with)
+		if a.team == possession_team():
+			_release_block(other, a)
+		else:
+			_release_block(a, other)
+	return true
 
 ## Team in possession during live play (carrier's team), else the offense.
 func possession_team() -> int:
@@ -605,10 +634,18 @@ func step(inputs: Dictionary, dt: float) -> void:
 	for a in athletes:
 		prev.append(a.position)
 		var inp: Dictionary = inputs.get(a.id, {})
-		step_athlete(a, inp.get("dir", Vector2.ZERO), inp.get("sprint", false), dt)
+		if phase == Phase.DEAD and ball.holder_id == a.id:
+			continue
+		var human := inp.has("block")
+		step_athlete(a, inp.get("dir", Vector2.ZERO), inp.get("sprint", false), dt, inp.get("block", false))
+		if human and not a.blocking and a.engaged_with >= 0 and a.team == possession_team():
+			var defender := get_athlete(a.engaged_with)
+			if defender:
+				_release_block(defender, a)
 	if phase == Phase.LIVE:
-		_step_blocks(prev, dt)
-	_resolve_collisions()
+		_step_blocks(prev, inputs, dt)
+	if phase != Phase.DEAD:
+		_resolve_collisions()
 	if phase == Phase.PRESNAP:
 		for a in athletes:
 			enforce_neutral_zone(a)
@@ -628,7 +665,7 @@ func _can_block(a: Athlete) -> bool:
 	var pt := possession_team()
 	if a.team != pt or ball.is_held_by(a.id) or not a.can_act() or a.engaged_with >= 0 or a.immune_t > 0.0:
 		return false
-	if pt != offense_team:
+	if a.blocking or pt != offense_team:
 		return true   # return after a takeaway: anyone can block
 	if a.role == Athlete.Role.OL or a.role == Athlete.Role.C:
 		return true
@@ -636,14 +673,14 @@ func _can_block(a: Athlete) -> bool:
 	return c != null and (c.role != Athlete.Role.QB or c.position.y > los_y)
 
 func _can_be_blocked(d: Athlete) -> bool:
-	return d.team != possession_team() and not d.is_grounded() and d.engaged_with < 0 and d.immune_t <= 0.0
+	return d.team != possession_team() and not d.is_grounded() and not d.is_spinning() and d.engaged_with < 0 and d.immune_t <= 0.0
 
-func _step_blocks(prev: Array, dt: float) -> void:
+func _step_blocks(prev: Array, inputs: Dictionary, dt: float) -> void:
 	for a in athletes:
 		a.immune_t = maxf(0.0, a.immune_t - dt)
 	# Form new engagements
 	for b in athletes:
-		if not _can_block(b):
+		if not _can_block(b) or (inputs.get(b.id, {}).has("block") and not b.blocking):
 			continue
 		for d in athletes:
 			if not _can_be_blocked(d):
@@ -664,6 +701,9 @@ func _step_blocks(prev: Array, dt: float) -> void:
 		var b := get_athlete(d.engaged_with)
 		d.engage_t += dt
 		if d.engage_t >= T.BLOCK_HOLD or b == null or not b.can_act() or ball.is_held_by(b.id):
+			_release_block(d, b)
+			continue
+		if b.blocking and prev[b.id].distance_to(d.position) > T.ENGAGE_DIST + 0.12:
 			_release_block(d, b)
 			continue
 		var d_delta: Vector2 = d.position - prev[d.id]
@@ -711,24 +751,37 @@ func _check_tackles() -> void:
 		_whistle("out_of_bounds", {"carrier": c.id, "team": c.team})
 		return
 	for a in athletes:
-		if a.team != c.team and a.is_diving() and a.position.distance_to(c.position) <= T.TACKLE_REACH:
+		if a.team != c.team and a.is_diving() and not c.is_spinning() and a.position.distance_to(c.position) <= T.TACKLE_REACH:
 			if _is_strip(a, c):
 				_fumble(c, a)
 			else:
 				_whistle("tackle", {"by": a.id, "carrier": c.id, "team": c.team})
 			return
 
-## Deterministic strip: sprinting carrier hit from behind.
+## Impact uses the closing speed along the contact normal. A sprinting
+## carrier hit in the back also gets a strip penalty.
 func _is_strip(diver: Athlete, c: Athlete) -> bool:
-	if not c.last_sprinting or c.velocity.length() < 1.0:
-		return false
-	return diver.facing.dot(c.velocity.normalized()) > T.FUMBLE_BEHIND_DOT
+	var normal := diver.position.direction_to(c.position)
+	if normal.is_zero_approx():
+		normal = diver.facing
+	var impact := maxf(0.0, (diver.velocity - c.velocity).dot(normal))
+	var rear_strip := c.last_sprinting and diver.facing.dot(c.facing) > T.FUMBLE_BEHIND_DOT
+	var risk := fumble_risk(impact, c.stamina)
+	if rear_strip:
+		risk = maxf(risk, 0.97)
+	return _impact_rng.randf() < risk
+
+static func fumble_risk(impact: float, stamina: float) -> float:
+	var force := clampf(impact / (T.DIVE_SPEED + T.SPRINT_SPEED), 0.0, 1.0)
+	var fatigue := clampf((0.84 - stamina) / 0.84, 0.0, 1.0)
+	return force * fatigue * fatigue * 0.58
 
 func _fumble(c: Athlete, by: Athlete) -> void:
 	ball.state = Ball.State.LOOSE
 	ball.holder_id = -1
 	ball.position = Vector3(c.position.x, c.position.y, T.BALL_CARRY_HEIGHT)
-	ball.velocity = Vector3(c.velocity.x * 0.5, c.velocity.y * 0.5, 3.0)
+	var knock := c.velocity * 0.45 + by.facing * 2.4
+	ball.velocity = Vector3(knock.x, knock.y, 3.0)
 	c.recover_t = T.FUMBLE_KNOCKDOWN
 	c.velocity *= 0.3
 	last_possession = c.team
@@ -780,6 +833,7 @@ func _whistle(reason: String, data: Dictionary) -> void:
 	dead_ball_spot = c.position
 	dead_ball_team = c.team
 	data["spot"] = dead_ball_spot
+	c.velocity = Vector2.ZERO
 	ball.state = Ball.State.DEAD
 	phase = Phase.DEAD
 	event.emit(reason, data)
