@@ -178,7 +178,12 @@ messages are reliable on channel 0.
 - `port_mapper.gd:open_port` (on a `Thread` via `open_port_async`, from `main_menu.gd:_with_port` for host
   and queue): UPnP discover 2 s, map UDP `port→port` for 4 h, query the external IP, reject non-public
   (CGNAT, private) addresses. The launch options carry any failure notice into the host lobby (#47).
-  `close_port` is unused, so the lease expires on its own. Relay support is tracked in #32.
+  Each accepted mapping is kept in `_mapped` with the `UPNP` object that found the gateway, so removal
+  needs no second discovery. `Launch.go_to_menu` calls `release_all_async()` (forget now, delete on a
+  `WorkerThreadPool` task; a port re-mapped before the task runs is skipped), and a `QuitGuard` node under
+  `/root`, installed by the first `open_port_async`, calls `release_all()` on `NOTIFICATION_WM_CLOSE_REQUEST`
+  or `NOTIFICATION_EXIT_TREE`. Release is idempotent; a refused delete is dropped and the 4 h lease is the
+  fallback (#57). `upnp_factory` lets tests inject a fake router. Relay support is tracked in #32.
 
 ## Trust model and known limits
 
