@@ -252,3 +252,8 @@
 - Not a game iteration (no number). The backlog moved from `FEATURES.md` / `docs/gaps/TODO.md` checklists to GitHub issues #2–#51, with labels for type, priority, area and status. Old ids map via `docs/backlog/legacy-ids.md`. Team voice chat was planned as #31.
 - Docs split into feature level (`docs/features/`) and design level (`docs/design/`). `PLAN.md` → `docs/vision.md`, `docs/gaps/` → `docs/research/`, plus a new `docs/workflow.md`. `LOOP.md` now picks from issues, and the daily gap review files and updates issues.
 - From here on, every iteration entry cites its issue, and every "known gap" is an issue number.
+
+## 036: Compact scorebug (2026-11-25)
+
+- [#13](https://github.com/bpenwell/CraterBowl/issues/13) groups the mode, ball spot and mini field with the existing score, possession, clocks, timeouts and down state.
+- The rendered integration test checks these details and captures scrimmage, kickoff and conversion states.
