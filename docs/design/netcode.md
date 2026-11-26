@@ -47,7 +47,7 @@ see when hosting, joining, queueing) lives in `docs/features/` (online play). La
 |---|---|---|---|---|
 | `in` | C→S | unreliable-ordered, ch 1, every tick | `dir`, `spr`, `seq`, `block` | sender has an athlete; `P.sanitize_input`; `seq` must not go backwards |
 | `act` | C→S | reliable, ch 0 | `act` (action dict) | sender has an athlete; `P.is_action(act)` (Dictionary with a String `a`, else dropped); queued as `[peer, aid, act]`, fields validated when applied |
-| `lact` | C→S | reliable, ch 0 | `act` = `{"a":"ready"}` / `{"a":"name","n":…}` / `{"a":"seat","s":…}` (queue matches, #59) | sender is in `lobby.players`; `act` is a Dictionary |
+| `lact` | C→S | reliable, ch 0 | `act` = `{"a":"ready"}` / `{"a":"name","n":…}` / `{"a":"seat","s":…}` (queue matches, #59) / `{"a":"id","i":…}` (install id, 16–32 hex chars, #102) | sender is in `lobby.players`; `act` is a Dictionary |
 | `refused` | S→C | reliable, ch 0 | `why` (reason text) | from peer 1; cut to 120 chars. Client stores `refused_reason`, emits `refused`, closes its peer and ignores later packets |
 | `welcome` | S→C | reliable, ch 0 | `aid`, `size`, `mode` | from peer 1; `size` ∈ {3,5,7} else 7; `mode` chaosball else classic |
 | `snap` | S→all | unreliable-ordered, ch 1, 30 Hz | see Snapshots | from peer 1; tick `t` > last seen |
@@ -181,6 +181,12 @@ messages are reliable on channel 0.
   is matched by name. `teams` leaves out any name two queued players share, so an old host
   auto-balances them instead of stacking both on one team. Test: `MODE=dupname ./scripts/mm_test.sh`
   (two competitive clients both named Ann) and `test_matchmaker.gd`.
+- **Install ids (#102).** Ranked records are keyed by a per-install id (`Cosmetics.install_id`, 8 random
+  bytes hex, minted by `main.gd:install_id()`). A joiner sends it as the `id` lobby action next to `name`.
+  The host validates it (`Cosmetics.valid_install_id`), keeps it in `peer_installs` (not in the broadcast
+  lobby state), and `_record_ranked` keys each human by `ranked_key(owner, aid)`. The broadcast `ranked`
+  event is keyed by athlete id, so ids never leave the host. An older client sends no id and is keyed by
+  name. Test: `net_test.sh` checks that the id the client minted is the one the host received.
 - Disconnect from the MM dequeues, drops pending host relays and the registry entry.
 - Server browser: `lobby_advertiser.gd` (attached by `Launch._advertise` when `options.public`)
   re-registers `{code, name, size, mode, players, in_game}` every 5 s; `lobby_registry.gd` expires

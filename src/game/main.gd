@@ -101,6 +101,8 @@ var pending_teams := {}         # name -> team (matchmaker's split; fallback for
 var pending_seats := {}         # seat token -> team (matchmaker's rating-balanced split, #59)
 var seat_token := ""            # our random per-queue id; the host seats us by it, not by name
 var peer_seats := {}            # host: peer id -> seat token the joiner sent
+var peer_installs := {}         # host: peer id -> install id the joiner sent; keys ranked records (#102), never broadcast
+var install_id_unsaved := false # minted this session, not yet written to the profile
 var ranked_line := ""
 var player_name := "You"
 var profile := Cosmetics.new()
@@ -547,30 +549,63 @@ func _record_leaderboard() -> String:
 			ranks.append("%s #%d" % [pos, lb.rank_of(me, pos)])
 	return ", ".join(ranks)
 
-## Host: Elo update for every human by final team; returns {name: delta}.
+## This install's stable id (#102): minted once, saved with the profile when a ranked result lands.
+func install_id() -> String:
+	if profile.install_id == "":
+		profile.install_id = Crypto.new().generate_random_bytes(8).hex_encode()
+		install_id_unsaved = true
+	return profile.install_id
+
+func _persist_install_id() -> void:
+	if install_id_unsaved:
+		install_id_unsaved = false
+		profile.save(profile_path)
+
+## Ranked record key for player `owner` (seated on athlete `aid`): their install id, or, for a peer that
+## never sent one (older build), their display name as before #102.
+func ranked_key(owner: int, aid: int) -> String:
+	if owner == LOCAL_PLAYER:
+		return Ranked.id_key(install_id())
+	if peer_installs.has(owner):
+		return Ranked.id_key(peer_installs[owner])
+	return owner_name(aid)
+
+## Host: Elo update for every human by final team. Returns {"deltas", "labels", "ratings"}, each keyed by
+## athlete id: every machine finds its own line by my_id, and nobody's install id leaves the host.
 func _record_ranked() -> Dictionary:
-	var teams := [[], []]
-	for s in roster.slots:
-		if s["owner"] >= 0:
-			var nm := owner_name(s["athlete_id"])
-			if not teams[s["team"]].has(nm):
-				teams[s["team"]].append(nm)
-	var w := series.winner()
 	var rk := Ranked.new()
 	rk.load_file(ranked_path)
 	rk.ensure_season(Ranked.season_id(Time.get_unix_time_from_system()))
-	var deltas := rk.record_match(teams[0], teams[1], 0.5 if w < 0 else (1.0 if w == 0 else 0.0))
+	var teams := [[], []]
+	var names := {}
+	var key_of := {}   # athlete id -> record key
+	for s in roster.slots:
+		if s["owner"] >= 0:
+			var key := ranked_key(s["owner"], s["athlete_id"])
+			var nm := owner_name(s["athlete_id"])
+			rk.claim(key, nm)
+			key_of[s["athlete_id"]] = key
+			names[key] = nm
+			if not teams[s["team"]].has(key):
+				teams[s["team"]].append(key)
+	var w := series.winner()
+	var deltas := rk.record_match(teams[0], teams[1], 0.5 if w < 0 else (1.0 if w == 0 else 0.0), names)
 	rk.save(ranked_path)
-	var labels := {}
-	for nm in deltas:
-		labels[nm] = rk.label(nm)
-	return {"deltas": deltas, "labels": labels}
+	_persist_install_id()
+	var out := {"deltas": {}, "labels": {}, "ratings": {}}
+	for aid in key_of:
+		if deltas.has(key_of[aid]):
+			out["deltas"][aid] = deltas[key_of[aid]]
+			out["labels"][aid] = rk.label(key_of[aid])
+			out["ratings"][aid] = rk.rating(key_of[aid])
+	return out
 
 func _ranked_text(r: Dictionary) -> String:
-	var me := owner_name(my_id)
-	if not r.get("deltas", {}).has(me):
+	var deltas = r.get("deltas", {})
+	var labels = r.get("labels", {})
+	if not (deltas is Dictionary and labels is Dictionary and deltas.has(my_id) and labels.has(my_id)):
 		return ""
-	return "RATING %s (%+d)" % [r["labels"][me], int(round(r["deltas"][me]))]
+	return "RATING %s (%+d)" % [str(labels[my_id]), int(round(float(deltas[my_id])))]
 
 ## XP per human (by name) from this match's stats + result.
 func _match_awards() -> Dictionary:
@@ -654,9 +689,9 @@ func _on_match_event(n: String, data: Dictionary) -> void:
 				var r := _record_ranked()
 				var rk := Ranked.new()
 				rk.load_file(ranked_path)
-				profile.season_rewards = rk.rewards.get(owner_name(my_id), [])
-				for nm in r.get("deltas", {}):
-					ratings[nm] = rk.rating(nm)
+				profile.season_rewards = rk.rewards.get(ranked_key(LOCAL_PLAYER, my_id), [])
+				for aid in r["ratings"]:
+					ratings[owner_name(aid)] = r["ratings"][aid]   # achievement contexts are still by name
 				ranked_line = _ranked_text(r)
 				print("RANKED: %s" % str(r))
 				if is_server():
@@ -862,6 +897,7 @@ func _join_game(target: String, port: int, opts: Dictionary) -> void:
 			readied[0] = true
 			if player_name != "You":
 				net.send_lobby_action({"a": "name", "n": player_name})
+			net.send_lobby_action({"a": "id", "i": install_id()})
 			if seat_token != "":
 				net.send_lobby_action({"a": "seat", "s": seat_token})
 			if auto_ready:
@@ -915,8 +951,10 @@ func _queue_up(args: Dictionary) -> void:
 		_join_game(code, 0, {"auto_ready": true}))
 	var rk := Ranked.new()
 	rk.load_file(ranked_path)
+	var my_key := Ranked.id_key(install_id())
+	rk.claim(my_key, player_name)
 	var err := mm_client.queue_up(addr, mm_port, mode, MatchConfig.normalize(args.get("size", 7)),
-		float(args.get("rating", rk.rating(player_name))), player_name,
+		float(args.get("rating", rk.rating(my_key))), player_name,
 		str(args.get("party", "")).get_slice(":", 0), int(str(args.get("party", "x:1")).get_slice(":", 1)) if str(args.get("party", "")).find(":") > 0 else 1,
 		"chaosball" if str(args.get("mode", "")) == "chaosball" else "classic", seat_token)
 	print("QUEUE %s via %s:%d: %s" % [mode, addr, mm_port, error_string(err)])
@@ -1001,6 +1039,9 @@ func _step_lobby() -> void:
 			"ready": changed = lobby.toggle_ready(la[0]) or changed
 			"name": changed = lobby.set_name(la[0], str(la[1].get("n", ""))) or changed
 			"seat": peer_seats[la[0]] = str(la[1].get("s", "")).left(32)
+			"id":
+				if Cosmetics.valid_install_id(la[1].get("i")):
+					peer_installs[la[0]] = la[1]["i"]
 	if changed:
 		net.broadcast_lobby(lobby.to_dict())
 	if lobby.all_ready():
@@ -1127,6 +1168,7 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 		banner_t = 2.0
 	if n == "ranked":
 		ranked_line = _ranked_text(d)
+		_persist_install_id()
 	if n == "looks" and d.get("looks") is Dictionary:
 		looks = d["looks"]
 		_apply_looks()
