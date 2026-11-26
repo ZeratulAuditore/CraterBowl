@@ -291,25 +291,37 @@ func test_reach_keeps_human_joint_limits_for_every_ball_direction() -> void:
 	var sk := _skel(v)
 	var clip: Animation = v.anim.get_animation("Sprint")
 	var worst := {"upper_back": 1.0, "hand_back": 1.0, "wrist": 0.0, "stretch": 0.0, "twist": 0.0}
+	var at := {}   # which ball direction and arm gave each worst value
 	for i in 24:
 		for pitch in [-30.0, 0.0, 30.0, 60.0]:
 			var clip_chest := _catch_at(v, sk, clip, i * 15.0, pitch, 1.0)
 			var chest: Transform3D = Pose._upright(sk.get_bone_global_pose(sk.find_bone("spine_03")))
 			var f := clip_chest.basis.inverse() * chest.basis.z
 			worst.twist = maxf(worst.twist, absf(rad_to_deg(atan2(f.x, f.z))))
+			# An overhead ball is caught one-handed; the free arm keeps the clip's own arm swing.
+			var signed := wrapf(i * 15.0, -180.0, 180.0)
+			var free_arm := ("_r" if signed > 5.0 else "_l") if pitch >= 60.0 and absf(signed) < 120.0 else ""
 			for s in ["_r", "_l"]:
+				if s == free_arm:
+					continue
 				var u := _bone_pos(sk, "upperarm" + s)
 				var l := _bone_pos(sk, "lowerarm" + s)
 				var h := sk.get_bone_global_pose(sk.find_bone("hand" + s))
 				var up := (chest.basis.inverse() * (l - u)).normalized()
+				var where := "yaw %d pitch %d arm %s" % [i * 15, pitch, s]
+				if up.z < worst.upper_back:
+					at.upper_back = where
 				worst.upper_back = minf(worst.upper_back, up.z)
 				worst.hand_back = minf(worst.hand_back, (chest.affine_inverse() * h.origin).z)
-				worst.wrist = maxf(worst.wrist, rad_to_deg((h.origin - l).normalized().angle_to(h.basis.y.normalized())))
+				var wr := rad_to_deg((h.origin - l).normalized().angle_to(h.basis.y.normalized()))
+				if wr > worst.wrist:
+					at.wrist = where
+				worst.wrist = maxf(worst.wrist, wr)
 				var arm := u.distance_to(l) + l.distance_to(h.origin)
 				worst.stretch = maxf(worst.stretch, u.distance_to(h.origin) - arm)
-	assert_true(worst.upper_back > -0.35, "upper arm never points behind the chest: worst forward %.2f" % worst.upper_back)
+	assert_true(worst.upper_back > -0.35, "upper arm never points behind the chest: worst forward %.2f (%s)" % [worst.upper_back, at.get("upper_back", "")])
 	assert_true(worst.hand_back > -0.05, "hands stay in front of the chest: worst %.2f m" % worst.hand_back)
-	assert_true(worst.wrist < 95.0, "wrist within 95 deg of the forearm: worst %.0f" % worst.wrist)
+	assert_true(worst.wrist < 95.0, "wrist within 95 deg of the forearm: worst %.0f (%s)" % [worst.wrist, at.get("wrist", "")])
 	assert_true(worst.stretch < 0.005, "arm never stretched: worst %.3f m over" % worst.stretch)
 	assert_true(worst.twist < 36.0, "torso twist at most 35 deg: worst %.1f" % worst.twist)
 	v.free()
@@ -320,6 +332,36 @@ func test_torso_turns_toward_a_ball_off_to_the_side() -> void:
 	var clip_chest := _catch_at(v, sk, v.anim.get_animation("Idle"), 60.0, 0.0, 1.0)
 	var f := clip_chest.basis.inverse() * Pose._upright(sk.get_bone_global_pose(sk.find_bone("spine_03"))).basis.z
 	assert_near(rad_to_deg(atan2(f.x, f.z)), 35.0, 2.0, "chest turns 35 deg toward a ball 60 deg to the left")
+	v.free()
+
+func test_palms_face_the_ball_from_each_side() -> void:
+	var v = _view(Athlete.Role.WR)
+	var sk := _skel(v)
+	_catch_at(v, sk, v.anim.get_animation("Sprint"), 10.0, 5.0, 0.5)
+	var ball: Vector3 = v.pose.catch_target
+	var hr := sk.get_bone_global_pose(sk.find_bone("hand_r"))
+	var hl := sk.get_bone_global_pose(sk.find_bone("hand_l"))
+	var palm_r := -hr.basis.x.normalized()   # palm = -X of hand_r, +X of hand_l
+	var palm_l := hl.basis.x.normalized()
+	var face_r := palm_r.dot((ball - hr.origin).normalized())
+	var face_l := palm_l.dot((ball - hl.origin).normalized())
+	assert_true(face_r > 0.5 and face_l > 0.5, "each palm faces the ball: %.2f, %.2f" % [face_r, face_l])
+	assert_true(palm_r.dot(palm_l) < 0.0, "palms face each other across the ball: %.2f" % palm_r.dot(palm_l))
+	v.free()
+
+func test_overhead_ball_one_arm_up_other_arm_pumps() -> void:
+	var v = _view(Athlete.Role.WR)
+	var sk := _skel(v)
+	var clip: Animation = v.anim.get_animation("Sprint")
+	_pose(sk, clip, 0.3)
+	var clip_l: Quaternion = sk.get_bone_pose_rotation(sk.find_bone("upperarm_l"))
+	_catch_at(v, sk, clip, 0.0, 72.0, 0.9)   # running under a ball dropping from overhead
+	var head := _bone_pos(sk, "Head")
+	var hand_r := _bone_pos(sk, "hand_r")
+	assert_true(hand_r.y > head.y + 0.15, "right arm up above the head: hand %.2f over the head" % (hand_r.y - head.y))
+	assert_true(_bone_pos(sk, "hand_l").y < head.y, "left hand stays down")
+	var drift := rad_to_deg(sk.get_bone_pose_rotation(sk.find_bone("upperarm_l")).angle_to(clip_l))
+	assert_true(drift < 5.0, "left arm keeps the clip's pump: %.1f deg off the clip" % drift)
 	v.free()
 
 func test_ball_wide_to_one_side_is_caught_one_handed() -> void:

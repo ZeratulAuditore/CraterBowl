@@ -51,6 +51,12 @@ const TWIST_FADE := deg_to_rad(30.0)
 ## arm stays in the stance. Blends between the two angles.
 const ONE_ARM_FROM := deg_to_rad(20.0)
 const ONE_ARM_TO := deg_to_rad(35.0)
+## A ball this high above the chest is reached for with one arm straight up (running under
+## it); the other arm keeps the clip's arm pump. Blends between the two angles.
+const OVERHEAD_FROM := deg_to_rad(50.0)
+const OVERHEAD_TO := deg_to_rad(62.0)
+## Two-hand catch: each palm faces the ball's side, turned this much toward its back.
+const PALM_TO_BACK := 0.4
 
 ## Hands on the ball open from the clip's fist toward the rig's flat rest pose by this
 ## much, leaving a slight curl so the fingers wrap the ball.
@@ -159,23 +165,46 @@ func _catch(sk: Skeleton3D) -> void:
 	var d := chest.basis.inverse() * to_ball
 	var yaw := atan2(d.x, d.z)
 	var pitch := atan2(d.y, Vector2(d.x, d.z).length())
-	var reach := catch_reach * clampf(1.0 - (absf(yaw) - REACH_YAW_MAX) / REACH_YAW_FADE, 0.0, 1.0)
+	var in_cone := clampf(1.0 - (absf(yaw) - REACH_YAW_MAX) / REACH_YAW_FADE, 0.0, 1.0)
+	var reach := catch_reach * in_cone
 	yaw = clampf(yaw, -REACH_YAW_MAX, REACH_YAW_MAX)
 	pitch = clampf(pitch, -REACH_PITCH_DOWN, REACH_PITCH_UP)
 	var toward := (chest.basis * Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch))).normalized()
 	var ball := chest.origin + toward * to_ball.length()
-	var side := toward.cross(chest.basis.y).normalized()   # the athlete's right
-	var turn := Quaternion(chest.basis.z.normalized(), toward)
-	var one := smoothstep(ONE_ARM_FROM, ONE_ARM_TO, absf(yaw))
-	var near_side := "_l" if yaw > 0.0 else "_r"
+	var side := toward.cross(chest.basis.y)   # the athlete's right
+	side = side.normalized() if side.length() > 0.2 else -chest.basis.x   # ball straight overhead
+	# Fingers run along the reach, tipped up; straight up the reach, they point forward.
+	var fingers := toward + chest.basis.y * 0.5
+	if absf(fingers.normalized().dot(toward)) > 0.9 and pitch > OVERHEAD_FROM:
+		fingers = chest.basis.z
+	var overhead := smoothstep(OVERHEAD_FROM, OVERHEAD_TO, pitch) * in_cone   # a ball behind isn't run under
+	var one := maxf(smoothstep(ONE_ARM_FROM, ONE_ARM_TO, absf(yaw)), overhead)
+	var near_side := "_l" if yaw > deg_to_rad(5.0) else "_r"   # dead overhead: the right arm
 	for s in [["_r", CATCH_HAND_R, CATCH_POLE_R, PALMS_FWD_R, 1.0], ["_l", CATCH_HAND_L, CATCH_POLE_L, PALMS_FWD_L, -1.0]]:
 		var near: bool = s[0] == near_side
 		var r: float = reach if near else reach * (1.0 - one)   # the far arm drops back to the stance
-		var spread: float = REACH_SIDE * s[4] * ((1.0 - one) if near else 1.0)   # one arm: palm on the ball's back
-		var wrist: Vector3 = (chest * s[1]).lerp(ball - toward * REACH_BACK + side * spread, r)
-		var aim := Quaternion.IDENTITY.slerp(turn, r)
-		_reach(sk, s[0], wrist, chest.basis * s[2], catch_weight, Basis(aim) * chest.basis * s[3])
-		_open_hand(sk, s[0], catch_weight)
+		var wrist: Vector3 = (chest * s[1]).lerp(ball - toward * REACH_BACK + side * (REACH_SIDE * s[4]), r)
+		# Palm on the ball's side, fingers along the reach, for one hand or two: a palm facing
+		# down the reach would bend the wrist back 90+ deg, like a push.
+		var palm: Vector3 = (-side * s[4] + toward * PALM_TO_BACK).normalized()
+		var fingers_s := fingers
+		if near and overhead > 0.0:
+			# Arm straight up: fingers along the arm, palm forward to the ball (wrist straight).
+			palm = palm.lerp(chest.basis.z, overhead).normalized()
+			fingers_s = fingers.lerp(toward, overhead)
+		var stance_q: Quaternion = (chest.basis * s[3]).get_rotation_quaternion()
+		var hand := Basis(stance_q.slerp(_palm_basis(s[0] == "_r", palm, fingers_s).get_rotation_quaternion(), r))
+		# Running under an overhead ball, the free arm keeps pumping (the clip's arm).
+		var w: float = catch_weight if near else catch_weight * (1.0 - overhead)
+		_reach(sk, s[0], wrist, chest.basis * s[2], w, hand)
+		_open_hand(sk, s[0], w)
+
+## A hand's orientation with its palm facing `palm` and fingers as close to `fingers` as
+## possible (palm = -X of hand_r, +X of hand_l).
+static func _palm_basis(right: bool, palm: Vector3, fingers: Vector3) -> Basis:
+	var x := -palm if right else palm
+	var y := (fingers - palm * fingers.dot(palm)).normalized()
+	return Basis(x, y, x.cross(y))
 
 ## Clamped look angles for a direction in the chest's frame (+Z forward, +X left, +Y up):
 ## Vector2(yaw, pitch) in radians, yaw + = left, pitch + = up. Beyond YAW_MAX both fade to 0.
