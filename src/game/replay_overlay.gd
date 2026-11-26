@@ -73,7 +73,9 @@ func _ready() -> void:
 	bar_fill = _box(REC, 3)
 	bar.add_theme_stylebox_override("fill", bar_fill)
 	col.add_child(bar)
-	hints_l = _label(13, Color(0.85, 0.9, 1.0, 0.8), 600)
+	hints_l = _label(13, Color(0.9, 0.94, 1.0, 0.95), 600)
+	hints_l.label_settings.outline_size = 6   # stays legible over white field paint
+	hints_l.label_settings.outline_color = Color(0.03, 0.04, 0.1, 0.9)
 	hints_l.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	hints_l.position = Vector2(18, -84)
 	hints_l.grow_vertical = Control.GROW_DIRECTION_BEGIN
