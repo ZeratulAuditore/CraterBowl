@@ -43,7 +43,7 @@ const FieldArt := preload("res://src/game/art/field_art.gd")
 const StadiumArt := preload("res://src/game/art/stadium.gd")
 const ArtMats := preload("res://src/game/art/materials.gd")
 const ArtQuality := preload("res://src/game/art/quality.gd")
-const EmotePicker := preload("res://src/game/emote_picker.gd")
+const TauntWheel := preload("res://src/game/taunt_wheel.gd")
 const TrainingArt := preload("res://src/game/art/training_art.gd")
 const ARC_DOTS := 24
 
@@ -93,7 +93,7 @@ var aim_pitch := POV_PITCH_START
 var pov_w := 0.0                    # 0 follow cam .. 1 POV cam
 var _last_phase := -1
 var crosshair: Control
-var emote_picker: EmotePicker
+var taunt_wheel: TauntWheel
 var ai := AI.new()
 var last_whistle := ""
 var banner := ""
@@ -254,8 +254,8 @@ func _ready() -> void:
 	crosshair.visible = false
 	crosshair.draw.connect(_draw_crosshair)
 	layer.add_child(crosshair)
-	emote_picker = EmotePicker.new()
-	layer.add_child(emote_picker)
+	taunt_wheel = TauntWheel.new()
+	layer.add_child(taunt_wheel)
 	add_child(layer)
 	replay_overlay = ReplayOverlay.new(self)
 	add_child(replay_overlay)
@@ -1142,9 +1142,12 @@ func _unhandled_input(e: InputEvent) -> void:
 	var launch := get_node_or_null("/root/Launch")
 	if in_lobby() or replay_active or (launch != null and launch.menu_open()):
 		return
-	if e is InputEventMouseMotion and pov_active() and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if e is InputEventMouseMotion and taunt_wheel.open:
+		taunt_wheel.drag(e.relative)   # #139: the mouse picks a taunt; camera and aim hold still
+		return
+	if e is InputEventMouseMotion and pov_active() and mouse_captured():
 		look(e.relative)   # passer: mouse X = direction, mouse Y = loft
-	elif e is InputEventMouseMotion and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	elif e is InputEventMouseMotion and (mouse_captured()
 			or Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE)):
 		camera_orbit = wrapf(camera_orbit - e.relative.x * 0.004, -PI, PI)
 		cam_yaw = _camera_target_yaw()
@@ -1155,20 +1158,31 @@ func _unhandled_input(e: InputEvent) -> void:
 			_set_charging(e.pressed)   # hold = power (distance), release = throw
 		elif e.pressed:
 			throw_pass()
-	elif e is InputEventMouseButton and e.pressed and e.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
-		emote_picker.scroll(-1 if e.button_index == MOUSE_BUTTON_WHEEL_UP else 1)
+	# The mouse wheel is unbound (#139 took it off taunts; #140 plans camera zoom).
+
+## Tests set this: headless can't capture the mouse, so mouse-look would never run.
+var mouse_captured_override = null
+
+func mouse_captured() -> bool:
+	return mouse_captured_override if mouse_captured_override != null else Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 
 ## POV mouse look (pixels of mouse motion). aim_yaw: + = right of downfield.
 func look(rel: Vector2) -> void:
 	aim_yaw = wrapf(aim_yaw + rel.x * POV_SENS, -PI, PI)
 	aim_pitch = clampf(aim_pitch - rel.y * POV_SENS, POV_PITCH_MIN, POV_PITCH_MAX)
 
-## Perform the taunt selected in the wheel picker.
-func taunt() -> bool:
+## Hold C: open the taunt wheel (#139). Release picks; see taunt_wheel.gd.
+func open_taunt_wheel() -> bool:
 	if in_lobby() or replay_active:
 		return false
-	emote_picker.reveal()
-	return do_action({"a": "emote", "e": emote_picker.selected()})
+	taunt_wheel.open_wheel()
+	return true
+
+## Perform a taunt. Only its id goes over the wire ("emote" action).
+func taunt(id: String) -> bool:
+	if id == "" or in_lobby() or replay_active:
+		return false
+	return do_action({"a": "emote", "e": id})
 
 
 func _on_world_event(n: String, d: Dictionary) -> void:
@@ -1347,6 +1361,8 @@ func _input(e: InputEvent) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
 		scoreboard_held = false
+		if taunt_wheel:
+			taunt_wheel.close()   # the C release would be lost
 
 ## Space on a set defender (#142): one press does nothing, a double-tap breaks stance.
 var stance_tap := preload("res://src/sim/double_tap.gd").new()
@@ -1354,6 +1370,9 @@ var stance_tap := preload("res://src/sim/double_tap.gd").new()
 func _unhandled_key_input(e: InputEvent) -> void:
 	var launch := get_node_or_null("/root/Launch")
 	if launch != null and launch.menu_open():
+		return
+	if e is InputEventKey and not e.pressed and e.keycode == KEY_C and taunt_wheel.open:
+		taunt(taunt_wheel.release())   # #139: release performs the highlighted taunt
 		return
 	if not (e is InputEventKey and e.pressed and not e.echo):
 		return
@@ -1397,7 +1416,7 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		KEY_G:
 			do_action({"a": "handoff"})
 		KEY_C:
-			taunt()
+			open_taunt_wheel()
 		KEY_T:
 			if drill == null:
 				do_action({"a": "timeout"})
@@ -1832,13 +1851,15 @@ func _process(delta: float) -> void:
 		_last_phase = int(world.phase)
 	var pov := pov_active()
 	if DisplayServer.get_name() != "headless":
-		var capture: bool = (world.phase == World.Phase.LIVE or pov) and not menu_open and not in_lobby() and not replay_active
+		var capture: bool = (world.phase == World.Phase.LIVE or pov or taunt_wheel.open) and not menu_open and not in_lobby() and not replay_active
 		var mode := Input.MOUSE_MODE_CAPTURED if capture else Input.MOUSE_MODE_VISIBLE
 		if Input.mouse_mode != mode:
 			Input.mouse_mode = mode
 	if menu_open:
 		scoreboard_held = false
-	if pov and not Input.get_connected_joypads().is_empty():
+	if taunt_wheel.open and (menu_open or replay_active or in_lobby()):
+		taunt_wheel.close()
+	if pov and not taunt_wheel.open and not Input.get_connected_joypads().is_empty():
 		var rs := Vector2(Input.get_joy_axis(0, JOY_AXIS_RIGHT_X), Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y))
 		if rs.length() > 0.2:
 			look(rs * delta * 900.0)   # right stick = POV look

@@ -1,7 +1,7 @@
 extends RefCounted
-## Taunt emotes: cosmetic only (no gameplay effect). Picked with the mouse wheel,
-## performed with G / middle click. Server-validated + rate-limited, broadcast as
-## world event "emote" {by, e}. Pure data.
+## Taunt emotes: cosmetic only (no gameplay effect). Hold C for the radial taunt wheel,
+## drag toward one and release (src/game/taunt_wheel.gd, #139). Server-validated +
+## rate-limited, broadcast as world event "emote" {by, e}. Pure data.
 
 ## [id, menu name, animation clip, speech bubble]
 const LIST := [
