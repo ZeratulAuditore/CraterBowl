@@ -75,9 +75,18 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 - At the end of Q1 and Q3, the next period starts with the same possession, down, spot and remaining timeouts.
 - The coin toss winner chooses to receive or kick the opening kickoff. At halftime after H1 or Q2, the other team receives.
 - After H2 or Q4 the higher score wins. A tie stands.
+- **Switching ends** (#89): teams switch the goal they attack every period, after Q1, Q2 and Q3 (and at
+  halftime in the halves format). Possession, spot, down and line to gain carry over unchanged. Because the view is
+  offense-relative, the switch shows on the field: the end zone behind the offense is painted and named for the end
+  it defends this period (HELIOS defends the HELIOS end in odd periods), and a **SWITCH ENDS** banner shows at each
+  period change. The paint also follows possession within a period (#93).
 
 ## Design decisions
 - Offense-frame yards (0 = own goal line, `goal` = field length) keep every rule direction-free; the view mirrors the field.
+- Switching ends is derived (`Match.defended_end(team)` from `Clock.period()`), not stored, so it needs no snapshot field
+  and replays/clients agree automatically. Rotating the stadium 180° was rejected: the turf shader paints by world
+  position and the stadium is symmetric, so re-tinting the end zones and swapping their names (`FieldArt.orient_ends`,
+  change-driven from `presentation.gd`) is the whole cue.
 - The scrimmage try reuses the regular downs engine. The PAT uses the field goal kick.
 - Play-clock expiry auto-snaps, so an AFK player can't stall a lobby.
 - Forward progress is the furthest point in contact, capped by how far opponents pushed the carrier. Whistling on
@@ -99,10 +108,13 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 - `src/sim/match_config.gd`, `src/sim/roster.gd`, `src/sim/field.gd` — sizes, slots, field geometry.
 - `src/net/lobby.gd` (size and period settings), `src/net/protocol.gd` (period snapshots and host-validated `try`/`timeout` actions).
 - Tests: `tests/test_downs.gd`, `tests/test_scoring.gd`, `tests/test_match.gd`, `tests/test_clock.gd`,
-  `tests/test_turnovers.gd`, `tests/test_tackling.gd`, `tests/test_match_sizes.gd`, `tests/test_field.gd`, `tests/game_flow.gd`.
+  `tests/test_turnovers.gd`, `tests/test_tackling.gd`, `tests/test_match_sizes.gd`, `tests/test_field.gd`, `tests/test_switch_ends.gd`, `tests/game_flow.gd`,
+  `tests/visual/switch_ends_test.gd`.
 
 ## Open issues
-- #6 C04c Switching ends, mercy rule and clock actions
+- #6 C04c Switching ends, mercy rule and clock actions (parent; #89 switching ends in review)
+- #90 Host mercy rule (28-point lead)
+- #91 Spike and kneel clock actions
 - #7 C05 Competitive rules: eligibility, grounding, blocking zone, QB slowdown
 - #8 C06 Spotting: forward progress, return yards, fumble variety
 - #16 B10 Overtime for tied games

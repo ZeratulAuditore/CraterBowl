@@ -328,6 +328,23 @@ func _initialize() -> void:
 			check(v.emote_t > 0.0 and v.emote_id == main.emote_picker.selected() and v.bubble.visible, "T performs the selected taunt (%s)" % v.emote_id)
 			main.ai.defense_enabled = true
 			main.pov_enabled = false],   # later steps aim at a field point
+		# C04c (#89): Q1 runs out on a live play snapped with Space -> after the whistle the
+		# next play lines up in Q2 at the same spot with the end zones switched. Window 13000-13170.
+		[13000, func(): main.configure(7); main.auto_next = false; main.series.clock.quarter_length = 60.0; main.series.start(0, 40.0); main.set_controlled(main.my_id)],
+		[13002, func():
+			check(main.series.clock.label().begins_with("Q1"), "quarters format (%s)" % main.series.clock.label())
+			check(main.field_root.get_node("EndZoneName0").text == "HELIOS", "Q1: HELIOS end zone behind the HELIOS offense")
+			main.series.clock.remaining = 0.05
+			_key(KEY_SPACE)
+			check(main.world.phase == main.World.Phase.LIVE, "Space snaps the last play of Q1")],
+		[13030, func(): check(main.series.clock.expired() and main.series.clock.quarter == 1, "Q1 clock out, play still live"); var c = main.world.carrier(); c.position.y = 44.0; main.world._whistle("tackle", {"carrier": c.id, "team": 0}); main.auto_next = true],
+		[13170, func():
+			main.auto_next = false
+			var s = main.series
+			check(s.clock.quarter == 2 and s.last_outcome.get("switch_ends", false), "next play is Q2 and switches ends (%s)" % s.last_outcome.get("outcome", "?"))
+			check(s.downs.offense_team == 0 and absf(main.world.los_y - 44.0) < 0.01 and s.downs.down == 2, "field position carries over: HELIOS 2nd down at the 44 (%s)" % s.downs.label())
+			check(main.field_root.get_node("EndZoneName0").text == "NEBULA" and main.field_root.get_node("EndZoneName1").text == "HELIOS", "Q2: HELIOS now defends the NEBULA-painted end")
+			check(main.pres.overlay.banner.visible and main.pres.overlay.banner.text == "SWITCH ENDS", "SWITCH ENDS banner (%s)" % main.pres.overlay.banner.text)],
 		# B09/C02: coin toss with the real keys -> live kickoff aimed like a pass (J) -> return
 		[9500, func(): main.opening_kickoff = true; main.toss_seed = 0; main.configure(7); kick_events.clear(); main.world.event.connect(func(n, _d): kick_events.append(n))],
 		[9502, func(): check(main.series.state == main.Match.State.TOSS and main.series.toss_winner == 0, "home won the toss"); check(main.hud.text.find("COIN TOSS: HOME wins") >= 0, "HUD offers the choice"); check(main.pres.overlay.status_l.text.begins_with("YOU WON THE TOSS"), "status line offers the choice (%s)" % main.pres.overlay.status_l.text); _key(KEY_2)],

@@ -73,6 +73,24 @@ static func _end_zone_names(root: Node3D, w: float, L: float, ez: float, team_co
 		l.outline_modulate = (team_colors[i] as Color).darkened(0.5)
 		l.name = "EndZoneName%d" % i
 
+## #89/#93: the view is offense-relative (the offense always attacks -z), so the end
+## zone behind the offense must show the end that offense defends this period.
+## `behind` = Match.defended_end(offense): 0 = HELIOS paint, 1 = NEBULA paint.
+## Change-driven: call only when it changes.
+static func orient_ends(root: Node3D, behind: int, team_colors: Array) -> void:
+	var turf := root.get_node_or_null("Turf") as GeometryInstance3D
+	if turf != null:
+		var tm := turf.material_override as ShaderMaterial
+		tm.set_shader_parameter("home_color", team_colors[behind])
+		tm.set_shader_parameter("away_color", team_colors[1 - behind])
+	for i in 2:
+		var l := root.get_node_or_null("EndZoneName%d" % i) as Label3D
+		if l == null:
+			continue
+		var end := behind if i == 0 else 1 - behind
+		l.text = TEAM_NAMES[end]
+		l.outline_modulate = (team_colors[end] as Color).darkened(0.5)
+
 static func _midfield_emblem(root: Node3D, w: float, L: float) -> void:
 	var mi := MeshInstance3D.new()
 	mi.name = "MidfieldEmblem"
