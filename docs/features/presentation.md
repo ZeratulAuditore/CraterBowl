@@ -45,12 +45,6 @@ halves today.
   - Visuals are verified with `./scripts/shot.sh` PNGs (`../TESTING.md`)
   - `tests/game_flow.gd` exercises the live overlay. `./scripts/visual_test.sh` checks and captures the scorebug in scrimmage, kickoff and conversion states.
 
-## History
-- Iteration 037 (#13): grouped the spot, mode and mini field with the rest of the scorebug.
-- A26 presentation: built by the graphics session (branch `graphics-overhaul`), merged before the A28 audit (iter 031, `../../ITERATIONS.md`)
-- Perf pass `871417c`: shared render cache, interpolated rendering, quality presets (`../optimization/LOG.md`)
-- [032 Pre-snap defensive roam + LOS barrier](../iterations/032-presnap-defense-roam.md)
-
 ## Open issues
 - #10 C10 Throw readability: landing marker, aim-zoom
 - #12 C31 Who's who on the field: nameplates, rings, "you" marker

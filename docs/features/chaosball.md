@@ -50,7 +50,6 @@ Lobs matter here because a flat pass outruns a sprinter, so self-catches need th
 - The ruleset lives on `World` as a small rules dictionary, so classic and Chaosball share one sim.
 - Self-catches don't add to the streak; otherwise lobbing to yourself would farm points.
 - The pass clock punishes ball-hogging and pushes teams into the streak mechanic.
-- Lob throws were added during iteration 020 because flat passes made self-catch impossible.
 
 ## Code and tests
 - `src/sim/world.gd` — `set_ruleset`, `gravity()`, `_wall_bounce`, `_try_catch_chaos`, `streak_points`, `_step_pass_clock`.
@@ -61,11 +60,6 @@ Lobs matter here because a flat pass outruns a sprinter, so self-catches need th
 - `src/game/main.gd`, `src/game/overlay.gd` — HUD streak/pass clock text, explosion banner.
 - Tests: `tests/test_chaosball.gd`, `tests/test_chaos_scoring.gd`, `tests/test_matchmaker.gd`
   (`test_chaosball_queue_separate_and_3v3`), `tests/game_flow.gd`, `scripts/mm_test.sh`.
-
-## History
-- 020 [Chaosball](../iterations/020-chaosball.md)
-- 021 [Chaosball scoring](../iterations/021-chaos-scoring.md)
-- 029 [Chaosball in matchmaking](../iterations/029-chaosball-queue.md)
 
 ## Open issues
 - None open with a Chaosball-specific scope.
