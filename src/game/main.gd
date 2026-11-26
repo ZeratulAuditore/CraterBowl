@@ -54,6 +54,10 @@ var player: Node3D  # view of the controlled athlete
 var ball_view: MeshInstance3D
 var reticle: MeshInstance3D
 var arc_dots: Array = []
+# Render interpolation for the ball (views interpolate themselves; see player.gd).
+var _ball_prev := Vector3.ZERO
+var _ball_cur := Vector3.ZERO
+var _route_key := 0          # last drawn route-art state; rebuild only when it changes
 var charging := false
 var charge := 0.0
 var aim_point := Vector2(26, 45)
@@ -1173,21 +1177,43 @@ func _render_replay() -> void:
 		return
 	var pos: Array = smp["pos"]
 	for i in mini(pos.size(), views.size()):
-		views[i].position = Vector3(pos[i].x, 0, -pos[i].y)
+		views[i].place(Vector3(pos[i].x, 0, -pos[i].y), views[i].rotation.y)
 	var b: Vector3 = smp["ball"]
-	ball_view.position = Vector3(b.x, b.z, -b.y)
+	_place_ball(Vector3(b.x, b.z, -b.y))
 
+## Per physics tick: copy sim state into view targets. Cheap, change-driven work only.
+## Anything that moves on screen is drawn per frame in _render_frame (interpolated).
 func _render() -> void:
 	for v in views:
 		v.sync()
 	var b = world.ball.position
-	ball_view.position = Vector3(b.x, b.z, -b.y)
-	_update_aim()
-	_update_arc()
+	_place_ball(Vector3(b.x, b.z, -b.y))
 	los_marker.position = Vector3(field.width / 2.0, 0.03, -series.downs.los)
 	fd_marker.position = Vector3(field.width / 2.0, 0.03, -series.downs.first_down_y)
 	fd_marker.visible = not series.downs.is_goal_to_go()
 	_draw_routes()
+
+## True while the throw-arc preview is visible (tests).
+func arc_shown() -> bool:
+	return not arc_dots.is_empty() and arc_dots[0].visible
+
+## Ball interpolation target (same teleport rule as athlete views).
+func _place_ball(p: Vector3) -> void:
+	_ball_prev = p if p.distance_to(_ball_cur) > PlayerNode.TELEPORT_DIST * 2.0 else _ball_cur
+	_ball_cur = p
+	ball_view.position = p
+
+## Per display frame: draw between the last two sim ticks, so motion is smooth at any
+## refresh rate (60 Hz sim on a 144 Hz screen, or a slow frame that ran 2 ticks).
+## Runs before presentation.gd's _process (parent first), which then pins a held ball
+## to the (interpolated) carrier's hand.
+func _render_frame() -> void:
+	var f := Engine.get_physics_interpolation_fraction()
+	for v in views:
+		v.interpolate(f)
+	ball_view.position = _ball_prev.lerp(_ball_cur, f)
+	_update_aim()
+	_update_arc()
 
 ## Presnap route art for your own offense only (the defense never sees it):
 ## flat glowing ribbons, a distinct color per receiver, arrowheads, start dots.
@@ -1195,15 +1221,28 @@ const ROUTE_COLORS := [Color(1.0, 0.82, 0.25), Color(1.0, 0.45, 0.75), Color(0.5
 const MY_ROUTE_COLOR := Color(0.35, 1.0, 0.55)
 
 func _draw_routes() -> void:
-	route_mesh.clear_surfaces()
 	var me = world.get_athlete(my_id)
-	if me == null or world.phase != World.Phase.PRESNAP:
-		return
-	if me.team != world.offense_team:
-		_draw_defense_routes(me.team)
-		return
+	var offense: bool = me != null and me.team == world.offense_team
 	var is_run := world.is_run_play()
-	if world.route_of.is_empty() and not is_run:
+	var show: bool = me != null and world.phase == World.Phase.PRESNAP and (not offense or is_run or not world.route_of.is_empty())
+	if not show:
+		if _route_key != 0:
+			route_mesh.clear_surfaces()
+			_route_key = 0
+		return
+	# Rebuilding an ImmediateMesh re-uploads it to the GPU; only do it when the art's inputs
+	# change. Offense art = routes + protection lines, defense art = assignments; both depend
+	# on every athlete's position, the calls, the LOS and which side you're on.
+	var key_src := [my_id, me.team, world.offense_team, field.width, world.los_y, world.play_name, is_run, world.route_of, world.defensive_call]
+	for a in world.athletes:
+		key_src.append(a.position)
+	var key := hash(key_src)
+	if key == _route_key:
+		return
+	_route_key = key
+	route_mesh.clear_surfaces()
+	if not offense:
+		_draw_defense_routes(me.team)
 		return
 	route_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
 	var blocks := {}
@@ -1333,11 +1372,13 @@ func huddle_calls(team: int) -> String:
 	return "\n".join(rows)
 
 func _process(delta: float) -> void:
+	_render_frame()
 	_tick_postgame(delta)
 	var target := player.global_position
 	# Blocking drill: higher, deeper camera so the QB behind you doesn't hide the rush.
 	var desired := target + (Vector3(0, 10, 13) if drill != null and drill.kind == "blocking" else Vector3(0, 6, 9))
-	camera.global_position = camera.global_position.lerp(desired, clampf(delta * 6.0, 0.0, 1.0))
+	# Exponential smoothing: identical feel at 30, 60 or 144 fps (a delta*k lerp is not).
+	camera.global_position = camera.global_position.lerp(desired, 1.0 - exp(-6.0 * delta))
 	camera.look_at(target + Vector3(0, 1, -4))
 	var m = player.athlete
 	var my_team: int = world.get_athlete(my_id).team

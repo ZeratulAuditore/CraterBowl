@@ -11,6 +11,10 @@ extends Node3D
 const Cos := preload("res://src/sim/cosmetics.gd")
 const Mats := preload("res://src/game/art/materials.gd")
 const CharacterArt := preload("res://src/game/art/character_art.gd")
+const RC := preload("res://src/game/render_cache.gd")
+## A view that moves more than this (yards) in one tick teleported (new play, replay
+## seek, swap): snap instead of gliding across the field.
+const TELEPORT_DIST := 2.0
 
 const SKIN_TONES := [Color(0.98, 0.80, 0.66), Color(0.87, 0.65, 0.48), Color(0.72, 0.50, 0.34),
 	Color(0.55, 0.36, 0.23), Color(0.40, 0.26, 0.17), Color(0.30, 0.20, 0.13)]
@@ -54,6 +58,13 @@ var _hit_t := 0.0
 var _release_t := 0.0
 var _cur := ""
 var _was_down := false
+# Render interpolation (docs/optimization/README.md): sync()/place() record the last two
+# sim poses once per physics tick; interpolate(f) draws between them every frame.
+var _prev_pos := Vector3.ZERO
+var _cur_pos := Vector3.ZERO
+var _prev_yaw := 0.0
+var _cur_yaw := 0.0
+var _has_pose := false
 
 func setup(a, c: Color, w = null) -> void:
 	athlete = a
@@ -86,21 +97,23 @@ func _ready() -> void:
 	hand_r = _attach(skel, "hand_r")
 	# Shoulder pads under the jersey color, trim stripe across the yoke.
 	var jersey_mat := Mats.cloth(color)
-	var pads := _part(chest, SphereMesh.new(), jersey_mat, Vector3(0, 0.1, -0.01))
+	var pads := _part(chest, RC.sphere(0.5, 1.0), jersey_mat, Vector3(0, 0.1, -0.01))
 	pads.scale = Vector3(0.46, 0.15, 0.27)
 	pads.name = "Pads"
 	trim_band = _part(chest, _cyl(0.085, 0.05), trim_mat, Vector3(0, 0.2, 0.0))   # collar
 	trim_band.name = "TrimBand"
 	# Helmet: glossy shell, stripe, visor, facemask cage.
-	helmet = _part(head_b, SphereMesh.new(), Mats.glossy(color.darkened(0.15)), Vector3(0, 0.12, -0.01))
+	helmet = _part(head_b, RC.sphere(0.5, 1.0, 20, 12), Mats.glossy(color.darkened(0.15)), Vector3(0, 0.12, -0.01))
 	helmet.scale = Vector3(0.27, 0.27, 0.3)
+	helmet.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	helmet.name = "Helmet"
 	stripe = MeshInstance3D.new()
 	stripe.mesh = _box(Vector3(0.18, 0.06, 1.0))
 	stripe.position = Vector3(0, 0.49, -0.02)
+	stripe.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	helmet.add_child(stripe)
 	_part(head_b, _facemask_mesh(), Mats.metal(Color(0.85, 0.86, 0.9)), Vector3.ZERO).name = "Facemask"
-	var visor := _part(head_b, SphereMesh.new(), Mats.visor(), Vector3(0, 0.1, 0.1))
+	var visor := _part(head_b, RC.sphere(0.5, 1.0), Mats.visor(), Vector3(0, 0.1, 0.1))
 	visor.scale = Vector3(0.21, 0.07, 0.13)
 	number_front = _number_label(chest, 0.17)
 	number_back = _number_label(chest, -0.17)
@@ -139,17 +152,14 @@ func _part(parent: Node3D, mesh: Mesh, mat: Material, at: Vector3, rot := Vector
 	mi.material_override = mat
 	mi.position = at
 	mi.rotation = rot
+	# Small gear sits inside the body's shadow; each caster is redrawn once per shadow
+	# split, so only the body (and the helmet, set below) cast. docs/optimization/README.md
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mi)
 	return mi
 
 static func _cyl(r: float, h: float) -> CylinderMesh:
-	var m := CylinderMesh.new()
-	m.top_radius = r
-	m.bottom_radius = r
-	m.height = h
-	m.radial_segments = 12
-	m.rings = 1
-	return m
+	return RC.cylinder(r, h)
 
 static var _mask_mesh: Mesh
 
@@ -170,17 +180,12 @@ static func _facemask_mesh() -> Mesh:
 	return _mask_mesh
 
 static func _box(s: Vector3) -> BoxMesh:
-	var m := BoxMesh.new()
-	m.size = s
-	return m
+	return RC.box(s)
 
 func _blob_shadow() -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.name = "BlobShadow"
-	var q := QuadMesh.new()
-	q.size = Vector2(1.3, 1.3)
-	q.orientation = PlaneMesh.FACE_Y
-	mi.mesh = q
+	mi.mesh = RC.ground_quad(Vector2(1.3, 1.3))
 	mi.material_override = Mats.blob_shadow()
 	mi.position.y = 0.02
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -193,6 +198,7 @@ func _number_label(parent: Node3D, z: float) -> Label3D:
 	l.pixel_size = 0.0034
 	l.font = Mats.number_font()
 	l.position = Vector3(0, -0.08, z)
+	l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	if z < 0.0:
 		l.rotation.y = PI
 	parent.add_child(l)
@@ -243,11 +249,12 @@ func _role_name() -> String:
 
 ## Mirror the sim position/facing. Animation runs in _process.
 func sync() -> void:
-	position = Vector3(athlete.position.x, 0, -athlete.position.y)
+	var yaw := rotation.y
 	if athlete.speed() > 0.1:
-		rotation.y = atan2(-athlete.velocity.x, athlete.velocity.y)
+		yaw = atan2(-athlete.velocity.x, athlete.velocity.y)
 	elif athlete.facing.length() > 0.1 and world != null and int(world.phase) == 0:
-		rotation.y = atan2(-athlete.facing.x, athlete.facing.y)
+		yaw = atan2(-athlete.facing.x, athlete.facing.y)
+	place(Vector3(athlete.position.x, 0, -athlete.position.y), yaw)
 	var rn := _role_name()
 	if rn != _role:
 		_role = rn
@@ -331,3 +338,27 @@ func _choose_anim(spd: float, down: bool) -> void:
 		_play("Jog_Fwd", BLEND, clampf(spd / 3.6, 0.6, 1.6))
 	else:
 		_play("Sprint", BLEND, clampf(spd / 6.8, 0.8, 1.7))
+
+## Record a new sim (or replay) pose, once per physics tick. Big jumps snap.
+func place(p: Vector3, yaw: float) -> void:
+	if not _has_pose or p.distance_to(_cur_pos) > TELEPORT_DIST:
+		_prev_pos = p
+		_prev_yaw = yaw
+		_has_pose = true
+	else:
+		_prev_pos = _cur_pos
+		_prev_yaw = _cur_yaw
+	_cur_pos = p
+	_cur_yaw = yaw
+	position = p
+	rotation.y = yaw
+
+## Per render frame (main._render_frame, before this node's _process):
+## f = Engine.get_physics_interpolation_fraction() in [0, 1].
+func interpolate(f: float) -> void:
+	position = _prev_pos.lerp(_cur_pos, f)
+	rotation.y = lerp_angle(_prev_yaw, _cur_yaw, f)
+
+## Latest sim (or replay) pose this view is heading to; `position` may lag it by < 1 tick.
+func target_position() -> Vector3:
+	return _cur_pos
