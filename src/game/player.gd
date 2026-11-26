@@ -30,6 +30,8 @@ const MODEL_SCALE := 1.08
 const BLEND := 0.18
 ## Carry pose blend rate (1/s): about 0.2 s to tuck the ball in or out.
 const CARRY_K := 14.0
+## Head look smoothing (1/s): the look point trails a fast ball a little, like eyes do.
+const LOOK_K := 10.0
 ## Ball seat in hand_r bone space: in the palm, long axis along the forearm (#244).
 const BALL_SOCKET := Transform3D(Basis(Vector3.RIGHT, -PI / 2.0), Vector3(-0.13, 0.08, 0.0))
 
@@ -62,6 +64,9 @@ var anim: AnimationPlayer
 var hand_r: Node3D
 var pose: Node              # athlete_pose.gd (null without a rig)
 var ball_node: Node3D       # the ball while this athlete carries it (presentation.gd sets it)
+var look_node: Node3D       # the ball view: heads track it (#245; main.gd sets it)
+var _look_point := Vector3.ZERO   # smoothed world-space look target
+var _skel: Skeleton3D
 var _ball_xf := Transform3D()   # palm socket (world), cached at each skeleton update
 var _ball_xf_ok := false
 var trim_mat: StandardMaterial3D
@@ -117,6 +122,7 @@ func _ready() -> void:
 	var chest := _attach(skel, "spine_03")
 	var head_bone := _bone(skel, "Head")
 	hand_r = _attach(skel, "hand_r")
+	_skel = skel
 	if skel:
 		pose = Pose.new()
 		skel.add_child(pose)
@@ -322,6 +328,18 @@ func ball_local(sk: Skeleton3D) -> Transform3D:
 	var held = pose.hold_ball(sk) if pose else null
 	return held if held != null else sk.get_bone_global_pose(sk.find_bone("hand_r")) * BALL_SOCKET
 
+## Heads track the ball (not the carrier's own; not while down or celebrating).
+func _update_look(delta: float, down: bool) -> void:
+	var looking := look_node != null and ball_node == null and not down and celebrate_t <= 0.0
+	var k := 1.0 - exp(-LOOK_K * delta)
+	if looking:
+		var target := look_node.global_position
+		_look_point = target if pose.look_weight <= 0.0 else _look_point.lerp(target, k)
+		pose.look_target = _skel.global_transform.affine_inverse() * _look_point
+	pose.look_weight = lerpf(pose.look_weight, 1.0 if looking else 0.0, k)
+	if pose.look_weight < 0.01 and not looking:
+		pose.look_weight = 0.0
+
 func _pin_ball() -> void:
 	if ball_node == null or not is_instance_valid(ball_node):
 		return   # only the carrier pays for this (per-frame work is change-driven)
@@ -395,6 +413,7 @@ func _process(delta: float) -> void:
 		pose.weight = lerpf(pose.weight, target, 1.0 - exp(-CARRY_K * delta))
 		if absf(pose.weight - target) < 0.01:
 			pose.weight = target
+		_update_look(delta, down)
 	# Celebration flourishes on top of the dance.
 	body.rotation = Vector3.ZERO
 	body.position = Vector3.ZERO

@@ -664,6 +664,10 @@ func _check_carry_pose(two_hand: bool, context: String) -> void:
 	check(off < 0.05, "ball pinned to the palm socket (%s): %.3f m off" % [context, off])
 	var to_hand: float = main.ball_view.global_position.distance_to(v.hand_r.global_position)
 	check(to_hand < 0.3, "ball in the hand (%s): %.2f m from the wrist" % [context, to_hand])
+	# #245: everyone else tracks the ball; the carrier doesn't look at its own ball.
+	var lookers: int = main.views.filter(func(o): return o != v and o.pose.look_weight > 0.5).size()
+	check(v.pose.look_weight < 0.2 and lookers >= main.views.size() - 3,   # the carrier's look fades over ~0.3 s
+		"heads track the ball (%s): %d of %d others look, carrier %.2f" % [context, lookers, main.views.size() - 1, v.pose.look_weight])
 
 var _sorted := false
 func _physics_process(_dt: float) -> bool:

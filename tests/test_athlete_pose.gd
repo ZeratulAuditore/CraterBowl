@@ -104,7 +104,89 @@ func test_ball_socket_sits_in_the_tucked_palm() -> void:
 	assert_true(along > 0.9, "long axis along the forearm (|cos| %.2f)" % along)
 	v.free()
 
+# --- #245 head look -------------------------------------------------------------
+
+const Pose := preload("res://src/game/art/athlete_pose.gd")
+
+func test_look_angles_clamp_to_neck_limits() -> void:
+	var cases := [   # direction in the chest frame (+Z fwd, +X left, +Y up) -> expected (yaw, pitch) deg
+		[Vector3(0, 0, 1), Vector2(0, 0), "straight ahead"],
+		[Vector3(1, 0, 1), Vector2(45, 0), "45 deg left"],
+		[Vector3(-1, 0, 1), Vector2(-45, 0), "45 deg right"],
+		[Vector3(1, 0, 0), Vector2(60, 0), "90 deg left: clamped to 80, a quarter faded"],
+		[Vector3(0, 0, -1), Vector2(0, 0), "directly behind: neutral, no wrap"],
+		[Vector3(0.1, 0, -1), Vector2(0, 0), "behind, slightly left: neutral"],
+		[Vector3(0, 5, 1), Vector2(0, 40), "steep up: clamped to 40"],
+		[Vector3(0, -5, 1), Vector2(0, -30), "steep down: clamped to -30"],
+	]
+	for c in cases:
+		var a := Pose.look_angles(c[0])
+		assert_near(rad_to_deg(a.x), c[1].x, 0.5, "%s yaw" % c[2])
+		assert_near(rad_to_deg(a.y), c[1].y, 0.5, "%s pitch" % c[2])
+
+func test_head_turns_toward_the_target() -> void:
+	var v = _view(Athlete.Role.CB)
+	var sk := _skel(v)
+	var clip: Animation = v.anim.get_animation("Idle")
+	_pose(sk, clip, 0.5)
+	var before := _head_angles(sk)
+	var head := _bone_pos(sk, "Head")
+	var chest := sk.get_bone_global_pose(sk.find_bone("spine_03")).basis
+	v.pose.look_target = head + chest * Vector3(1, 0.3, 1) * 5.0   # 45 deg left, a little up
+	v.pose.look_weight = 1.0
+	v.pose.apply(sk)
+	sk.force_update_all_bone_transforms()
+	var turn := _head_angles(sk) - before
+	assert_near(turn.x, 45.0, 4.0, "head yaw turn toward a target 45 deg left")
+	assert_true(turn.y > 5.0 and turn.y < 25.0, "head pitches up toward it: %.1f deg" % turn.y)
+	v.free()
+
+func test_head_stays_within_limits_for_every_direction() -> void:
+	var v = _view(Athlete.Role.S)
+	var sk := _skel(v)
+	var clip: Animation = v.anim.get_animation("Idle")
+	var worst_yaw := 0.0
+	var worst_up := 0.0
+	var worst_down := 0.0
+	for i in 24:
+		for el in [-80.0, -20.0, 0.0, 30.0, 80.0]:
+			_pose(sk, clip, 0.5)
+			var before := _head_angles(sk)
+			var chest := sk.get_bone_global_pose(sk.find_bone("spine_03")).basis
+			var az := deg_to_rad(i * 15.0)
+			var e := deg_to_rad(el)
+			var d := Vector3(sin(az) * cos(e), sin(e), cos(az) * cos(e))
+			v.pose.look_target = _bone_pos(sk, "Head") + chest * d * 6.0
+			v.pose.look_weight = 1.0
+			v.pose.apply(sk)
+			sk.force_update_all_bone_transforms()
+			var turn := _head_angles(sk) - before
+			worst_yaw = maxf(worst_yaw, absf(turn.x))
+			worst_up = maxf(worst_up, turn.y)
+			worst_down = minf(worst_down, turn.y)
+	# +5: measured on the final head, so steep pitch combined with the clip's own head tilt adds a few degrees.
+	assert_true(worst_yaw <= 85.0, "head yaw turn never past 80 deg (+5 measurement slack): worst %.1f" % worst_yaw)
+	assert_true(worst_up <= 41.0 and worst_down >= -31.0, "pitch within -30..40: %.1f..%.1f" % [worst_down, worst_up])
+	v.free()
+
+func test_no_look_weight_leaves_the_head_alone() -> void:
+	var v = _view(Athlete.Role.LB)
+	var sk := _skel(v)
+	_pose(sk, v.anim.get_animation("Idle"), 0.5)
+	var q: Quaternion = sk.get_bone_pose_rotation(sk.find_bone("Head"))
+	v.pose.look_target = Vector3(5, 1.5, 5)
+	v.pose.look_weight = 0.0
+	v.pose.apply(sk)
+	assert_eq(sk.get_bone_pose_rotation(sk.find_bone("Head")), q, "weight 0: head bone")
+	v.free()
+
 # --- helpers ------------------------------------------------------------------
+
+## Head facing (Head bone +Z) as (yaw, pitch) degrees in the chest's frame.
+func _head_angles(sk: Skeleton3D) -> Vector2:
+	var chest := sk.get_bone_global_pose(sk.find_bone("spine_03")).basis
+	var f := chest.inverse() * sk.get_bone_global_pose(sk.find_bone("Head")).basis.z
+	return Vector2(rad_to_deg(atan2(f.x, f.z)), rad_to_deg(atan2(f.y, Vector2(f.x, f.z).length())))
 
 func _view(role: int):
 	var a = Athlete.new()
