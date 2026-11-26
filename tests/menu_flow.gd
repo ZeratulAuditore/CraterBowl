@@ -11,6 +11,12 @@ const MMClient := preload("res://src/net/mm_client.gd")
 var MM_PORT := int(OS.get_environment("MENU_MM_PORT")) if OS.get_environment("MENU_MM_PORT") != "" else 26000 + (Time.get_ticks_usec() + OS.get_process_id() * 7) % 1800 * 2
 var HOST_PORT := MM_PORT + 1
 
+class MenuWithFailedMapping extends "res://src/ui/main_menu.gd":
+	func _open_port_async(_port: int, cb: Callable) -> Thread:
+		var worker := Thread.new()
+		worker.start(func(): cb.call_deferred({"ok": false, "error": "No UPnP router found"}))
+		return worker
+
 class Rec:
 	var opts := {}
 	var real
@@ -62,6 +68,7 @@ func _setup() -> void:
 	root.add_child(mms)
 	check(mms.start(MM_PORT) == OK, "matchmaker up")
 	menu = load("res://scenes/menu.tscn").instantiate()
+	menu.set_script(MenuWithFailedMapping)
 	menu.set_meta("force_menu", true)
 	menu.profile_path = "user://test_menu_profile.json"
 	menu.leaderboard_path = "user://test_menu_lb.json"
@@ -170,11 +177,14 @@ func _setup() -> void:
 			menu.show_screen("online")
 			menu.pick_size = 3
 			menu.list_public = true
+			launch.settings.upnp = true
 			menu.host_match()],
 		[420, func():
 			var g = current_scene
 			check(g != null and g.scene_file_path == launch.GAME_SCENE, "host -> game scene")
 			check(g.is_server() and g.lobby.code != "", "hosting a lobby (%s)" % g.lobby.code)
+			check(g.hud.text.contains("No UPnP router found") and g.hud.text.contains("UDP port %d" % HOST_PORT),
+				"host lobby shows the UPnP failure and custom UDP port")
 			check(g.match_size == 3, "size from menu")
 			check(g.player_name == "Ace", "name from settings")
 			check(g.get_node_or_null("Advertiser") != null, "public lobby advertiser attached")],

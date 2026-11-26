@@ -273,6 +273,10 @@
 - Verified 311 unit tests, 191 gameplay checks, 57 menu checks and 21 network checks. Viewed offscreen captures of the host controls and quarter scorebug. The quarter-transition regression failed when the quarter counter was held at Q1.
 - Updated the rules guide for the coin toss, PAT and fumble roll (#73). Follow-ups #74 and #75 cover the menu's Chaosball selection and the stadium clock during the lobby.
 
+## Fix: Host lobby UPnP notice (#47)
+- The host lobby shows the router mapping failure and the UDP port to forward. The invite code still uses the LAN address when mapping fails.
+- The menu flow test simulates a router failure and checks the warning in a real host lobby on a custom port.
+
 ## 039: Roster rejection tests (2026-11-25, #52)
 
 - Added direct tests for rejecting legacy team and slot requests at the match protocol and for preserving both players' assignments when a roster slot is occupied.
