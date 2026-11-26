@@ -288,3 +288,9 @@
 - The host now drops `act` messages that aren't a Dictionary with a String `a` before they reach its action queue (`Protocol.is_action`). `apply_action` takes an untyped action and rejects junk instead of aborting the caller. `lob`/`spr`/`block` flags are type-checked rather than compared with `== true`.
 - Before the fix, one malformed action raised a script error in `_step_authoritative`. That aborted the host tick and dropped any valid action queued behind it in the same tick.
 - Verified with 4 new unit tests (`test_action_validation.gd`) and a rendered host test (`tests/visual/invalid_actions_test.gd`). Restoring the old `protocol.gd`/`net_session.gd` made both fail: the unit queue test because 16 entries were queued instead of 1, and the visual test because of a script error and a dropped play call. Design notes are in `docs/design/netcode.md` under Validation.
+
+## Fix: Chaosball locks the menu Size picker (#83)
+- On the Online and VS Bots screens, picking Chaosball now shows the Size row as a dimmed, disabled 3v3 (Chaosball is always 3v3). `pick_size` is left untouched, so switching back to Classic re-highlights the earlier 3v3/5v5/7v7 pick. Before, the row stayed live with 5v5/7v7 highlighted, implying a 7v7 Chaosball match.
+- The theme's disabled box hides the pressed state, so the locked 3v3 gets a dimmed cyan override to still read as the pick.
+- `tests/menu_flow.gd` (step 1000) presses the real Rules buttons on both screens and checks the row state; it failed on origin/main's menu (`7/enabled` instead of `3/disabled`). `tests/visual/size_picker_chaosball_test.gd` captures both states.
+- Side findings: #92 (headless menu_flow logs ~400 dummy-renderer mesh errors), #94 (chaosball.md pointed at the wrong label; fixed here).
