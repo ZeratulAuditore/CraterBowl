@@ -58,6 +58,12 @@ see when hosting, joining, queueing) lives in `docs/features/` (online play). La
 The host re-broadcasts every world event from `main.gd:_on_world_event`, plus match-level `looks`,
 `ranked`, `awards`, `summary`.
 
+At the final whistle, `awards` carries `{xp, ctx}` keyed by each recipient's athlete ID (#156).
+Each client reads its own assignment from `welcome` to select the award. Match stats behind the
+award use the player ID at the time of each event, so a new occupant earns their own totals.
+For mixed builds, the host also includes a display-name entry when the name is unique. Clients
+can read the name entry from an older host.
+
 ## Validation
 
 - `protocol.gd:sanitize_input`: non-finite `dir` → zero, length clamped to 1; `seq` must be a

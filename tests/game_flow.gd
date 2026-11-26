@@ -198,6 +198,7 @@ func _initialize() -> void:
 		# A23: ranked match vs a human rival -> rating change saved + on HUD.
 		# #102: the rival shares our display name ("You"); records are keyed by install id, so each keeps its own.
 		[6900, func(): main.configure(7); _setup_ranked_rival()],
+		[6901, _check_same_name_awards],
 		[6902, func(): main.series.score = [7, 0]; main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.world.phase = main.World.Phase.DEAD; main.series.last_result = {"type": "incomplete"}; main.next_play()],
 		[6904, func(): var rk = main.Ranked.new(); rk.load_file(main.ranked_path); var mine: String = main.Ranked.id_key(main.profile.install_id); var theirs: String = main.Ranked.id_key(RIVAL_INSTALL); check(rk.players.size() == 2 and not rk.players.has("You"), "same-named players get two id-keyed records (%s)" % str(rk.players.keys())); check(rk.rating(mine) > 1000.0 and rk.rating(theirs) < 1000.0, "ratings saved (host %.0f, rival %.0f)" % [rk.rating(mine), rk.rating(theirs)]); check(int(rk.players[mine]["games"]) == 1 and int(rk.players[mine]["wins"]) == 1 and int(rk.players[theirs]["wins"]) == 0, "one game each, one win"); check(rk.players[theirs].get("name") == "You", "display name kept on the record"); check(main.hud.text.find("RATING ") >= 0 and main.hud.text.find("(+24)") >= 0, "HUD shows rating change"); var saved = main.Cosmetics.new(); saved.load_file(main.profile_path); check(saved.install_id != "" and saved.install_id == main.profile.install_id, "host install id minted + saved with the profile"); main.peer_installs.erase(99); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.ranked_path)); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.leaderboard_path))],
 		# A24: earned cosmetics on your athlete, TD celebration, XP at final
@@ -512,6 +513,22 @@ func _setup_ranked_rival() -> void:
 	main.lobby.players[99] = {"name": "You", "ready": true}   # same display name as the host (#102)
 	main.peer_installs[99] = RIVAL_INSTALL
 	main.roster.auto_assign_team(99, 1 - main.world.get_athlete(main.my_id).team)
+
+func _check_same_name_awards() -> void:
+	var rival: int = main.roster.athlete_of(99)
+	main.series.start(0, 95.0)
+	_key(KEY_SPACE)
+	check(main.world.phase == main.World.Phase.LIVE, "same-name awards fixture snaps through Space")
+	main.world.event.emit("touchdown", {"carrier": main.my_id, "spot": Vector2(26, 100), "team": 0, "points": 6})
+	main.series.score = [7, 0]
+	var awards: Dictionary = main._match_awards({main.my_id: 1024.0, rival: 976.0})
+	check(awards["xp"] == {main.my_id: 175, rival: 100}, "each same-named player gets their own XP")
+	var ctx: Dictionary = awards["ctx"]
+	check(ctx[main.my_id]["won"] and not ctx[rival]["won"], "only the winner gets the win bonus")
+	check(main.Achievements.earned("first_td", ctx[main.my_id]) and not main.Achievements.earned("first_td", ctx[rival]),
+		"only the scorer meets First Touchdown")
+	check(ctx[main.my_id]["rating"] == 1024.0 and ctx[rival]["rating"] == 976.0,
+		"ranked achievement context follows the player's own rating")
 
 func _force_dead_if_live() -> void:
 	if main.world.phase != main.World.Phase.DEAD:

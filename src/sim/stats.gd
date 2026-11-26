@@ -9,8 +9,10 @@ const FIELDS := ["att", "comp", "pass_yds", "pass_td", "int_thrown", "rec", "rec
 
 var world
 var owner_fn: Callable     # athlete_id -> owner name ("Bot" for AI)
+var player_fn: Callable    # athlete_id -> current player id (-1 for AI)
 var lines := {}            # "owner|POS" -> {field: value}
 var athletes := {}         # athlete_id -> {"team", "pos", "owner", field: value} (players of the game)
+var award_stats := {}      # player id -> {field: value}, across positions
 var _los := 0.0
 var _passer := -1
 var _receiver := -1
@@ -22,9 +24,10 @@ var _returner := -1
 var _ret_from := 0.0
 var _ret_field := ""
 
-func attach(w, owner: Callable) -> void:
+func attach(w, owner: Callable, player: Callable = Callable()) -> void:
 	world = w
 	owner_fn = owner
+	player_fn = player
 	w.event.connect(_on_event)
 
 func _key(aid: int) -> String:
@@ -40,8 +43,18 @@ func _add(aid: int, field: String, v: float = 1.0) -> void:
 		lines[k] = {}
 		for f in FIELDS:
 			lines[k][f] = 0.0
-	lines[k][field] += v
+	_add_field(lines[k], field, v)
 	_add_athlete(aid, field, v)
+	if player_fn.is_valid():
+		var player: int = player_fn.call(aid)
+		if player >= 0:
+			if not award_stats.has(player):
+				award_stats[player] = {}
+			_add_field(award_stats[player], field, v)
+
+static func _add_field(line: Dictionary, field: String, value: float) -> void:
+	var previous: float = line.get(field, 0.0)
+	line[field] = maxf(previous, value) if field == "max_td_pts" else previous + value
 
 ## Same stat, keyed by the athlete itself. The owner is the last human who
 ## controlled it (a bot that a human took over is credited to the human).
@@ -54,10 +67,7 @@ func _add_athlete(aid: int, field: String, v: float) -> void:
 	var owner: String = owner_fn.call(aid) if owner_fn.is_valid() else "Bot"
 	if owner != "Bot":
 		athletes[aid]["owner"] = owner
-	if field == "max_td_pts":
-		athletes[aid][field] = maxf(athletes[aid][field], v)
-	else:
-		athletes[aid][field] += v
+	_add_field(athletes[aid], field, v)
 
 func _on_event(n: String, d: Dictionary) -> void:
 	match n:
@@ -164,10 +174,7 @@ func _credit_return(end_y: float) -> void:
 	_returner = -1
 
 func _note_td_points(aid: int, pts) -> void:
-	_add(aid, "max_td_pts", 0.0)
-	var k := _key(aid)
-	lines[k]["max_td_pts"] = maxf(lines[k]["max_td_pts"], float(pts))
-	athletes[aid]["max_td_pts"] = maxf(athletes[aid]["max_td_pts"], float(pts))
+	_add(aid, "max_td_pts", float(pts))
 
 func get_line(owner: String, pos: String) -> Dictionary:
 	return lines.get("%s|%s" % [owner, pos], {})

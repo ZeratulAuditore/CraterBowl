@@ -34,7 +34,26 @@ func _physics_process(dt: float) -> bool:
 			main.series.start(1)
 			main.ai.defense_enabled = false
 			prepared_handoff = true
+			main.world.event.connect(_finish_after_handoff)
 	return false
+
+func _finish_after_handoff(event: String, _data: Dictionary) -> void:
+	if event != "handoff":
+		return
+	main.world.event.disconnect(_finish_after_handoff)
+	# Let the joiner observe the handoff before setting up the final score.
+	await create_timer(0.5).timeout
+	main.stats.award_stats.clear()
+	main.series.start(0, 95.0)
+	main.world.event.emit("snap", {"qb": main.my_id})
+	main.world.event.emit("touchdown", {"carrier": main.my_id, "spot": Vector2(26, 100), "team": 0, "points": 6})
+	main.series.score = [6, 0]
+	main.series.clock.half = 2
+	main.series.clock.quarter = 4
+	main.series.clock.remaining = 0.0
+	main.world.phase = main.World.Phase.DEAD
+	main.series.last_result = {"type": "incomplete"}
+	main.next_play()
 
 func _key(code: int) -> void:
 	var event := InputEventKey.new()

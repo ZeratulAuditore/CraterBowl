@@ -44,6 +44,11 @@ var snapped_run := false
 var sent_handoff := false
 var handoff_to := -1
 var remote_handoff_confirmed := false
+var xp_before := 0
+var games_before := 0
+var had_first_td := false
+var had_first_win := false
+var got_awards := false
 var host_loss := false      # #56 mode
 var armed_at := -1
 
@@ -89,6 +94,10 @@ func _on_event(n: String, _d: Dictionary) -> void:
 		got_timeout_event = true
 	if n == "handoff" and _d.get("by") == aid:
 		handoff_to = int(_d["to"])
+	if n == "awards":
+		got_awards = true
+		check(main.player_name == "Ann" and not _d["xp"].has("Ann"),
+			"same-named players receive seat awards without a shared name entry")
 
 func _initialize() -> void:
 	host_loss = OS.get_cmdline_user_args().has("--host-loss")
@@ -102,6 +111,10 @@ func _physics_process(_dt: float) -> bool:
 	if host_loss:
 		return _host_loss_step()
 	if f == 2:
+		xp_before = main.profile.xp
+		games_before = main.profile.games
+		had_first_td = main.profile.achievements.has("first_td")
+		had_first_win = main.profile.achievements.has("first_win")
 		main.net.lobby_received.connect(_on_lobby)
 		main.net.welcomed.connect(_on_welcome)
 		main.net.snapshot_received.connect(_on_snap)
@@ -146,7 +159,7 @@ func _physics_process(_dt: float) -> bool:
 		equipped_number = main.views[aid].number_text
 	if bad_snap_sent_at > 0 and f > bad_snap_sent_at + 90:
 		_test_remote_handoff()
-	if f == 1500 or remote_handoff_confirmed:
+	if f == 1500 or (remote_handoff_confirmed and got_awards):
 		check(saw_lobby and lobby_size == 5 and lobby_code.length() == 11, "joined by code into the private lobby (5v5, code %s)" % lobby_code)
 		check(quarter_lobby_seen and quarter_clock_seen, "host lobby Q and H select three-minute quarters on both machines")
 		check(aid >= 0, "readied up -> match started -> welcomed with athlete %d" % aid)
@@ -169,6 +182,11 @@ func _physics_process(_dt: float) -> bool:
 		check(timeout_confirmed and got_timeout_event, "remote U decrements only its team's timeouts and broadcasts the event")
 		check(remote_handoff_confirmed, "client QB hands off through G and sees the host's RB possession")
 		check(remote_handoff_confirmed and main.controlled_id == aid, "online QB keeps the same athlete after the handoff")
+		check(got_awards and main.profile.xp == xp_before + 100 and main.profile.games == games_before + 1,
+			"same-named losing client receives only its own 100 XP")
+		check(main.profile.achievements.has("first_td") == had_first_td
+			and main.profile.achievements.has("first_win") == had_first_win,
+			"host's touchdown and win leave the client's achievements as they were")
 		print("NET FLOW " + ("PASS" if ok else "FAIL"))
 		quit(0 if ok else 1)
 	return false
@@ -195,7 +213,8 @@ func _test_remote_handoff() -> void:
 		_key(KEY_G)
 		sent_handoff = true
 	var back = w.find_role(1, main.Athlete.Role.RB)
-	remote_handoff_confirmed = sent_handoff and back != null and back.id == handoff_to and w.ball.is_held_by(back.id)
+	remote_handoff_confirmed = remote_handoff_confirmed or (
+		sent_handoff and back != null and back.id == handoff_to and w.ball.is_held_by(back.id))
 
 ## #56: in the match, then the host dies -> back on the menu saying why.
 func _host_loss_step() -> bool:
