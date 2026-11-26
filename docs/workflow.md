@@ -36,8 +36,9 @@ gh issue comment 12 --body "Narrowed scope: ... because ..."
 # Side finding → new issue, immediately
 gh issue create --title "<what's wrong / what to add>" --label "type:bug,P1,area:online" --body "<where you saw it, repro or evidence, why it matters, suggested fix>. Found while working on #12."
 
-# Ship → close with a summary (commits are local, so nothing auto-closes)
-gh issue close 12 --comment "Shipped in <sha> on local main (iter NNN). Tests: <counts>. Docs: <files>. Follow-ups: #61, #62."
+# Ship → open a PR that closes the issue on merge (the owner reviews and merges; never merge it yourself)
+gh pr create --title "iter NNN: <title> (#12)" --body "Closes #12. <what/why>. Tests: <check.sh counts>. Docs: <files>. Follow-ups: #61, #62."
+gh issue comment 12 --body "PR #<M> open for review."
 
 # Partial ship → keep it open, narrow it
 gh issue edit 12 --remove-label status:in-progress && gh issue comment 12 --body "Part 1 shipped in <sha>; remaining: ..."

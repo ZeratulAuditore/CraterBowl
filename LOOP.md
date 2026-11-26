@@ -39,8 +39,8 @@ Each run is one iteration. Each iteration builds on the last. **Tackle exactly o
    - Update the feature doc for the area (`docs/features/<area>.md`: how it plays now, decisions, what didn't work, open-issues list), and the design doc if you built a subsystem or protocol (`docs/design/`).
    - Update other owning docs (`docs/README.md` says which: testing → `docs/TESTING.md`, perf → `docs/optimization/`).
    - Append to `ITERATIONS.md`: number, issue `#N`, what was built, test counts, known gaps. **Every known gap is an issue**; list their numbers rather than leaving prose gaps.
-7. **Commit** locally on `main`: `iter NNN: <title> (#N)`. Never push or publish. Commit **everything** (`git add -A`), including other sessions' in-progress files, and list them in the message body. See "Committing" in `AGENTS.md`. Check `git show --stat` before moving on.
-8. **Close the issue:** `gh issue close N --comment "Shipped in <sha> on local main (iter NNN). Tests: … Docs: … Follow-ups: #…"`. If only part shipped, remove `status:in-progress`, comment what's left, and leave it open.
+7. **Open a PR** from your branch (see "Shipping" in `AGENTS.md`): commit your own files as `iter NNN: <title> (#N)`, merge the latest `origin/main`, re-run `./scripts/check.sh`, push the branch, and `gh pr create` with `Closes #N` plus test evidence. Never commit to or push `main`, and never merge the PR; the owner reviews and merges.
+8. **Update the issue:** comment the PR link (`gh issue comment N --body "PR #M: …"`). The issue closes when the owner merges the PR. If only part is done, remove `status:in-progress`, comment what's left, and leave it open.
 9. **Report.** Summarize what shipped, the test results, the issues closed/opened, and what's next, ending with a `result:` line.
 
 ## Guardrails
