@@ -84,8 +84,11 @@ or `MMClient` child. Key functions:
 - Client prediction relies on `World.predict_step` producing the same movement as `World.step` for one
   athlete (`tests/test_netcode.gd:test_prediction_leads_then_matches_server`).
 - Replays do **not** depend on determinism: `replay.gd` records positions, not inputs.
-- Invariant to keep: `world.step` treats an input as human iff it has a `"block"` key
-  (`var human := inp.has("block")`). `ai.think` must not emit `block`; human/sanitized inputs always do.
+- Human vs bot input is an explicit flag: `world.step` applies human blocking rules (no auto-engage
+  without the shield, releasing the shield drops the block) iff the input has `World.HUMAN: true`
+  (`World.is_human_input`). `main.gd` sets it on the local player's input and, on the host, on each
+  peer's input after `Protocol.sanitize_input` (the wire never carries it). `ai.think` never sets it,
+  so a `block` key on a bot input doesn't change bot rules (#62).
 
 ## Tuning
 
@@ -138,6 +141,5 @@ trustworthy yet (#28).
 - #17 C11 Reconnect, leavers, forfeit
 - #1 Migrate backlog to GitHub issues; restructure docs into feature/design levels
 - #61 Tick rate (60 Hz) hard-coded in several places
-- #62 world.step treats an input as human only if it has a 'block' key
 - #63 test_determinism.gd header vs replay recording
 - #66 Lint gate red on origin/main since ec09b1e (seeded RNG in world.gd vs the purity rule)

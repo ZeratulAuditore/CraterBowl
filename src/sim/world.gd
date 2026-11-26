@@ -674,6 +674,16 @@ func possession_team() -> int:
 func carrier() -> Athlete:
 	return get_athlete(ball.holder_id) if ball.state == Ball.State.HELD else null
 
+## Input key that marks an athlete as human-controlled (#62). Callers set it on
+## every human input (main.gd: local player and each remote peer); `ai.think`
+## never does. Humans block only while holding the shield and release when they
+## let go; bots auto-engage. The flag is explicit so a `block` key on a bot
+## input can't silently flip it to human rules.
+const HUMAN := "human"
+
+static func is_human_input(inp: Dictionary) -> bool:
+	return inp.get(HUMAN, false) == true
+
 func step(inputs: Dictionary, dt: float) -> void:
 	if phase == Phase.LIVE:
 		play_time += dt
@@ -684,7 +694,7 @@ func step(inputs: Dictionary, dt: float) -> void:
 		var inp: Dictionary = inputs.get(a.id, {})
 		if phase == Phase.DEAD and ball.holder_id == a.id:
 			continue
-		var human := inp.has("block")
+		var human := is_human_input(inp)
 		step_athlete(a, inp.get("dir", Vector2.ZERO), inp.get("sprint", false), dt, inp.get("block", false))
 		if human and not a.blocking and a.engaged_with >= 0 and a.team == possession_team():
 			var defender := get_athlete(a.engaged_with)
@@ -729,7 +739,7 @@ func _step_blocks(prev: Array, inputs: Dictionary, dt: float) -> void:
 		a.immune_t = maxf(0.0, a.immune_t - dt)
 	# Form new engagements
 	for b in athletes:
-		if not _can_block(b) or (inputs.get(b.id, {}).has("block") and not b.blocking):
+		if not _can_block(b) or (is_human_input(inputs.get(b.id, {})) and not b.blocking):
 			continue
 		for d in athletes:
 			if not _can_be_blocked(d):
