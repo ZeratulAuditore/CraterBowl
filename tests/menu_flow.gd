@@ -149,6 +149,16 @@ func _setup() -> void:
 		[303, func():
 			menu.launch = launch
 			_btn(menu.content, "Snap / hike")
+			var mode: OptionButton = menu.content.find_child("DisplayMode", true, false)
+			check(mode.item_count == 3 and mode.get_item_text(mode.selected) == "Borderless fullscreen",
+				"three display modes with borderless fullscreen selected by default")
+			for i in [1, 2, 0]:
+				mode.select(i)
+				mode.item_selected.emit(i)
+				var saved = launch.SettingsStore.new()
+				saved.load_file(launch.settings_path)
+				check(saved.display_mode == ["borderless", "exclusive", "windowed"][i],
+					"display preference saved for " + mode.get_item_text(i))
 			var bind: Button = menu.content.find_child("Bind_snap", true, false)
 			bind.pressed.emit()
 			_key(KEY_K)],
@@ -218,6 +228,16 @@ func _setup() -> void:
 		[968, func():
 			check(launch._overlay != null and paused, "Esc opens pause overlay (offline pauses)")
 			check(not Input.is_key_pressed(KEY_D), "stick released")
+			var button = launch._overlay.find_child("ControlsButton", true, false)
+			button.pressed.emit()
+			var help = launch._overlay.find_child("ControlsHelp", true, false)
+			var notes = help.get_node("ControlsNotes")
+			var bindings = help.get_node("ControlsBindings")
+			check(help.visible and notes.text.contains("right click: block")
+				and bindings.get_children().any(func(label): return label.text == "Show scoreboard (hold)"),
+				"pause Controls lists the gameplay bindings")
+			button.pressed.emit()
+			check(not help.visible, "Controls toggles the existing help")
 			_key(KEY_ESCAPE)],
 		[970, func():
 			check(launch._overlay == null and not paused, "Esc closes overlay")],

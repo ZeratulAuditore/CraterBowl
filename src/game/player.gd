@@ -1,18 +1,18 @@
 extends Node3D
-## View of one sim athlete: a rigged, animated CC0 character (Quaternius
-## Universal Animation Library, see ASSETS.md) dressed as a football player:
-## team-colored jersey/pants/socks via a region-baked shader, bone-attached
-## helmet + facemask, shoulder pads and jersey numbers.
+## View of one sim athlete with two uniforms driven by the Quaternius rig.
+## The local team wears the CC0 mannequin and Innerscene helmet. Opponents
+## wear a custom Blender uniform, including its own helmet and facemask.
 ## Mirrors sim state; owns no rules. Cosmetics are view-only.
 ##
 ## Animation is chosen from how the node actually moves (works for live sim,
 ## network interpolation and replays alike) plus a few sim flags.
 
+const T := preload("res://src/sim/tuning.gd")
 const Cos := preload("res://src/sim/cosmetics.gd")
 const Mats := preload("res://src/game/art/materials.gd")
 const CharacterArt := preload("res://src/game/art/character_art.gd")
 const Emotes := preload("res://src/sim/emotes.gd")
-const T := preload("res://src/sim/tuning.gd")
+const Uniforms := preload("res://src/game/art/football_uniforms.gd")
 
 const SKIN_TONES := [Color(0.98, 0.80, 0.66), Color(0.87, 0.65, 0.48), Color(0.72, 0.50, 0.34),
 	Color(0.55, 0.36, 0.23), Color(0.40, 0.26, 0.17), Color(0.30, 0.20, 0.13)]
@@ -28,13 +28,10 @@ var athlete  # sim athlete
 var color := Color(0.9, 0.75, 0.2)
 var pants_color := Color(0.15, 0.15, 0.2)
 var world = null           # optional: sim world (stances)
-var throw_pose := 0.0      # 0..1, set by presentation while the controlled QB charges a throw
+var block_shield: MeshInstance3D
 
-# Public parts (kept for tests/cosmetics)
+# Public cosmetics
 var body: Node3D           # model root; celebrations spin/flip it
-var trim_band: MeshInstance3D
-var helmet: MeshInstance3D
-var stripe: MeshInstance3D
 var number_front: Label3D
 var number_back: Label3D
 var number_text := ""
@@ -53,6 +50,12 @@ var mesh_i: MeshInstance3D
 var anim: AnimationPlayer
 var hand_r: Node3D
 var trim_mat: StandardMaterial3D
+var is_opponent := false
+
+var _open_gear: Node3D
+var _open_helmet: MeshInstance3D
+var _opponent_mesh: MeshInstance3D
+var _skin_color: Color
 
 var _last_pos := Vector3.ZERO
 var _vel := Vector3.ZERO
@@ -62,10 +65,11 @@ var _release_t := 0.0
 var _cur := ""
 var _was_down := false
 
-func setup(a, c: Color, w = null) -> void:
+func setup(a, c: Color, w = null, opponent := false) -> void:
 	athlete = a
 	color = c
 	world = w
+	is_opponent = opponent
 	pants_color = Color(0.16, 0.17, 0.22) if a.team == 0 else Color(0.92, 0.92, 0.94)
 
 func _ready() -> void:
@@ -80,38 +84,35 @@ func _ready() -> void:
 	anim = CharacterArt.find_anim(model)
 	var skel: Skeleton3D = mesh_i.get_parent() if mesh_i else null
 	CharacterArt.dress_mesh(mesh_i)
-	var skin: Color = SKIN_TONES[(athlete.id * 7 + athlete.team * 3) % SKIN_TONES.size()]
+	_skin_color = SKIN_TONES[(athlete.id * 7 + athlete.team * 3) % SKIN_TONES.size()]
 	if mesh_i:
 		_set_uniform("jersey", color)
 		_set_uniform("pants", pants_color)
 		_set_uniform("sock", color.darkened(0.3))
-		_set_uniform("skin", skin)
+		_set_uniform("skin", _skin_color)
 
 	trim_mat = Mats.cloth(Color.WHITE)
 	var chest := _attach(skel, "spine_03")
 	var head_b := _attach(skel, "Head")
 	hand_r = _attach(skel, "hand_r")
-	# Shoulder pads under the jersey color, trim stripe across the yoke.
-	var jersey_mat := Mats.cloth(color)
-	var pads := _part(chest, SphereMesh.new(), jersey_mat, Vector3(0, 0.1, -0.01))
+	_open_gear = Node3D.new()
+	chest.add_child(_open_gear)
+	var pads := _part(_open_gear, SphereMesh.new(), Mats.cloth(color), Vector3(0, 0.1, -0.01))
 	pads.scale = Vector3(0.46, 0.15, 0.27)
-	pads.name = "Pads"
-	trim_band = _part(chest, _cyl(0.085, 0.05), trim_mat, Vector3(0, 0.2, 0.0))   # collar
-	trim_band.name = "TrimBand"
-	# Helmet: glossy shell, stripe, visor, facemask cage.
-	helmet = _part(head_b, SphereMesh.new(), Mats.glossy(color.darkened(0.15)), Vector3(0, 0.12, -0.01))
-	helmet.scale = Vector3(0.27, 0.27, 0.3)
-	helmet.name = "Helmet"
-	stripe = MeshInstance3D.new()
-	stripe.mesh = _box(Vector3(0.18, 0.06, 1.0))
-	stripe.position = Vector3(0, 0.49, -0.02)
-	helmet.add_child(stripe)
-	_part(head_b, _facemask_mesh(), Mats.metal(Color(0.85, 0.86, 0.9)), Vector3.ZERO).name = "Facemask"
-	var visor := _part(head_b, SphereMesh.new(), Mats.visor(), Vector3(0, 0.1, 0.1))
-	visor.scale = Vector3(0.21, 0.07, 0.13)
-	number_front = _number_label(chest, 0.17)
-	number_back = _number_label(chest, -0.17)
+	_part(_open_gear, _cyl(0.085, 0.05), trim_mat, Vector3(0, 0.2, 0.0))
+	_open_helmet = Uniforms.open_helmet(head_b)
+	_opponent_mesh = Uniforms.opponent_mesh(mesh_i)
+	number_front = _number_label(chest, 0.205)
+	number_back = _number_label(chest, -0.205)
+	set_opponent(is_opponent)
 	add_child(_blob_shadow())
+	var shield_mesh := SphereMesh.new()
+	var shield_mat := Mats.emissive(Color(0.3, 0.8, 1.0, 0.35), 0.9)
+	shield_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	block_shield = _part(self, shield_mesh, shield_mat, Vector3(0, 0.95, -0.66))
+	block_shield.scale = Vector3(1.4, 1.65, 0.24)
+	block_shield.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	block_shield.hide()
 	apply_look(Cos.DEFAULT_LOOK.merged({"number": (athlete.id % 90) + 10}, true))
 	_last_pos = Vector3(athlete.position.x, 0, -athlete.position.y)
 	_play("Idle", 0.0)
@@ -140,12 +141,11 @@ func _attach(skel: Skeleton3D, bone: String) -> Node3D:
 	ba.add_child(holder)
 	return holder
 
-func _part(parent: Node3D, mesh: Mesh, mat: Material, at: Vector3, rot := Vector3.ZERO) -> MeshInstance3D:
+func _part(parent: Node3D, mesh: Mesh, mat: Material, at: Vector3) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
 	mi.material_override = mat
 	mi.position = at
-	mi.rotation = rot
 	parent.add_child(mi)
 	return mi
 
@@ -156,29 +156,6 @@ static func _cyl(r: float, h: float) -> CylinderMesh:
 	m.height = h
 	m.radial_segments = 12
 	m.rings = 1
-	return m
-
-static var _mask_mesh: Mesh
-
-## Facemask cage merged into one mesh (one draw call), shared by every athlete.
-static func _facemask_mesh() -> Mesh:
-	if _mask_mesh == null:
-		var st := SurfaceTool.new()
-		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		var bars := []
-		for i in 3:
-			bars.append([0.24, Transform3D(Basis.from_euler(Vector3(0, 0, PI / 2)), Vector3(0, 0.07 - i * 0.055, 0.155))])
-		for sx in [-1.0, 1.0]:
-			bars.append([0.15, Transform3D(Basis.from_euler(Vector3(PI / 2, 0, 0)), Vector3(0.105 * sx, 0.02, 0.115))])
-		bars.append([0.13, Transform3D(Basis.IDENTITY, Vector3(0, 0.0, 0.165))])
-		for b in bars:
-			st.append_from(_cyl(0.011, b[0]), 0, b[1])
-		_mask_mesh = st.commit()
-	return _mask_mesh
-
-static func _box(s: Vector3) -> BoxMesh:
-	var m := BoxMesh.new()
-	m.size = s
 	return m
 
 func _blob_shadow() -> MeshInstance3D:
@@ -205,16 +182,24 @@ func _number_label(parent: Node3D, z: float) -> Label3D:
 	parent.add_child(l)
 	return l
 
+func set_opponent(opponent: bool) -> void:
+	is_opponent = opponent
+	mesh_i.visible = not opponent
+	_open_gear.visible = not opponent
+	_open_helmet.visible = not opponent
+	_opponent_mesh.visible = opponent
+
 ## Apply a (sanitized) look. Purely visual.
 func apply_look(lk: Dictionary) -> void:
 	look = Cos.sanitize_look(lk)
 	trim_color = Cos.color_of("trim", look["trim"])
 	trim_mat.albedo_color = trim_color
-	trim_band.material_override = trim_mat
 	if mesh_i:
 		_set_uniform("trim", trim_color)
 	var hc: Color = Cos.color_of("helmet", look["helmet"])
-	stripe.material_override = Mats.metal(hc) if look["helmet"] == "chrome" else Mats.glossy(hc)
+	var helmet_stripe := Mats.metal(hc) if look["helmet"] == "chrome" else Mats.glossy(hc)
+	Uniforms.recolor(_open_helmet, color, _skin_color, trim_mat, helmet_stripe)
+	Uniforms.recolor(_opponent_mesh, color, _skin_color, trim_mat, helmet_stripe)
 	number_text = str(int(look["number"]))
 	for l in [number_front, number_back]:
 		l.text = number_text
@@ -272,7 +257,10 @@ func _role_name() -> String:
 ## Mirror the sim position/facing. Animation runs in _process.
 func sync() -> void:
 	position = Vector3(athlete.position.x, 0, -athlete.position.y)
-	if athlete.speed() > 0.1:
+	block_shield.visible = athlete.blocking
+	if athlete.blocking:
+		rotation.y = atan2(-athlete.facing.x, athlete.facing.y)
+	elif athlete.speed() > 0.1:
 		rotation.y = atan2(-athlete.velocity.x, athlete.velocity.y)
 	elif athlete.facing.length() > 0.1 and world != null and int(world.phase) == 0:
 		rotation.y = atan2(-athlete.facing.x, athlete.facing.y)
@@ -302,7 +290,7 @@ func _process(delta: float) -> void:
 	_vel = _vel.lerp(v, clampf(delta * 12.0, 0.0, 1.0))
 	var spd := Vector2(_vel.x, _vel.z).length()
 	var down: bool = athlete.is_diving() or athlete.is_grounded()
-	if spd > 0.4 and not down:
+	if spd > 0.4 and not down and not athlete.blocking:
 		rotation.y = lerp_angle(rotation.y, atan2(-_vel.x, -_vel.z), clampf(delta * 14.0, 0.0, 1.0))
 	_hit_t = maxf(0.0, _hit_t - delta)
 	emote_t = maxf(0.0, emote_t - delta)
@@ -355,10 +343,8 @@ func _choose_anim(spd: float, down: bool) -> void:
 	if emote_t > 0.0 and spd < 1.5:
 		_play(Emotes.clip(emote_id), 0.12)
 		return
-	if throw_pose > 0.0:
-		_play("u2/OverhandThrow", 0.12, 0.0)
-		if anim and anim.has_animation("u2/OverhandThrow"):
-			anim.seek(anim.get_animation("u2/OverhandThrow").length * lerpf(0.18, 0.36, throw_pose), true)
+	if athlete.blocking:
+		_play("u2/Idle_Shield")
 		return
 	if athlete.engaged_with >= 0:
 		_play("Push", BLEND, 1.3)

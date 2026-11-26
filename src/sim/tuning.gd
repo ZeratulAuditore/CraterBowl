@@ -4,8 +4,13 @@ extends RefCounted
 # Movement
 const RUN_SPEED := 7.0
 const SPRINT_SPEED := 9.5
-const ACCEL := 20.0          # yd/s^2 toward target velocity
-const DECEL := 24.0          # yd/s^2 when no input
+const DECEL := 24.0          # slide deceleration after a tackle dive
+const BLOCK_SPEED := 2.8
+const DASH_SPEED := 13.0
+const SPIN_SPEED := 7.5
+const DASH_TIME := 0.22
+const SPIN_TIME := 0.32
+const MOVE_CHARGE_PER_YARD := 0.05
 
 # Stamina (0..1)
 const STAMINA_DRAIN := 0.25  # per second while sprinting
@@ -29,7 +34,8 @@ const CATCH_HEIGHT := 1.1
 const THROW_SPEED_MIN := 12.0
 const THROW_SPEED_MAX := 30.0
 const THROW_INHERIT := 0.3      # fraction of thrower velocity added to ball
-const THROW_CHARGE_TIME := 0.9  # seconds to full power
+const PLAYER_PASS_POWER := 0.68
+const THROW_CHARGE_TIME := 0.9  # POV passer: seconds of hold to full power (distance)
 
 # Catching
 const CATCH_RADIUS := 1.2
@@ -45,11 +51,8 @@ const DIVE_TIME := 0.35
 const TACKLE_REACH := 1.0
 const DIVE_RECOVER := 1.0
 
-# Spin move (Q / E): a short sidestep spin; dive tackles that land during it miss
-const SPIN_TIME := 0.4
-const SPIN_COOLDOWN := 1.2
-const SPIN_SPEED_KEEP := 0.85   # fraction of current speed carried through the spin
-const SPIN_SIDESTEP := 3.0      # yd/s lateral drift toward the spin side
+# Q / E spin: the evade spin (SPIN_TIME/SPIN_SPEED above) angled this far off facing
+const SPIN_ANGLE := 35.0        # degrees
 
 # POV passing: the QB's view pitch sets the launch angle
 const POV_ANGLE_MIN := -10.0    # degrees
@@ -70,6 +73,8 @@ const BLOCKER_BEATEN := 1.5   # after a shed, the blocker cannot re-engage for t
 
 # AI QB
 const AI_QB_THROW_TIME := 2.0
+const AI_QB_PASS_POWER := 0.65
+const AI_QB_DEPTH_WEIGHT := 0.2
 const AI_QB_PRESSURE := 3.0
 
 # Fumbles / loose ball

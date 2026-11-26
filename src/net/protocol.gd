@@ -1,30 +1,34 @@
 extends RefCounted
 ## Wire protocol: snapshot codec, input sanitizing, authoritative action routing. Pure.
 
-const Routes := preload("res://src/sim/routes.gd")
 const T := preload("res://src/sim/tuning.gd")
+const Routes := preload("res://src/sim/routes.gd")
 const DefensivePlaybook := preload("res://src/sim/defensive_playbook.gd")
 const DIVE_FLAG := 1
 const GROUND_FLAG := 2
 const LOCK_FLAG := 4
-const SPIN_L_FLAG := 8
-const SPIN_R_FLAG := 16
+const BLOCK_FLAG := 8
+const SPIN_FLAG := 16
+const SPIN_LEFT_FLAG := 32   # spin turned left (visual side)
 const Emotes := preload("res://src/sim/emotes.gd")
 
 static func encode_snapshot(m, tick: int, acks: Dictionary = {}) -> Dictionary:
 	var w = m.world
 	var a := PackedFloat32Array()
 	var r := PackedInt32Array()
+	var moves := PackedFloat32Array()
 	for ath in w.athletes:
 		a.append_array([ath.position.x, ath.position.y, ath.velocity.x, ath.velocity.y, ath.facing.x, ath.facing.y, ath.stamina])
 		var flags := (DIVE_FLAG if ath.is_diving() else 0) | (GROUND_FLAG if ath.is_grounded() else 0) | (LOCK_FLAG if ath.set_lock else 0)
-		if ath.is_spinning():
-			flags |= SPIN_L_FLAG if ath.spin_dir < 0 else SPIN_R_FLAG
+		flags |= (BLOCK_FLAG if ath.blocking else 0) | (SPIN_FLAG if ath.is_spinning() else 0)
+		if ath.is_spinning() and ath.spin_dir < 0:
+			flags |= SPIN_LEFT_FLAG
 		r.append_array([ath.role, flags, ath.team])
+		moves.append_array([ath.move_charge, ath.move_t])
 	var b = w.ball
 	return {
-		"k": "snap", "t": tick, "ph": w.phase, "off": w.offense_team, "los": w.los_y, "fpt": w.forward_pass_thrown,
-		"a": a, "r": r,
+		"k": "snap", "t": tick, "ph": w.phase, "off": w.offense_team, "los": w.los_y, "fpt": w.forward_pass_thrown, "pt": w.last_possession,
+		"a": a, "r": r, "moves": moves,
 		"b": PackedFloat32Array([b.state, b.holder_id, b.position.x, b.position.y, b.position.z, b.velocity.x, b.velocity.y, b.velocity.z]),
 		"d": PackedFloat32Array([m.downs.offense_team, m.downs.down, m.downs.los, m.downs.first_down_y]),
 		"s": PackedInt32Array(m.score),
@@ -47,8 +51,10 @@ static func apply_snapshot(m, s: Dictionary) -> void:
 	w.offense_team = s["off"]
 	w.los_y = s["los"]
 	w.forward_pass_thrown = s["fpt"]
+	w.last_possession = s.get("pt", w.offense_team)
 	var a: PackedFloat32Array = s["a"]
 	var r: PackedInt32Array = s["r"]
+	var moves: PackedFloat32Array = s.get("moves", PackedFloat32Array())
 	for i in mini(w.athletes.size(), r.size() / 3):
 		var ath = w.athletes[i]
 		var o := i * 7
@@ -61,9 +67,12 @@ static func apply_snapshot(m, s: Dictionary) -> void:
 		ath.dive_t = 0.01 if flags & DIVE_FLAG else 0.0
 		ath.recover_t = 0.01 if flags & GROUND_FLAG else 0.0
 		ath.set_lock = (flags & LOCK_FLAG) != 0
-		ath.spin_t = 0.01 if flags & (SPIN_L_FLAG | SPIN_R_FLAG) else 0.0
-		if ath.spin_t > 0.0:
-			ath.spin_dir = -1 if flags & SPIN_L_FLAG else 1
+		ath.blocking = (flags & BLOCK_FLAG) != 0
+		ath.spin_move = (flags & SPIN_FLAG) != 0
+		if moves.size() >= i * 2 + 2:
+			ath.move_charge = moves[i * 2]
+			ath.move_t = moves[i * 2 + 1]
+		ath.spin_dir = -1 if flags & SPIN_LEFT_FLAG else 1
 	var b: PackedFloat32Array = s["b"]
 	w.ball.state = int(b[0])
 	w.ball.holder_id = int(b[1])
@@ -107,7 +116,7 @@ static func sanitize_input(msg) -> Dictionary:
 	var seq = msg.get("seq", 0)
 	if not (seq is int) or seq < 0:
 		seq = 0
-	return {"dir": (dir as Vector2).limit_length(1.0), "sprint": msg.get("spr", false) == true, "seq": seq}
+	return {"dir": (dir as Vector2).limit_length(1.0), "sprint": msg.get("spr", false) == true, "seq": seq, "block": msg.get("block", false) == true}
 
 static func sanitize_action(act) -> Dictionary:
 	if not (act is Dictionary):
@@ -115,6 +124,12 @@ static func sanitize_action(act) -> Dictionary:
 	match act.get("a", ""):
 		"snap", "tackle", "recall_call", "flip_play":
 			return {"a": act["a"]}
+		"dash", "spin":
+			if act["a"] == "spin" and act.has("s"):   # Q / E: spin left (-1) / right (+1) of facing
+				var side = act["s"]
+				return {"a": "spin", "s": side} if side is int and (side == -1 or side == 1) else {}
+			var dir = act.get("dir", Vector2.ZERO)
+			return {"a": act["a"], "dir": dir.limit_length(1.0)} if _finite_v(dir) else {}
 		"throw":
 			var p = act.get("p", 0.0)
 			if not (p is float or p is int) or not is_finite(float(p)):
@@ -129,10 +144,7 @@ static func sanitize_action(act) -> Dictionary:
 			var t = act.get("t", Vector2.ZERO)
 			if not _finite_v(t):
 				return {}
-			return {"a": "throw", "t": t, "p": clampf(float(p), 0.0, 1.0), "lob": act.get("lob", false) == true}
-		"spin":
-			var s = act.get("s", 0)
-			return {"a": "spin", "s": s} if s is int and (s == -1 or s == 1) else {}
+			return {"a": act["a"], "t": t, "p": clampf(float(p), 0.0, 1.0), "lob": act.get("lob", false) == true}
 		"emote":
 			var e = act.get("e", "")
 			return {"a": "emote", "e": e} if e is String and Emotes.has(e) else {}
@@ -167,12 +179,14 @@ static func apply_action(m, athlete_id: int, action: Dictionary) -> bool:
 			return w.break_stance(athlete_id)
 		"tackle":
 			return w.tackle(athlete_id)
+		"dash", "spin":
+			if act.has("s"):
+				return w.spin(athlete_id, act["s"])
+			return w.evade(athlete_id, act["a"] == "spin", act["dir"])
 		"throw":
-			if act.has("d"):
+			if act.has("d"):   # POV throw: charge = power
 				return w.throw_dir(athlete_id, act["d"], act["ang"], act["p"])
-			return w.throw(athlete_id, act["t"], act["p"], act["lob"])
-		"spin":
-			return w.spin(athlete_id, act["s"])
+			return w.throw(athlete_id, act["t"], T.PLAYER_PASS_POWER, act["lob"], false)
 		"emote":
 			return w.emote(athlete_id, act["e"])
 		"try":

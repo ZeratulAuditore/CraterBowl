@@ -130,22 +130,26 @@ func _build_chains(root: Node3D) -> Node3D:
 	var orange := Mats.emissive(Color(1.0, 0.42, 0.08), 0.9)
 	var pole := Mats.cloth(Color(0.1, 0.1, 0.12))
 	stick_a = _stick(n, pole, orange)
+	_sign(stick_a, "LOS")
 	stick_b = _stick(n, pole, orange)
-	var chain := MeshInstance3D.new()
-	chain.name = "Chain"
-	n.add_child(chain)
+	_sign(stick_b, "1ST")
 	var box := _stick(n, pole, orange)
 	box.name = "DownBox"
-	down_box = Label3D.new()
-	down_box.font = Mats.number_font()
-	down_box.font_size = 96
-	down_box.pixel_size = 0.008
-	down_box.position = Vector3(0, 2.5, 0)
-	down_box.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
-	down_box.outline_size = 18
-	down_box.modulate = Color(1.0, 0.85, 0.3)
-	box.add_child(down_box)
+	down_box = _sign(box, "")
 	return n
+
+func _sign(parent: Node3D, text: String) -> Label3D:
+	var sign := Label3D.new()
+	sign.text = text
+	sign.font = Mats.number_font()
+	sign.font_size = 72
+	sign.pixel_size = 0.004
+	sign.position = Vector3(-0.085, 2.55, 0)
+	sign.rotation.y = -PI / 2.0
+	sign.outline_size = 8
+	sign.modulate = Color(1.0, 0.96, 0.82)
+	parent.add_child(sign)
+	return sign
 
 func _stick(parent: Node3D, pole_mat: Material, top_mat: Material) -> Node3D:
 	var s := Node3D.new()
@@ -154,19 +158,56 @@ func _stick(parent: Node3D, pole_mat: Material, top_mat: Material) -> Node3D:
 	var c := CylinderMesh.new()
 	c.top_radius = 0.05
 	c.bottom_radius = 0.05
-	c.height = 2.2
+	c.height = 2.55
 	p.mesh = c
 	p.material_override = pole_mat
-	p.position.y = 1.1
+	p.position.y = c.height * 0.5
 	s.add_child(p)
 	var t := MeshInstance3D.new()
 	var b := BoxMesh.new()
-	b.size = Vector3(0.35, 0.35, 0.35)
+	b.size = Vector3(0.16, 0.44, 0.65)
 	t.mesh = b
 	t.material_override = top_mat
-	t.position.y = 2.25
+	t.position.y = 2.55
 	s.add_child(t)
+	_crew_member(s)
 	return s
+
+func _crew_member(parent: Node3D) -> void:
+	var uniform := Mats.cloth(Color(0.98, 0.52, 0.08))
+	var trousers := Mats.cloth(Color(0.12, 0.15, 0.2))
+	var skin := Mats.cloth(Color(0.57, 0.34, 0.22))
+	var shoes := Mats.cloth(Color(0.06, 0.07, 0.09))
+	var reflective := Mats.cloth(Color(0.92, 0.95, 0.8))
+	var crew := Node3D.new()
+	crew.name = "ChainCrew"
+	crew.position.x = 0.5
+	parent.add_child(crew)
+	_crew_part(crew, Vector3(0, 1.24, 0), Vector3(0.31, 0.53, 0.47), uniform)
+	_crew_part(crew, Vector3(-0.005, 1.16, 0), Vector3(0.32, 0.055, 0.48), reflective)
+	_crew_part(crew, Vector3(0, 1.63, 0), Vector3(0.24, 0.28, 0.26), skin)
+	_crew_part(crew, Vector3(0, 1.78, 0), Vector3(0.27, 0.11, 0.29), shoes)
+	_crew_part(crew, Vector3(-0.12, 1.75, 0), Vector3(0.25, 0.04, 0.25), shoes)
+	for side in [-1, 1]:
+		_crew_part(crew, Vector3(0, 0.52, side * 0.12), Vector3(0.2, 0.94, 0.19), trousers)
+		_crew_part(crew, Vector3(-0.05, 0.08, side * 0.12), Vector3(0.32, 0.13, 0.2), shoes)
+		_crew_part(crew, Vector3(-0.05, 1.29, side * 0.27), Vector3(0.19, 0.25, 0.17), uniform)
+		var grip := _crew_part(crew, Vector3(-0.29, 1.28 + side * 0.11, side * 0.14),
+			Vector3(0.46, 0.115, 0.12), skin)
+		grip.rotation.z = -side * 0.35
+		grip.rotation.y = -side * 0.48
+
+func _crew_part(parent: Node3D, at: Vector3, dimensions: Vector3, material: Material) -> MeshInstance3D:
+	var part := MeshInstance3D.new()
+	var mesh := SphereMesh.new()
+	mesh.radial_segments = 12
+	mesh.rings = 6
+	part.mesh = mesh
+	part.material_override = material
+	part.scale = dimensions
+	part.position = at
+	parent.add_child(part)
+	return part
 
 # --- events -----------------------------------------------------------------
 
@@ -274,9 +315,8 @@ func _process(delta: float) -> void:
 	if main == null or main.world == null or main.views.is_empty():
 		return
 	var w = main.world
-	for v in main.views:
-		v.throw_pose = (0.5 + 0.5 * main.charge) if (main.charging and v == main.player) else 0.0
-	_update_ball(delta, w)
+	if not main.replay_active:
+		_update_ball(delta, w)
 	_update_rings(w)
 	_update_chains()
 	if barrier:
@@ -302,8 +342,9 @@ func _update_ball(delta: float, w) -> void:
 		return
 	var b = w.ball
 	var st := int(b.state)
-	var held_view = main.views[b.holder_id] if st == 0 and b.holder_id >= 0 and b.holder_id < main.views.size() else null
+	var held_view = main.views[b.holder_id] if st in [0, 3] and b.holder_id >= 0 and b.holder_id < main.views.size() else null
 	if held_view != null and not held_view.is_celebrating():
+		bv.scale = Vector3.ONE
 		bv.global_position = held_view.hand_position() + held_view.global_transform.basis.z * 0.08
 		bv.global_rotation = Vector3(-0.5, held_view.global_rotation.y, 0)
 		spin = 0.0
@@ -315,6 +356,7 @@ func _update_ball(delta: float, w) -> void:
 			t.basis = t.basis.rotated(v.normalized(), spin)
 			bv.global_transform = t.scaled_local(Vector3(1, 1, 1.75))
 	elif st == 2:   # loose: tumble
+		bv.scale = Vector3.ONE
 		spin += delta * 9.0
 		bv.rotation = Vector3(spin, spin * 0.7, 0)
 	# Trail while airborne.
@@ -376,5 +418,5 @@ func _update_chains() -> void:
 	stick_b.position = Vector3(x, 0, -s.downs.first_down_y)
 	stick_b.visible = not s.downs.is_goal_to_go()
 	var box: Node3D = down_box.get_parent()
-	box.position = Vector3(x + 1.2, 0, -s.downs.los)
+	box.position = Vector3(x + 2.3, 0, -s.downs.los)
 	down_box.text = str(s.downs.down)

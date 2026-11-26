@@ -48,10 +48,10 @@ func test_spin_sidesteps_toward_its_side() -> void:
 	assert_true(qb.is_spinning(), "spinning")
 	_run(w, up, T.SPIN_TIME)
 	assert_true(qb.position.x > x0 + 0.3, "drifted right (%.2f -> %.2f)" % [x0, qb.position.x])
+	_run(w, up, 0.05)
 	assert_true(not qb.is_spinning(), "spin ends")
 	var x1 := qb.position.x
-	_run(w, up, T.SPIN_COOLDOWN + 0.05)
-	assert_true(w.spin(qb.id, -1), "spin left after cooldown")
+	assert_true(w.spin(qb.id, -1), "spin left with the second charge")
 	_run(w, up, T.SPIN_TIME)
 	assert_true(qb.position.x < x1, "spin left drifts left")
 
@@ -65,13 +65,17 @@ func test_spin_keeps_forward_momentum() -> void:
 	_run(w, up, T.SPIN_TIME)
 	assert_true(qb.position.y - y0 > T.RUN_SPEED * T.SPIN_TIME * 0.6, "kept moving downfield (%.2f)" % (qb.position.y - y0))
 
-func test_spin_has_cooldown() -> void:
+func test_spin_spends_move_charges() -> void:
 	var w := _setup([])
 	var qb := _qb(w)
-	assert_true(w.spin(qb.id, 1), "first spin")
-	_run(w, {}, T.SPIN_TIME + 0.1)
-	assert_true(not w.spin(qb.id, -1), "no chaining inside the cooldown")
+	qb.move_charge = 2.0
 	assert_true(not w.spin(qb.id, 0), "side 0 rejected")
+	assert_true(w.spin(qb.id, 1), "first spin")
+	assert_true(not w.spin(qb.id, -1), "can't start a spin mid-spin")
+	_run(w, {}, T.SPIN_TIME + 0.05)
+	assert_true(w.spin(qb.id, -1), "second spin")
+	_run(w, {}, T.SPIN_TIME + 0.05)
+	assert_true(not w.spin(qb.id, 1), "meter empty: no third spin until you run for it")
 
 func test_spin_makes_dive_miss() -> void:
 	var w := _setup([[1, Athlete.Role.LB, Vector2(26, 22)]])

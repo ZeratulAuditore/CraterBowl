@@ -7,25 +7,31 @@ extends RefCounted
 const ACTIONS := [
 	["move_up", "Move up", KEY_W], ["move_down", "Move down", KEY_S],
 	["move_left", "Move left", KEY_A], ["move_right", "Move right", KEY_D],
-	["sprint", "Sprint", KEY_SHIFT], ["snap", "Snap / hike", KEY_SPACE],
-	["throw", "Throw (hold to charge)", KEY_J], ["lob", "Lob (click-aim only)", KEY_CTRL],
+	["sprint", "Sprint", KEY_SHIFT], ["snap", "Snap / break stance", KEY_SPACE],
+	["throw", "Throw (QB: hold to charge)", KEY_J], ["lob", "Lob modifier", KEY_CTRL],
 	["tackle", "Dive / tackle (pre-snap: cycle route)", KEY_F],
-	["spin_left", "Spin left (pre-snap: next play call)", KEY_Q], ["spin_right", "Spin right", KEY_E],
-	["flip", "Flip play", KEY_X], ["auto_call", "Auto call", KEY_Y], ["recall", "Last call", KEY_L],
-	["taunt", "Taunt (wheel picks)", KEY_G],
-	["position", "Switch position", KEY_TAB], ["team", "Switch team", KEY_T],
+	["spin_left", "Spin left (pre-snap: play picker)", KEY_Q], ["spin_right", "Spin right", KEY_E],
+	["dash", "Dash", KEY_C], ["taunt", "Taunt (wheel picks)", KEY_G],
+	["scoreboard", "Show scoreboard (hold)", KEY_TAB],
 	["next", "Next play", KEY_R], ["replay", "Instant replay", KEY_V],
 	["try1", "Extra point", KEY_1], ["try2", "Two-point try", KEY_2],
+]
+const OTHER_CONTROLS := [
+	"Mouse: look live · middle drag: look pre-snap · wheel: pick taunt",
+	"QB / passer: mouse aims your view (look up = loft) · hold left click to charge distance, release to throw",
+	"Hold right click: block",
+	"Gamepad: left stick move · right stick QB aim · A snap · B dive · X / Y spin · RT pass · LT sprint",
+	"Replay viewer: Space pause · Left / Right seek · [ / ] speed",
 ]
 const SYNTH_DEVICE := -42     # marks events we injected (never re-translated)
 const STICK_DEADZONE := 0.4
 const TRIGGER_ON := 0.5
 ## Gamepad (SDL/Xbox layout) button -> action
 const PAD_BUTTONS := {
-	JOY_BUTTON_A: "snap", JOY_BUTTON_B: "tackle", JOY_BUTTON_X: "spin_left", JOY_BUTTON_Y: "flip",
-	JOY_BUTTON_LEFT_SHOULDER: "spin_left", JOY_BUTTON_RIGHT_SHOULDER: "spin_right",
-	JOY_BUTTON_LEFT_STICK: "lob", JOY_BUTTON_RIGHT_STICK: "position", JOY_BUTTON_BACK: "replay", JOY_BUTTON_DPAD_UP: "next",
-	JOY_BUTTON_DPAD_LEFT: "try1", JOY_BUTTON_DPAD_RIGHT: "try2", JOY_BUTTON_DPAD_DOWN: "team",
+	JOY_BUTTON_A: "snap", JOY_BUTTON_B: "tackle", JOY_BUTTON_X: "spin_left", JOY_BUTTON_Y: "spin_right",
+	JOY_BUTTON_LEFT_SHOULDER: "scoreboard", JOY_BUTTON_RIGHT_SHOULDER: "lob",
+	JOY_BUTTON_LEFT_STICK: "sprint", JOY_BUTTON_BACK: "replay", JOY_BUTTON_DPAD_UP: "next",
+	JOY_BUTTON_DPAD_LEFT: "try1", JOY_BUTTON_DPAD_RIGHT: "try2", JOY_BUTTON_DPAD_DOWN: "dash",
 }
 ## Gamepad trigger axis -> action (held while past TRIGGER_ON)
 const PAD_TRIGGERS := {JOY_AXIS_TRIGGER_RIGHT: "throw", JOY_AXIS_TRIGGER_LEFT: "sprint"}
@@ -95,7 +101,5 @@ static func help_text(bindings: Dictionary) -> String:
 	var lines := []
 	for a in ACTIONS:
 		lines.append("%-24s %s" % [a[1], key_name(key_for(a[0], bindings))])
-	lines.append("QB aim: mouse look (captured). Look up for loft, hold LMB to charge distance")
-	lines.append("Mouse: LMB throw, RMB dive, wheel pick taunt, middle click taunt")
-	lines.append("Gamepad: stick move, A snap, B dive, LB/RB spin, X next call, Y flip, RT throw, LT sprint")
+	lines.append_array(OTHER_CONTROLS)
 	return "\n".join(lines)
