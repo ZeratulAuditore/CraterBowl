@@ -11,6 +11,7 @@ const ACTIONS := [
 	["throw", "Throw pass", KEY_J], ["lob", "Lob modifier", KEY_CTRL],
 	["tackle", "Dive tackle", KEY_E], ["play", "Toggle play picker", KEY_Q],
 	["scoreboard", "Show scoreboard (hold)", KEY_TAB], ["spin", "Spin", KEY_F], ["dash", "Dash", KEY_C],
+	["handoff", "Handoff", KEY_G], ["timeout", "Team timeout", KEY_U],
 	["next", "Next play", KEY_R], ["replay", "Instant replay", KEY_V],
 	["try1", "Extra point", KEY_1], ["try2", "Two-point try", KEY_2],
 ]
@@ -27,7 +28,7 @@ const TRIGGER_ON := 0.5
 const PAD_BUTTONS := {
 	JOY_BUTTON_A: "snap", JOY_BUTTON_B: "tackle", JOY_BUTTON_X: "play", JOY_BUTTON_Y: "spin",
 	JOY_BUTTON_LEFT_SHOULDER: "scoreboard", JOY_BUTTON_RIGHT_SHOULDER: "lob",
-	JOY_BUTTON_LEFT_STICK: "sprint", JOY_BUTTON_BACK: "replay", JOY_BUTTON_DPAD_UP: "next",
+	JOY_BUTTON_LEFT_STICK: "sprint", JOY_BUTTON_RIGHT_STICK: "handoff", JOY_BUTTON_BACK: "replay", JOY_BUTTON_DPAD_UP: "next",
 	JOY_BUTTON_DPAD_LEFT: "try1", JOY_BUTTON_DPAD_RIGHT: "try2", JOY_BUTTON_DPAD_DOWN: "dash",
 }
 ## Gamepad trigger axis -> action (held while past TRIGGER_ON)
