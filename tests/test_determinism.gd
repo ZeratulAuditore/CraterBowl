@@ -1,7 +1,9 @@
 extends "res://tests/test_case.gd"
-## The sim must be deterministic: same inputs -> bit-identical state. Replays, netcode
-## reconciliation and every perf refactor of src/sim rely on this. If a change makes
-## this fail, it changed behavior (not just speed); see docs/optimization/README.md.
+## The sim must be deterministic: same inputs -> bit-identical state. Netcode
+## reconciliation (the client re-runs unacked inputs through World.predict_step) and
+## every perf refactor of src/sim rely on this. Replays do not: src/sim/replay.gd
+## records positions every frame, not inputs. If a change makes this fail, it changed
+## behavior (not just speed); see docs/optimization/README.md.
 
 const World := preload("res://src/sim/world.gd")
 const Match := preload("res://src/sim/match.gd")

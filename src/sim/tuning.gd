@@ -56,6 +56,10 @@ const DIVE_SPEED := 11.0
 const DIVE_TIME := 0.35
 const TACKLE_REACH := 1.0
 const DIVE_RECOVER := 1.0
+# Forward progress (C06a, #98): a tackle is spotted where the carrier's progress was stopped
+const CONTACT_REACH := 1.0            # an opponent this close is "in contact" with the carrier
+const FORWARD_PROGRESS_GRACE := 0.3   # s the contact window stays open after contact breaks
+const FORWARD_PROGRESS_BANNER := 0.5  # yd credited back before the HUD calls it out
 
 # Q / E spin: the evade spin (SPIN_TIME/SPIN_SPEED above) angled this far off facing
 const SPIN_ANGLE := 35.0        # degrees

@@ -33,7 +33,7 @@ Bots fill every empty slot, so a 1v1 friend game or a two-player casual queue st
 
 ### Team and position online
 - Humans are seated automatically: each joins the team with fewer humans and takes the first free slot in priority order (QB/LB, WR/CB, WR/CB, RB/S, C/DL, OL/DL, OL/S).
-- Queue matches seat players on the matchmaker's team split, matched by name.
+- Queue matches seat players on the matchmaker's team split, matched by a random per-queue seat token, so two players with the same name each get their own seat on their drafted team (#59). Older clients without a token are matched by name.
 - Online players keep their host-assigned athlete during the match. Pre-match role preferences and QB voting are tracked in #18.
 
 ### Queues (`src/net/matchmaker.gd`)
@@ -86,7 +86,7 @@ Bots fill every empty slot, so a 1v1 friend game or a two-player casual queue st
 - `src/net/lobby_registry.gd`, `src/net/lobby_advertiser.gd`, `src/ui/server_browser.gd`: match browser.
 - `src/net/port_mapper.gd`: UPnP. `src/sim/roster.gd`: slots, auto-assign.
 - `src/game/main.gd` (`_host_game`, `_join_game`, `_queue_up`, `_step_lobby`, `_start_from_lobby`) and `src/ui/main_menu.gd` (`_screen_online`, `_queue`, `host_match`, `_with_port`).
-- Tests: `tests/test_lobby.gd`, `tests/test_matchmaker.gd`, `tests/test_protocol.gd`, `tests/test_roster.gd`, `tests/test_out_of_game.gd` (registry, advertiser, public-IP check), `tests/test_port_mapper.gd` (UPnP map/unmap lifetime with a fake router), `tests/net_host.gd` + `tests/net_client.gd` via `scripts/net_test.sh` (second phase: SIGKILLs the host and expects the client on the menu with "Host disconnected", #56), `tests/visual/host_lost_test.gd` (rendered menu after the host quits), `scripts/mm_test.sh` (`MODE=casual|competitive|party|chaos`), `tests/menu_flow.gd` (classic and Chaosball private hosts), `tests/visual/private_lobby_chaosball_test.gd` (rendered Chaosball lobby).
+- Tests: `tests/test_lobby.gd`, `tests/test_matchmaker.gd`, `tests/test_protocol.gd`, `tests/test_roster.gd`, `tests/test_out_of_game.gd` (registry, advertiser, public-IP check), `tests/test_port_mapper.gd` (UPnP map/unmap lifetime with a fake router), `tests/net_host.gd` + `tests/net_client.gd` via `scripts/net_test.sh` (second phase: SIGKILLs the host and expects the client on the menu with "Host disconnected", #56), `tests/visual/host_lost_test.gd` (rendered menu after the host quits), `scripts/mm_test.sh` (`MODE=casual|competitive|party|chaos`), `tests/menu_flow.gd` (classic and Chaosball private hosts), `tests/visual/private_lobby_chaosball_test.gd` (rendered Chaosball lobby), `tests/visual/size_picker_chaosball_test.gd` (Size row locked to 3v3 under Chaosball, #83).
 
 ## Open issues
 - #14 C32 Co-op vs bots playlist + bot difficulty
@@ -103,7 +103,5 @@ Bots fill every empty slot, so a 1v1 friend game or a two-player casual queue st
 - #48 Decide: host the public matchmaker (VPS/AWS + DNS)?
 - #85 Joining a bad code / unreachable host hangs forever
 - #86 A crashed host takes ~10 s to detect
-- #57 UPnP port mapping is never removed after hosting
 - #58 Dead matchmaker code: whoami/you path and snake_teams
-- #59 Competitive team seating is keyed by display name
 - #75 Stadium screen shows a running-match clock in the private lobby

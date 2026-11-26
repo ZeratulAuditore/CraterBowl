@@ -12,7 +12,9 @@ const GAMES := ["classic", "chaosball"]
 var queue: Array = []
 
 ## party: shared code among friends ("" = solo); party_size: members expected.
-func enqueue(id: int, mode: String, size: int, rating: float, now: float, name: String = "", party: String = "", party_size: int = 1, game: String = "classic") -> bool:
+## seat: the client's random per-queue token; the host seats players by it, never by display
+## name, because two players can share a name (#59). "" = an older client that sent none.
+func enqueue(id: int, mode: String, size: int, rating: float, now: float, name: String = "", party: String = "", party_size: int = 1, game: String = "classic", seat: String = "") -> bool:
 	if not GAMES.has(game):
 		return false
 	if game == "chaosball":
@@ -23,7 +25,7 @@ func enqueue(id: int, mode: String, size: int, rating: float, now: float, name: 
 		return false   # a party must fit on one team
 	dequeue(id)
 	queue.append({"id": id, "mode": mode, "size": size, "rating": rating, "since": now,
-		"name": name if name != "" else "P%d" % id, "party": party, "party_size": party_size if party != "" else 1, "game": game})
+		"name": name if name != "" else "P%d" % id, "party": party, "party_size": party_size if party != "" else 1, "game": game, "seat": seat})
 	return true
 
 func dequeue(id: int) -> void:
@@ -109,11 +111,31 @@ func _try_form(mode: String, size: int, now: float, game: String = "classic") ->
 			ids.append(m["id"])
 	host = oldest["members"][0]["id"]
 	var teams := unit_teams(picked, size)
+	# team_seats: seat token -> team (what the host seats by). team_names: name -> team, kept for
+	# older hosts and seat-less clients; a name two players share is left out (ambiguous).
+	var team_seats := {}
 	var team_names := {}
+	var dup_names := {}
 	for u in picked:
 		for m in u["members"]:
+			if str(m.get("seat", "")) != "":
+				team_seats[m["seat"]] = teams[m["id"]]
+			if team_names.has(m["name"]):
+				dup_names[m["name"]] = true
 			team_names[m["name"]] = teams[m["id"]]
-	return {"mode": mode, "size": size, "game": game, "players": ids, "host": host, "teams": teams, "team_names": team_names}
+	for n in dup_names:
+		team_names.erase(n)
+	return {"mode": mode, "size": size, "game": game, "players": ids, "host": host, "teams": teams,
+		"team_names": team_names, "team_seats": team_seats}
+
+## Host side: the team the matchmaker drafted a player onto, by seat token first, then by
+## display name for older clients that sent no token. -1 = unknown (auto-assign).
+static func drafted_team(seat: String, name: String, seats: Dictionary, names: Dictionary) -> int:
+	if seat != "" and seats.has(seat):
+		return int(seats[seat])
+	if names.has(name):
+		return int(names[name])
+	return -1
 
 ## Team split that keeps parties together: biggest units first, each onto the team
 ## with fewer players (tie: lower rating total), never over `size`.

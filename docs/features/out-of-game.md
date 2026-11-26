@@ -23,8 +23,8 @@ Feature-level doc: how this works **today** on `main`. The in-match game is in t
 | Screen | What it does |
 |---|---|
 | Welcome (first run) | Pick a name (2–16 chars, not You/Bot/Host) |
-| Play online | Rules (classic/Chaosball) + size + party, Quick match / Ranked, host a match (optionally listed publicly), join by invite code/IP, live browser of open matches |
-| Play vs bots | Offline full match, any size/rules |
+| Play online | Rules (classic/Chaosball) + size + party (Chaosball locks size to a dimmed 3v3; Classic restores the earlier pick, #83), Quick match / Ranked, host a match (optionally listed publicly), join by invite code/IP, live browser of open matches |
+| Play vs bots | Offline full match, any size/rules (same Chaosball size lock) |
 | Practice | Passing / catching / tackling / scrimmage drills |
 | Locker | Level/XP, equip unlocked cosmetics + number |
 | Leaderboards | Ranked rating + per-position career tables |

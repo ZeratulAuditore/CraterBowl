@@ -20,7 +20,10 @@ static var _mat: ShaderMaterial
 static func instance() -> Node3D:
 	if _scene == null:
 		_scene = load(BASE)
-		var ex: Node = (load(EXTRA) as PackedScene).instantiate()
+		# Keep the PackedScene referenced until ex.free(): the dummy renderer (headless)
+		# errors when a freed mesh node held the last ref to its mesh (#92).
+		var ex_scene := load(EXTRA) as PackedScene
+		var ex: Node = ex_scene.instantiate()
 		var ap := find_anim(ex)
 		if ap:
 			_extra_lib = ap.get_animation_library("")

@@ -1,6 +1,6 @@
 # Chaosball
 
-Feature-level doc: how this works for players **today** on `main`. Open work: GitHub issues labelled `area:rules` that mention Chaosball (none open today; there is no separate Chaosball label).
+Feature-level doc: how this works for players **today** on `main`. Open work: GitHub issues labelled `area:chaosball`.
 
 ## Summary
 Chaosball is a 3v3 alternate ruleset: low gravity, anyone can throw from anywhere any number of times,
@@ -12,6 +12,7 @@ worth more the more teammate passes you complete, and holding the ball too long 
 ### Getting a game
 - Always 3v3 (60 × 30 field, see [rules.md](rules.md)).
   Picking Chaosball forces size 3 in the menu/CLI (`--mode=chaosball`), the private lobby (host key M) and the matchmaker.
+  On the Online and VS Bots screens the Size row then shows a dimmed 3v3 and can't be changed; switching back to Classic restores the earlier size pick (#83).
 - Queues: casual or competitive with `game = chaosball`; Chaosball and classic entries never match together.
 - HUD: `CHAOSBALL 3v3`, plus `STREAK n -> TD v | BALL t s`; the scorebug shows `STREAK n · TD v`.
 

@@ -55,8 +55,13 @@ ride along in your commit and would block it. Turn it on for a solo clone or CI-
 
 1. **`--headless`** (test.sh, smoke.sh, net/mm tests). Dummy renderer and dummy audio, no display.
    Fast, but **it draws no pixels**: `get_viewport().get_texture().get_image()` comes back empty.
-   Use it for logic, scene flow and anything you can assert in code. The `mesh_storage.h` /
-   `Parameter "m" is null` errors are known dummy-renderer noise (allowlisted in smoke.sh).
+   Use it for logic, scene flow and anything you can assert in code. Godot 4.3's dummy renderer
+   prints `Parameter "m" is null` (`mesh_storage.h`) when a freed MeshInstance3D held the last
+   reference to its mesh. `src/game/headless_mesh_guard.gd` (added by Launch only under
+   `--headless`) holds such meshes until the node is gone, so headless runs are clean. smoke.sh
+   fails the boot, game_flow and menu_flow steps if that line reappears (#92). Freeing a mesh node
+   outside the tree skips the guard: keep its mesh referenced until after `free()`
+   (see `CharacterArt.instance()`).
 2. **Xvfb + Mesa software GL** (`scripts/shot.sh`). Real Compatibility (OpenGL 3) renderer on
    `llvmpipe` (CPU) inside a private virtual X display. You get real lighting, shadows, materials
    and HUD, and nothing appears on screen. It is slower (~6–7 fps), so capture a few frames rather
@@ -127,6 +132,10 @@ legible, does the new art read.
 
 Input rule (from LOOP.md): player-facing input must be exercised through the real key handler.
 In game_flow that's `_key()`; in shot.sh that's `--press`.
+
+Scripted contact: to make one body push another, place the pusher at a fixed overlap each frame
+(e.g. 0.75 yd). Moving it a fixed step per frame lets it pass through the other body on the software-GL
+path, so the push never happens (`tests/visual/forward_progress_test.gd`).
 
 ## When the user has to look
 

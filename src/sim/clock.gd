@@ -48,6 +48,10 @@ func advance_midhalf_quarter() -> bool:
 	_reset_period()
 	return true
 
+## 0-based period: quarters Q1..Q4 -> 0..3, halves H1/H2 -> 0/1.
+func period() -> int:
+	return quarter - 1 if uses_quarters() else half - 1
+
 func expired() -> bool:
 	return remaining <= 0.0
 

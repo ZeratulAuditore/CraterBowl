@@ -247,6 +247,16 @@ func tick(dt: float) -> void:
 	if snap_now and world.snap():
 		match_event.emit("auto_snap", {})
 
+## C04c (#89): teams switch the goal they attack every period (each quarter, or at
+## halftime in the halves format). End 0 is the HELIOS-painted end, which team 0
+## defends in the first period. Derived from the synced clock, so clients agree.
+func ends_switched() -> bool:
+	return clock.period() % 2 == 1
+
+## The end (0 = HELIOS paint, 1 = NEBULA paint) `team` defends this period.
+func defended_end(team: int) -> int:
+	return team ^ (1 if ends_switched() else 0)
+
 func is_final() -> bool:
 	return clock.final
 
@@ -329,12 +339,13 @@ func next_play() -> Dictionary:
 ## Returns true when there is no next play.
 func _advance_expired_period() -> bool:
 	if clock.advance_midhalf_quarter():
-		last_outcome = {"outcome": "quarter", "quarter": clock.quarter, "los": downs.los, "offense": downs.offense_team}
+		last_outcome = {"outcome": "quarter", "quarter": clock.quarter, "los": downs.los, "offense": downs.offense_team, "switch_ends": true}
 		return false
 	if clock.half < Clock.HALVES:
 		clock.start_next_half()
 		last_outcome = _kickoff(1 - opening_receiver)
 		last_outcome["outcome"] = "halftime"
+		last_outcome["switch_ends"] = true
 		return false
 	clock.final = true
 	clock.running_between_plays = false

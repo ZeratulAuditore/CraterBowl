@@ -19,6 +19,9 @@ var frozen_y := 0.0
 var auto_replay_default := false
 var wr_id := -1
 var kick_events: Array = []
+var fp_lb = null          # C06a forward progress: the defender driving the carrier back
+var fp_contact_y := INF
+var fp_driven_y := 0.0
 
 func check(cond: bool, msg: String) -> void:
 	print(("  FLOW OK   " if cond else "  FLOW FAIL ") + msg)
@@ -325,6 +328,23 @@ func _initialize() -> void:
 			check(v.emote_t > 0.0 and v.emote_id == main.emote_picker.selected() and v.bubble.visible, "T performs the selected taunt (%s)" % v.emote_id)
 			main.ai.defense_enabled = true
 			main.pov_enabled = false],   # later steps aim at a field point
+		# C04c (#89): Q1 runs out on a live play snapped with Space -> after the whistle the
+		# next play lines up in Q2 at the same spot with the end zones switched. Window 13000-13170.
+		[13000, func(): main.configure(7); main.auto_next = false; main.series.clock.quarter_length = 60.0; main.series.start(0, 40.0); main.set_controlled(main.my_id)],
+		[13002, func():
+			check(main.series.clock.label().begins_with("Q1"), "quarters format (%s)" % main.series.clock.label())
+			check(main.field_root.get_node("EndZoneName0").text == "HELIOS", "Q1: HELIOS end zone behind the HELIOS offense")
+			main.series.clock.remaining = 0.05
+			_key(KEY_SPACE)
+			check(main.world.phase == main.World.Phase.LIVE, "Space snaps the last play of Q1")],
+		[13030, func(): check(main.series.clock.expired() and main.series.clock.quarter == 1, "Q1 clock out, play still live"); var c = main.world.carrier(); c.position.y = 44.0; main.world._whistle("tackle", {"carrier": c.id, "team": 0}); main.auto_next = true],
+		[13170, func():
+			main.auto_next = false
+			var s = main.series
+			check(s.clock.quarter == 2 and s.last_outcome.get("switch_ends", false), "next play is Q2 and switches ends (%s)" % s.last_outcome.get("outcome", "?"))
+			check(s.downs.offense_team == 0 and absf(main.world.los_y - 44.0) < 0.01 and s.downs.down == 2, "field position carries over: HELIOS 2nd down at the 44 (%s)" % s.downs.label())
+			check(main.field_root.get_node("EndZoneName0").text == "NEBULA" and main.field_root.get_node("EndZoneName1").text == "HELIOS", "Q2: HELIOS now defends the NEBULA-painted end")
+			check(main.pres.overlay.banner.visible and main.pres.overlay.banner.text == "SWITCH ENDS", "SWITCH ENDS banner (%s)" % main.pres.overlay.banner.text)],
 		# B09/C02: coin toss with the real keys -> live kickoff aimed like a pass (J) -> return
 		[9500, func(): main.opening_kickoff = true; main.toss_seed = 0; main.configure(7); kick_events.clear(); main.world.event.connect(func(n, _d): kick_events.append(n))],
 		[9502, func(): check(main.series.state == main.Match.State.TOSS and main.series.toss_winner == 0, "home won the toss"); check(main.hud.text.find("COIN TOSS: HOME wins") >= 0, "HUD offers the choice"); check(main.pres.overlay.status_l.text.begins_with("YOU WON THE TOSS"), "status line offers the choice (%s)" % main.pres.overlay.status_l.text); _key(KEY_2)],
@@ -364,7 +384,40 @@ func _initialize() -> void:
 			check(main.series.clock.quarter == 2 and main.series.downs.down == 2 and main.world.offense_team == 0, "R advances to Q2 and preserves the drive")
 			check(main.pres.overlay.clock_l.text == "Q2 2:00", "scorebug updates to Q2")
 			main.ai.defense_enabled = true],
+		# C06a (#98): forward progress. Space snaps; a linebacker meets the QB and drives him back
+		# two yards before diving; the ball is spotted where his progress stopped. Window 13400-13480.
+		[13400, func(): main.configure(7); main.auto_next = false; main.ai.defense_enabled = false; main.series.start(0, 40.0); main.set_controlled(main.my_id)],
+		[13402, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE, "Space snaps (forward progress play)")],
+		[13430, func():
+			var c = main.world.carrier()
+			check(c != null and c.team == 0, "QB has the ball")
+			c.position = Vector2(6.0, 38.0)
+			fp_lb = main.world.find_role(1, main.Athlete.Role.LB)
+			fp_lb.position = Vector2(6.0, 39.6)
+			fp_lb.facing = Vector2(0, -1)],
+		[13470, func():
+			fp_driven_y = main.world.carrier().position.y
+			check(fp_contact_y - fp_driven_y > 1.0, "LB drove the QB back (%.2f yd)" % (fp_contact_y - fp_driven_y))
+			check(main.world.tackle(fp_lb.id), "LB dives")],
+		[13476, func():
+			check(main.world.phase == main.World.Phase.DEAD and main.last_whistle == "TACKLE", "tackled (%s)" % main.last_whistle)
+			check(absf(main.world.dead_ball_spot.y - fp_contact_y) < 0.2, "spotted at forward progress %.2f, not where he was driven to %.2f (spot %.2f)" % [fp_contact_y, fp_driven_y, main.world.dead_ball_spot.y])
+			var ov = main.pres.overlay
+			check(ov.banner.visible and ov.banner.text == "FORWARD PROGRESS" and ov.banner_sub.text.begins_with("+"), "FORWARD PROGRESS banner (%s %s)" % [ov.banner.text, ov.banner_sub.text])
+			main.next_play()
+			check(absf(main.world.los_y - fp_contact_y) < 0.2 and main.series.downs.down == 2, "next snap from the forward-progress spot (%s)" % main.series.downs.label())
+			main.ai.defense_enabled = true],
 	]
+	for f in range(13431, 13470):   # the LB keeps walking into the QB (bodies collide, QB gives ground)
+		steps.append([f, _fp_push])
+
+func _fp_push() -> void:
+	var c = main.world.carrier()
+	if c == null or fp_lb == null:
+		return
+	fp_lb.position = c.position + Vector2(0, 0.75)   # keeps leaning in: bodies overlap, QB gives ground
+	if fp_contact_y == INF and fp_lb.position.distance_to(c.position) <= main.T.CONTACT_REACH:
+		fp_contact_y = c.position.y
 
 func _key_up(code: int) -> void:
 	var ev := InputEventKey.new()
