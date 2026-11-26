@@ -24,6 +24,10 @@ func test_snapshot_round_trip() -> void:
 	for i in 40:
 		a.world.step({a.world.find_role(0, R.QB).id: {"dir": Vector2(1, 0.3), "sprint": true}}, DT)
 	a.world.athletes[9].recover_t = 0.5
+	a.world.athletes[5].blocking = true
+	a.world.athletes[8].move_charge = 0.6
+	a.world.athletes[8].spin_move = true
+	a.world.athletes[8].move_t = 0.2
 	a.score = [7, 3]
 	a.clock.remaining = 123.5
 	a.downs.down = 3
@@ -37,6 +41,9 @@ func test_snapshot_round_trip() -> void:
 		assert_true(a.world.athletes[i].velocity.distance_to(b.world.athletes[i].velocity) < 0.001, "vel %d" % i)
 		assert_eq(a.world.athletes[i].role, b.world.athletes[i].role, "role %d" % i)
 	assert_true(b.world.athletes[9].is_grounded(), "grounded flag")
+	assert_true(b.world.athletes[5].blocking, "blocking shield flag")
+	assert_true(b.world.athletes[8].is_spinning(), "spin flag and timing")
+	assert_near(b.world.athletes[8].move_charge, 0.6, 0.001, "move charge")
 	assert_eq(b.world.phase, a.world.phase, "phase")
 	assert_eq(b.world.ball.state, a.world.ball.state, "ball state")
 	assert_eq(b.world.ball.holder_id, a.world.ball.holder_id, "holder")
@@ -48,9 +55,10 @@ func test_snapshot_round_trip() -> void:
 
 func test_sanitize_input() -> void:
 	assert_eq(P.sanitize_input("garbage"), {}, "non-dict rejected")
-	var i := P.sanitize_input({"dir": Vector2(10, 0), "spr": true})
+	var i := P.sanitize_input({"dir": Vector2(10, 0), "spr": true, "block": true})
 	assert_near(i["dir"].length(), 1.0, 0.0001, "clamped")
 	assert_true(i["sprint"], "sprint")
+	assert_true(i["block"], "block")
 	var bad := P.sanitize_input({"dir": Vector2(INF, NAN)})
 	assert_eq(bad["dir"], Vector2.ZERO, "non-finite zeroed")
 	assert_eq(P.sanitize_action({"a": "teleport"}), {}, "unknown action dropped")

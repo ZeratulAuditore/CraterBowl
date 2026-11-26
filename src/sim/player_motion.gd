@@ -20,16 +20,14 @@ func is_sprinting(wants_sprint: bool, input: Vector2) -> bool:
 	return wants_sprint and not sprint_locked and stamina > 0.0 and input.length_squared() > 0.0001
 
 ## Advance by dt. input is a direction (any length; clamped to unit).
-func step(input: Vector2, wants_sprint: bool, dt: float) -> void:
+func step(input: Vector2, wants_sprint: bool, dt: float, blocking := false) -> void:
 	var dir := input.limit_length(1.0)
-	var sprinting := is_sprinting(wants_sprint, dir)
+	var sprinting := not blocking and is_sprinting(wants_sprint, dir)
 	last_sprinting = sprinting
-	var max_speed := T.SPRINT_SPEED if sprinting else T.RUN_SPEED
-	var target := dir * max_speed
-	var rate := T.ACCEL if dir.length_squared() > 0.0001 else T.DECEL
-	velocity = velocity.move_toward(target, rate * dt)
+	var max_speed := T.BLOCK_SPEED if blocking else (T.SPRINT_SPEED if sprinting else T.RUN_SPEED)
+	velocity = dir * max_speed
 	position = field.clamp_playable(position + velocity * dt)
-	if dir.length_squared() > 0.0001:
+	if not blocking and dir.length_squared() > 0.0001:
 		facing = dir.normalized()
 
 	if sprinting:

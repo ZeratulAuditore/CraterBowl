@@ -228,6 +228,16 @@ func _setup() -> void:
 		[968, func():
 			check(launch._overlay != null and paused, "Esc opens pause overlay (offline pauses)")
 			check(not Input.is_key_pressed(KEY_D), "stick released")
+			var button = launch._overlay.find_child("ControlsButton", true, false)
+			button.pressed.emit()
+			var help = launch._overlay.find_child("ControlsHelp", true, false)
+			var notes = help.get_node("ControlsNotes")
+			var bindings = help.get_node("ControlsBindings")
+			check(help.visible and notes.text.contains("right click: block")
+				and bindings.get_children().any(func(label): return label.text == "Show scoreboard (hold)"),
+				"pause Controls lists the gameplay bindings")
+			button.pressed.emit()
+			check(not help.visible, "Controls toggles the existing help")
 			_key(KEY_ESCAPE)],
 		[970, func():
 			check(launch._overlay == null and not paused, "Esc closes overlay")],

@@ -7,6 +7,7 @@ extends Control
 ## (name, number, look). Space/Enter/click = next, S = skip. Athletes hold the
 ## idle pose facing the camera (the dance animation turns them away).
 
+const Athlete := preload("res://src/sim/athlete.gd")
 const PlayerView := preload("res://src/game/player.gd")
 const C := preload("res://src/ui/ui_theme.gd")
 
@@ -19,20 +20,6 @@ const PAD_GAP := 2.3
 ## Display slot for each rank (0 = best): the winner stands in the middle.
 const ORDER := {1: [0], 2: [1, 0], 3: [1, 0, 2], 4: [2, 0, 1, 3]}
 
-## Minimal stand-in for a sim athlete: everything player.gd reads.
-class StubAthlete:
-	var id := 0
-	var team := 0
-	var role := 0
-	var position := Vector2.ZERO
-	var velocity := Vector2.ZERO
-	var facing := Vector2(0, -1)
-	var recover_t := 0.0
-	var engaged_with := -1
-	var set_lock := false
-	func speed() -> float: return 0.0
-	func is_diving() -> bool: return false
-	func is_grounded() -> bool: return false
 
 var entries: Array = []
 var info := {}           # score, winner, team_colors, team_names, mode_label
@@ -223,7 +210,7 @@ func _build_stage() -> void:
 		pad_pos.append(at)
 		var col := _team_color(int(e.get("team", 0)))
 		_podium(root, at, col, top)
-		var a := StubAthlete.new()
+		var a := Athlete.new()
 		a.id = int(e.get("id", i))
 		a.team = int(e.get("team", 0))
 		a.role = maxi(0, PlayerView.ROLE_NAMES.find(str(e.get("pos", "WR"))))
