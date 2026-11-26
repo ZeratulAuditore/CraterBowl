@@ -113,9 +113,10 @@ func _physics_process(_dt: float) -> bool:
 			main.do_action({"a": "defense", "p": "edge_blitz"})
 			var me = main.world.get_athlete(aid)
 			was_locked = me.set_lock or me.role == main.Athlete.Role.DL
-			main.do_action({"a": "snap"})          # defense Space: break stance over the wire
+			_key(KEY_SPACE)   # #142: one press alone does nothing on a set defender...
+			_key(KEY_SPACE)   # ...the double-tap sends one snap action: break stance over the wire
 			main.input_override = Vector2(1, 0)  # strafe right (legal presnap once roaming)
-		if not broke_stance and main.world.phase == 0 and not main.world.get_athlete(aid).set_lock:
+		if not broke_stance and not saw_live and main.world.phase == 0 and not main.world.get_athlete(aid).set_lock:
 			broke_stance = true
 		var a = main.world.get_athlete(aid)
 		if main.world.phase == 0 and a.team != main.world.offense_team and a.position.y < main.world.los_y + 0.5 - 0.001:

@@ -128,7 +128,7 @@ func setup_formation(los: float) -> void:
 	var cx := field.width / 2.0
 	for a in athletes:
 		a.reset_state()
-		a.set_lock = a.team != offense_team   # defense lines up set; Space breaks stance
+		a.set_lock = true   # everyone lines up set (#142): offense until the snap, defense non-DL until break_stance
 		var depth: float = FORMATION_DEPTH.get(a.role, 1.0)
 		var y := los - depth if a.team == offense_team else los + depth
 		a.position = Vector2(a.home_x, y)
@@ -460,10 +460,16 @@ func set_route(id: int, route: String) -> bool:
 	route_of[id] = route
 	return true
 
-## Defense pre-snap: stand up out of stance and roam (non-DL only, one-way per play).
+## A set defender who may stand up and roam: pre-snap, non-DL, still locked.
+## The offense never can: it stays set until the snap (#142).
+func can_break_stance(a: Athlete) -> bool:
+	return a != null and phase == Phase.PRESNAP and a.team != offense_team and a.role != Athlete.Role.DL and a.set_lock
+
+## Defense pre-snap: stand up out of stance and roam (one-way per play). The
+## client asks for it only on a Space double-tap (DoubleTap); the action is one press.
 func break_stance(id: int) -> bool:
 	var a := get_athlete(id)
-	if a == null or phase != Phase.PRESNAP or a.team == offense_team or a.role == Athlete.Role.DL or not a.set_lock:
+	if not can_break_stance(a):
 		return false
 	a.set_lock = false
 	event.emit("break_stance", {"id": id})

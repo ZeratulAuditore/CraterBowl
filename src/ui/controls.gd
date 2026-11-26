@@ -7,7 +7,7 @@ extends RefCounted
 const ACTIONS := [
 	["move_up", "Move up", KEY_W], ["move_down", "Move down", KEY_S],
 	["move_left", "Move left", KEY_A], ["move_right", "Move right", KEY_D],
-	["sprint", "Sprint", KEY_SHIFT], ["snap", "Snap / break stance", KEY_SPACE],
+	["sprint", "Sprint", KEY_SHIFT], ["snap", "Snap / break stance (defense: double-tap)", KEY_SPACE],
 	["throw", "Throw (QB: hold to charge)", KEY_J], ["lob", "Lob modifier", KEY_CTRL],
 	["tackle", "Dive / tackle (pre-snap: cycle route)", KEY_F],
 	["spin_left", "Spin left (pre-snap: play picker)", KEY_Q], ["spin_right", "Spin right", KEY_E],

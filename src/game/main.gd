@@ -1323,6 +1323,9 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
 		scoreboard_held = false
 
+## Space on a set defender (#142): one press does nothing, a double-tap breaks stance.
+var stance_tap := preload("res://src/sim/double_tap.gd").new()
+
 func _unhandled_key_input(e: InputEvent) -> void:
 	var launch := get_node_or_null("/root/Launch")
 	if launch != null and launch.menu_open():
@@ -1341,6 +1344,9 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		return
 	match e.keycode:
 		KEY_SPACE:
+			# Offense snaps on one press. A set defender needs a double-tap to roam (#142).
+			if world.can_break_stance(world.get_athlete(controlled_id)) and not stance_tap.press(Time.get_ticks_msec() / 1000.0):
+				return
 			do_action({"a": "snap"})
 		KEY_1:
 			do_action({"a": "toss", "c": "receive"} if series.state == Match.State.TOSS else {"a": "try", "n": 1})

@@ -4,7 +4,7 @@
 |---|---|---|
 | WASD | Move | Move (relative to the camera; for the passer, relative to the aim) |
 | Shift | Sprint | Sprint |
-| Space | Snap (offense) / break stance (defense) | |
+| Space | Snap (offense). Defense: **double-tap** to break stance (LB, CB, S). The offense can't move before the snap. | |
 | **Q** | Open / close the play picker | **Spin left** |
 | **E** | | **Spin right** |
 | **F** | Cycle your route | **Dive**: tackle attempt on D; with the ball, dive for yards, down where you land (score if you cross the goal line) |
