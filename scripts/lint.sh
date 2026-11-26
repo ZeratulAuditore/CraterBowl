@@ -14,8 +14,9 @@ echo "$out" | grep -q "^LINT PASS" || fail=1
 # (tests/render_budget.gd) still caps the total.
 hits=$(grep -nE "(SphereMesh|CapsuleMesh|BoxMesh|CylinderMesh|TorusMesh|PlaneMesh|PrismMesh|QuadMesh)\.new\(\)" src/game/player.gd || true)
 if [ -n "$hits" ]; then echo "$hits"; echo "LINT FAIL: create meshes/materials via RenderCache (docs/optimization/README.md#rendering)"; fail=1; fi
-# Perf rule 2: the sim stays engine-free (no nodes/scenes/rendering) so it is testable, deterministic and server-safe.
-hits=$(grep -nE "extends Node|get_tree\(\)|RenderingServer|Input\.|OS\.get_ticks|Time\.get_ticks|randf\(|randi\(" src/sim/*.gd || true)
+# Perf rule 2: the sim avoids engine nodes, wall time and global random calls.
+# Explicitly seeded RNG instances are allowed.
+hits=$(grep -nE "extends Node|get_tree\(\)|RenderingServer|Input\.|OS\.get_ticks|Time\.get_ticks|(^|[^.[:alnum:]_])(randf|randi)\(" src/sim/*.gd || true)
 if [ -n "$hits" ]; then echo "$hits"; echo "LINT FAIL: src/sim must be pure RefCounted, deterministic, no engine/time/random calls"; fail=1; fi
 [ $fail -eq 0 ] && echo "LINT RULES PASS"
 exit $fail

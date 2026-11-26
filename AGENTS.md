@@ -28,6 +28,16 @@ Code map: `src/sim/` = rules (pure, deterministic, unit-tested), `src/game/` = p
 camera, HUD, art in `src/game/art/`), `src/net/` = netcode, `src/ui/` = menus/settings,
 `tests/` = tests and harnesses, `tools/` = dev/diagnosis scripts, `scripts/` = the commands below.
 
+### Opening pull requests
+
+- Use the headings `### Motivation`, `### Solution`, and `### Testing` in the PR description.
+- Add automated integration coverage for the specific behavior changed. The new test must
+  generate a screenshot or video of the exercised state. Inspect the capture before sharing it.
+- In Testing, include the evidence and identify the automated checks that produced it. For
+  Actions evidence, link the run's `visual-test-evidence` artifact and name the relevant file.
+- Use a topic branch based on `origin/main` and open the PR after verification. Preserve other
+  sessions' work. The local-main commit instructions above apply to local-only work.
+
 ### Building your own loop
 
 Every unit of work, whether a loop iteration, a bug fix or a perf pass, has the same shape:
