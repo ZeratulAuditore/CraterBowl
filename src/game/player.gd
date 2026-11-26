@@ -15,6 +15,7 @@ const Emotes := preload("res://src/sim/emotes.gd")
 const Uniforms := preload("res://src/game/art/football_uniforms.gd")
 const RC := preload("res://src/game/render_cache.gd")
 const Pose := preload("res://src/game/art/athlete_pose.gd")
+const Ball := preload("res://src/sim/ball.gd")
 ## A view that moves more than this (yards) in one tick teleported (new play, replay
 ## seek, swap): snap instead of gliding across the field.
 const TELEPORT_DIST := 2.0
@@ -36,6 +37,8 @@ const LOOK_K := 10.0
 ## half-height (yd) at the athlete's distance must be under this. About 25 yd away for the
 ## 65 deg follow camera, further for zoomed replay cameras. Saves the look math (#245).
 const LOOK_VIEW_SIZE := 16.0
+## Offensive players only watch a pass or loose ball this close (yd).
+const WATCH_RANGE := 15.0
 ## Ball seat in hand_r bone space: in the palm, long axis along the forearm (#244).
 const BALL_SOCKET := Transform3D(Basis(Vector3.RIGHT, -PI / 2.0), Vector3(-0.13, 0.08, 0.0))
 
@@ -337,12 +340,33 @@ func ball_local(sk: Skeleton3D) -> Transform3D:
 static func head_visible(dist: float, fov_deg: float) -> bool:
 	return dist * tan(deg_to_rad(fov_deg) * 0.5) < LOOK_VIEW_SIZE
 
-## Heads track the ball (not the carrier's own; not while down, celebrating or too far
-## from the camera to see).
+## Does an athlete watch the ball right now (#245)? Nobody engaged in a block. The defense
+## reads it: the snap, the carrier, a pass. Offensive linemen only on a loose ball near them.
+## Other offensive players watch for the snap, then only a pass or loose ball near them
+## (they're running routes or blocking while it's held).
+static func watches_ball(offense: bool, lineman: bool, engaged: bool, presnap: bool, ball_state: int, dist: float) -> bool:
+	if engaged:
+		return false
+	if not offense:
+		return true
+	var near := dist < WATCH_RANGE
+	if ball_state == Ball.State.LOOSE:
+		return near
+	return not lineman and (presnap or (ball_state == Ball.State.IN_FLIGHT and near))
+
+## This view's athlete, right now (see watches_ball).
+func watches_now() -> bool:
+	if world == null or look_node == null:
+		return false
+	return watches_ball(athlete.team == world.offense_team, _role in LINEMEN, athlete.engaged_with >= 0 or athlete.blocking,
+		int(world.phase) == 0, int(world.ball.state), global_position.distance_to(look_node.global_position))
+
+## Heads track the ball (not the carrier's own; not while down, celebrating, too far from
+## the camera to see, or when the athlete has no reason to watch it).
 func _update_look(delta: float, down: bool) -> void:
 	var cam := get_viewport().get_camera_3d()
 	var near := cam != null and head_visible(global_position.distance_to(cam.global_position), cam.fov)
-	var looking := near and look_node != null and ball_node == null and not down and celebrate_t <= 0.0
+	var looking := near and look_node != null and ball_node == null and not down and celebrate_t <= 0.0 and watches_now()
 	var k := 1.0 - exp(-LOOK_K * delta)
 	if look_node != null and (looking or pose.look_weight > 0.0):   # also while fading out, so a fading head never points at an old spot
 		var target := look_node.global_position

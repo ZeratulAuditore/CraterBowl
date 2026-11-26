@@ -186,6 +186,29 @@ func test_heads_far_from_the_camera_do_not_look() -> void:
 	assert_true(PlayerNode.head_visible(45.0, 34.0), "zoomed broadcast replay (34 deg): 45 yd still turns")
 	assert_true(not PlayerNode.head_visible(60.0, 34.0), "broadcast replay: 60 yd doesn't")
 
+func test_only_athletes_who_need_the_ball_watch_it() -> void:
+	const HELD := 0
+	const FLIGHT := 1
+	const LOOSE := 2
+	# [offense, lineman, engaged, presnap, ball state, distance, expected, what]
+	var cases := [
+		[false, false, false, true, HELD, 20.0, true, "defense reads the snap"],
+		[false, true, false, false, HELD, 30.0, true, "defensive lineman chases the carrier"],
+		[false, false, false, false, FLIGHT, 40.0, true, "defense watches a pass anywhere"],
+		[false, true, true, false, HELD, 2.0, false, "defender engaged in a block doesn't"],
+		[true, true, false, true, HELD, 1.0, false, "offensive lineman at the snap: eyes ahead"],
+		[true, true, false, false, FLIGHT, 5.0, false, "offensive lineman ignores a pass"],
+		[true, true, false, false, LOOSE, 5.0, true, "offensive lineman: loose ball nearby"],
+		[true, true, false, false, LOOSE, 25.0, false, "offensive lineman: loose ball far away"],
+		[true, false, false, true, HELD, 20.0, true, "receiver watches for the snap"],
+		[true, false, false, false, HELD, 10.0, false, "receiver runs his route while the QB holds it"],
+		[true, false, false, false, FLIGHT, 10.0, true, "receiver tracks a pass near him"],
+		[true, false, false, false, FLIGHT, 25.0, false, "receiver ignores a pass far away"],
+		[true, false, true, false, FLIGHT, 5.0, false, "blocking back doesn't"],
+	]
+	for c in cases:
+		assert_eq(PlayerNode.watches_ball(c[0], c[1], c[2], c[3], c[4], c[5]), c[6], c[7])
+
 # --- helpers ------------------------------------------------------------------
 
 ## Head facing (Head bone +Z) as (yaw, pitch) degrees in the chest's frame.

@@ -671,10 +671,16 @@ func _check_carry_pose(two_hand: bool, context: String) -> void:
 	var size := func(o): return o.global_position.distance_to(cam.global_position) * tan(deg_to_rad(cam.fov) * 0.5) / o.LOOK_VIEW_SIZE
 	var near: Array = main.views.filter(func(o): return o != v and size.call(o) < 0.85)
 	var far: Array = main.views.filter(func(o): return o != v and size.call(o) > 1.15)
-	var near_ok: int = near.filter(func(o): return o.pose.look_weight > 0.5).size()
+	var near_ok: int = near.filter(func(o): return (o.pose.look_weight > 0.5) == o.watches_now()).size()
 	var far_ok: int = far.filter(func(o): return o.pose.look_weight < 0.5).size()
 	check(v.pose.look_weight < 0.2 and near_ok == near.size() and far_ok == far.size(),   # the carrier's look fades over ~0.3 s
-		"heads track the ball near the camera (%s): %d/%d near look, %d/%d far don't, carrier %.2f" % [context, near_ok, near.size(), far_ok, far.size(), v.pose.look_weight])
+		"heads track the ball near the camera (%s): %d/%d near match their role, %d/%d far don't, carrier %.2f" % [context, near_ok, near.size(), far_ok, far.size(), v.pose.look_weight])
+	# Live with the ball held: offensive linemen and route runners don't watch it; free defenders do.
+	var offense: int = main.world.offense_team
+	var o_look: int = main.views.filter(func(o): return o != v and o.athlete.team == offense and o.pose.look_weight > 0.5).size()
+	var d_free: Array = near.filter(func(o): return o.athlete.team != offense and o.athlete.engaged_with < 0 and not o.athlete.blocking)
+	check(o_look == 0 and d_free.all(func(o): return o.pose.look_weight > 0.5),
+		"only the defense watches a held ball (%s): %d offense look, %d free defenders near the camera all look" % [context, o_look, d_free.size()])
 
 ## #245: after the ball teleports (new spot), heads point at it at once instead of
 ## sweeping across the field: every looking view's look point is already at the ball.

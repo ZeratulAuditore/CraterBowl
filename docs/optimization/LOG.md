@@ -8,6 +8,19 @@ Machine for all entries so far: WSL2 Ubuntu 24.04, i7-11800H (16 threads), RTX 3
 
 ---
 
+## 2026-11-26 — perf-07: only athletes who need the ball watch it (#245)
+
+Behavior change for realism (owner's call): defense reads the ball unless blocked; offensive linemen
+only on a loose ball nearby; other offense at the snap and on a pass or loose ball within 15 yd;
+nobody while engaged (`player.gd` `watches_ball()`). Same machine and mode as perf-05, CPU load 46%,
+3 rounds interleaved, scene_frame p50 medians in µs: #244 baseline 953 (935–987); camera cutoff only
+1022 (1016–1044); cutoff + role rules 1023 (1015–1038). No measurable gain: fewer heads run the look
+math, but every view now runs the role check per frame, and the net is inside the noise (about ±40 µs
+at this load). Note the cutoff-only tree measured +69 here vs +41 in perf-06: the remaining cost of
+the feature is roughly +40 to +70 µs/frame. Likely next step if it matters: decide "near camera" and
+"watches the ball" at 10 Hz (staggered by athlete id) instead of every frame, since those decisions
+rarely change frame to frame; only the look target and weight need per-frame updates.
+
 ## 2026-11-26 — perf-06: where the head look's cost goes, and a camera-distance cutoff (#245)
 
 Same machine and mode as perf-05. **Attribution** (variants of `athlete_pose.gd` swapped into one tree,
