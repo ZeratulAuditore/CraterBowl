@@ -1361,7 +1361,7 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			do_action({"a": "toss", "c": "receive"} if series.state == Match.State.TOSS else {"a": "try", "n": 1})
 		KEY_2:
 			do_action({"a": "toss", "c": "kick"} if series.state == Match.State.TOSS else {"a": "try", "n": 2})
-		# Live play: Q/E spin, F dive, C dash. Before the snap: Q play picker, F cycle route.
+		# Live play: Q/E spin, F dive, R dash. Before the snap: Q play picker, F cycle route.
 		KEY_F:
 			if world.phase == World.Phase.LIVE:
 				do_action({"a": "tackle"})      # dive: tackle on defense, dive for yards with the ball
@@ -1380,9 +1380,9 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			do_action({"a": "spin", "s": 1})
 		KEY_G:
 			do_action({"a": "handoff"})
-		KEY_T:
+		KEY_C:
 			taunt()
-		KEY_U:
+		KEY_T:
 			if drill == null:
 				do_action({"a": "timeout"})
 		KEY_J:
@@ -1390,9 +1390,9 @@ func _unhandled_key_input(e: InputEvent) -> void:
 				_set_charging(true)
 			else:
 				throw_pass()
-		KEY_C:
-			do_action({"a": "dash", "dir": read_input()})
 		KEY_R:
+			do_action({"a": "dash", "dir": read_input()})   # no-op unless live with a charge (HUD circles)
+		KEY_ENTER, KEY_KP_ENTER:
 			if world.phase == World.Phase.DEAD and not is_client():
 				next_play()
 		KEY_BACKSPACE:

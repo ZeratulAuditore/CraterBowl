@@ -40,7 +40,7 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
   (`KICKOFF_DEFAULT_POWER`) at 0. The play clock is hidden and doesn't run while it governs no snap: live and dead
   balls, the coin toss (its own `TOSS_WINDOW`), FINAL. A timeout or the one-minute warning restarts it (a fresh huddle
   for bots). Clients show the same value: it is computed by `Match.play_clock_shown()` from snapshot state only.
-- Next play starts `NEXT_PLAY_DELAY` (2.0 s) after the whistle; R skips the wait (offline or host only).
+- Next play starts `NEXT_PLAY_DELAY` (2.0 s) after the whistle; Enter skips the wait (offline or host only; it was R before #138).
 
 ### Scoring and tries
 | Event | Points | Then |
@@ -79,7 +79,7 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
   sideline stops, first downs, scores, turnovers and tries stop it.
 - **One-minute warning** once per half. In quarters, it applies in Q2 and Q4. A live play finishes first. A crossing
   between plays stops the clock at 1:00.
-- **Timeouts:** U, outside live play, by either team; the scorebug shows pips. Resets the play clock if pre-snap.
+- **Timeouts:** T, outside live play, by either team; the scorebug shows pips. Resets the play clock if pre-snap.
   Counts reset at halftime. No gamepad binding.
 - A period can end between snaps when the running clock hits 0:00. A play in progress at 0:00 finishes, and a touchdown on it still gets its try.
 - At the end of Q1 and Q3, the next period starts with the same possession, down, spot and remaining timeouts.
