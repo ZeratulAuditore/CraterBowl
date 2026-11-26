@@ -120,10 +120,8 @@ func _initialize() -> void:
 			check(absf(angle_difference(main.cam_yaw, PI)) < 0.05, "defense camera swung around (yaw %.2f)" % main.cam_yaw)
 			check(main.camera.global_position.z < me_z - 3.0, "defense camera sits on the far side, looking at the offense")
 			check(-main.camera.global_transform.basis.z.z > 0.5, "defense camera looks back up the field toward the ball")
-			_hold_key(KEY_W, true)   # read_input() polls Input state, so press W through the engine
-			check(main.read_input().y < -0.9, "W moves a defender toward the ball (up the screen)")
-			_hold_key(KEY_W, false)
-			_key(KEY_W, false)],
+			check(main.screen_to_field(Vector2(0, 1)).y < -0.9, "W moves a defender toward the ball (up the screen)")
+			check(main.screen_to_field(Vector2(1, 0)).x < -0.9, "D moves a defender screen-right")],
 		[4171 + int(60 * 5.0) + 10, func(): check(main.world.phase != main.World.Phase.PRESNAP, "bot offense snapped by itself")],
 		# A15: rebuild as 3v3 in place
 		[4500, func(): main.configure(3)],
@@ -224,7 +222,7 @@ func _initialize() -> void:
 			var ang: float = main.launch_angle()
 			var dir: Vector2 = main.aim_dir()
 			var qb = main.world.get_athlete(main.controlled_id)
-			check(main._view_relative(Vector2(0, 1)).dot(main.aim_dir()) > 0.99, "W moves along the passer's view (cam yaw %.2f, aim yaw %.2f)" % [main.cam_yaw, main.aim_yaw])
+			check(main.screen_to_field(Vector2(0, 1)).dot(main.aim_dir()) > 0.99, "W moves along the passer's view (cam yaw %.2f, aim yaw %.2f)" % [main.cam_yaw, main.aim_yaw])
 			_key_up(KEY_J)
 			var v: Vector3 = main.world.ball.velocity - Vector3(qb.velocity.x, qb.velocity.y, 0) * main.T.THROW_INHERIT
 			check(main.world.forward_pass_thrown, "J release throws (POV)")

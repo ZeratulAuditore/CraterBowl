@@ -1045,11 +1045,11 @@ func read_input() -> Vector2:
 	if Input.is_key_pressed(KEY_S): v.y -= 1
 	if Input.is_key_pressed(KEY_D): v.x += 1
 	if Input.is_key_pressed(KEY_A): v.x -= 1
-	# Keyboard/stick input is screen-relative: W is "up the screen", so turn it
-	# with the camera (on defense the camera faces the other way down the field).
-	return _view_relative(v)
+	return screen_to_field(v)
 
-func _view_relative(v: Vector2) -> Vector2:
+## Keyboard/stick input is screen-relative: W is "up the screen", so turn it with
+## the camera (on defense the camera faces the other way down the field).
+func screen_to_field(v: Vector2) -> Vector2:
 	return v.rotated(cam_yaw)
 
 ## Yaw of the follow camera around the player (sim/3D Y axis). 0 = behind the
