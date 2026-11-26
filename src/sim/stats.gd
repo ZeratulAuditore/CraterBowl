@@ -5,7 +5,7 @@ const Athlete := preload("res://src/sim/athlete.gd")
 const ROLE := {0: "QB", 1: "C", 2: "WR", 3: "RB", 4: "LB", 5: "CB", 6: "S", 7: "OL", 8: "DL"}
 const FIELDS := ["att", "comp", "pass_yds", "pass_td", "int_thrown", "rec", "rec_yds", "rec_td",
 	"car", "rush_yds", "rush_td", "tkl", "sack", "int", "pbu", "ff", "fr", "pts", "blk", "def_td", "max_td_pts",
-	"int_ret_yds", "fr_ret_yds"]
+	"int_ret_yds", "fr_ret_yds", "ret_td"]
 
 var world
 var owner_fn: Callable     # athlete_id -> owner name ("Bot" for AI)
@@ -130,7 +130,8 @@ func _end_play(n: String, d: Dictionary) -> void:
 	if not on_offense:
 		if n == "touchdown":
 			_add(carrier, "pts", d.get("points", 6))
-			_add(carrier, "def_td")
+			var kick_return: bool = world.kicked and world.kick_play in ["kickoff", "punt"]
+			_add(carrier, "ret_td" if kick_return else "def_td")
 			_note_td_points(carrier, d.get("points", 6))
 		return   # kick returns aren't tracked yet (#67); takeaway returns are credited above
 	if _receiver >= 0 and carrier == _receiver:
@@ -192,6 +193,7 @@ func summary_lines() -> Array:
 		if l["att"] > 0: parts.append("%d/%d %dyd %dTD %dINT" % [l["comp"], l["att"], l["pass_yds"], l["pass_td"], l["int_thrown"]])
 		if l["rec"] > 0: parts.append("%d rec %dyd %dTD" % [l["rec"], l["rec_yds"], l["rec_td"]])
 		if l["car"] > 0: parts.append("%d car %dyd %dTD" % [l["car"], l["rush_yds"], l["rush_td"]])
+		if l["ret_td"] > 0: parts.append("%d ret TD" % l["ret_td"])
 		var dfn := []
 		for f in ["tkl", "sack", "int", "pbu", "ff", "fr"]:
 			if l[f] > 0: dfn.append("%d %s" % [l[f], f])

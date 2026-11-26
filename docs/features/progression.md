@@ -21,7 +21,7 @@ Everything is stored in JSON files on each player's own machine. Ratings are key
 ### Stats (`src/sim/stats.gd`)
 - Lines are keyed `name|POSITION`, so switching positions splits your stats. Bots are recorded as `Bot` and excluded from leaderboards and XP.
 - Fields: passing att/comp/yds/TD/INT thrown, receptions/yds/TD, carries/rush yds/TD, tackles, sacks, INTs, PBUs, forced and recovered fumbles, INT return yards, fumble return yards, points, block engagements, defensive TDs, best Chaosball TD value.
-- A sack is a QB tackled behind the LOS before he throws. A defensive TD is a touchdown scored by a carrier from the team on defense.
+- A sack is a QB tackled behind the LOS before he throws. Kickoff and punt return touchdowns go in the return TD field (`ret_td`) and appear as **RET TD** on Players of the Game cards. Scrimmage takeaway touchdowns go in `def_td`.
 - Scrimmage yards are measured from the snap LOS. Takeaway return yards (#100) run from the takeaway spot (the interception's catch point, or where the recovering player stood) to the dead-ball spot, measured toward the returner's scoring end zone, so a returner driven back gets negative yards. A return touchdown is credited to the goal line, not to where he stopped in the end zone. A return ends at a fumble or a throw (Chaosball swings), and a re-recovery by the other team starts its own return. Own-team recoveries aren't takeaways and get no return yards. Kick and punt returns are still untracked (#67).
 - Return yards show in the post-game stat lines: the FINAL screen and the overview's "Your game" (`34yd int ret`, `12yd fum ret`) and the players-of-the-game cards (`34 INT RET YDS`, `12 FUM RET YDS`). A zero-yard return shows nothing.
 
@@ -64,7 +64,7 @@ Everything is stored in JSON files on each player's own machine. Ratings are key
 ### Achievements (`src/sim/achievements.gd`)
 | Achievement | Condition (one match unless noted) | XP |
 |---|---|---|
-| First Touchdown | any TD | 100 |
+| First Touchdown | any TD, including kickoff and punt returns | 100 |
 | First Win | win | 100 |
 | Gunslinger | 300+ pass yds | 250 |
 | Sure Hands | 8+ catches | 200 |
@@ -94,6 +94,7 @@ User data dir `crater-bowl` (see [out-of-game.md](out-of-game.md)). Tests pass t
 - **Ratings keyed by install id, kept on the host (#102).** Display names aren't unique, so the host keys each rating by a 16-hex-char id the player's install mints once (`main.gd:install_id()`, saved in `profile.json` with the first ranked result). The host keeps peers' ids in a private map and never broadcasts them: the `ranked` event is keyed by athlete id, so nobody can read another player's id and claim their rating. It isn't authentication. A tampered client can still send any id it likes (#28).
 - **No pay-to-win:** cosmetics are view-only and checked by a determinism test (identical worlds regardless of looks).
 - **Original achievement set** (12 milestones), not copied from any other game.
+- **Kick return touchdowns have their own category (#172).** A return TD counts once in the team's touchdown total and carries the same player-card weight as a defensive TD. It can earn **SPECIAL TEAMS STANDOUT** and qualifies for First Touchdown.
 - **Return yards are their own fields** (`int_ret_yds`, `fr_ret_yds`), not added to rush yards. Folding them into rushing would inflate RB/QB rushing lines and the scrimmage-yard totals that players-of-the-game and the box score compare. Players of the game weight them like scrimmage yards (0.1 per yard) under DEFENSIVE STANDOUT. The leaderboard score and team box score leave them out for now, so career tables from before #100 stay comparable.
 - Not done: cross-machine ratings and leaderboards. Each machine's tables only contain matches it hosted or played offline.
 

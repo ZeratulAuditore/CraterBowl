@@ -20,6 +20,8 @@ Every classic match opens with a coin toss. Kickoffs are live plays with coverag
 
 Kick flight is a ballistic solve: `world.kick_velocity(kind, from, target, power)`. Speed runs from `KICK_SPEED_MIN` 14 to `KICK_SPEED_MAX` 27 yd/s, and the launch angle depends on the kick (`KICK_ANGLE`: punt 52°, FG 38°, kickoff 42°).
 
+A kickoff or punt return touchdown counts as a special-teams score in the [postgame stats](progression.md).
+
 ## Design decisions
 - **Kicks reuse the passing aim.** The aim point sets the direction and the distance used to calculate power (pillar 3). Rejected: automatic kicks from distance plus a random roll (no skill, nothing to watch) and a separate swinging-needle minigame (a new input mode and UI per kick type).
 - **Kicks are deterministic.** No random wobble, so the skill is aim plus power. The ball flies through the real sim, so blocks, catches, bounces and touchbacks are physics, not dice.
