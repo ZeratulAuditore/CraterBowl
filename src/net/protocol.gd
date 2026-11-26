@@ -159,11 +159,15 @@ static func apply_snapshot(m, s: Dictionary) -> void:
 	var sc: PackedInt32Array = s["s"]
 	m.score = [sc[0], sc[1]]
 	var c: PackedFloat32Array = s["c"]
-	m.clock.half = int(c[0])
 	m.clock.remaining = c[1]
 	m.clock.play_clock = c[2]
 	m.clock.final = c[3] > 0.5
-	m.clock.quarter = int(c[4]) if c.size() > 4 else 1
+	# #130: quarters only. A pre-quarters snapshot has no quarter: its half maps to Q1/Q3,
+	# and a missing or zero (halves-format) length falls back to the default quarter.
+	if c.size() > 4:
+		m.clock.quarter = int(c[4])
+	else:
+		m.clock.half = int(c[0])
 	m.clock.quarter_length = c[5] if c.size() > 5 else 0.0
 	if s.has("to"):
 		m.clock.timeouts = Array(s["to"])

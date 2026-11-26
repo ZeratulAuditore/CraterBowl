@@ -3,7 +3,8 @@ extends RefCounted
 ## The match code reads fixed default keys (main.gd); the Launch autoload turns the
 ## player's bound key / gamepad input into those default key events. Pure + testable.
 
-## [action id, label, default key]
+## [action id, label, default key]. Gridiron layout (#138): WASD, Q/E spin, F dive,
+## R dash, T timeout, C taunt; next play moved off R to Enter.
 const ACTIONS := [
 	["move_up", "Move up", KEY_W], ["move_down", "Move down", KEY_S],
 	["move_left", "Move left", KEY_A], ["move_right", "Move right", KEY_D],
@@ -11,14 +12,14 @@ const ACTIONS := [
 	["throw", "Throw (QB: hold to charge)", KEY_J], ["lob", "Lob modifier", KEY_CTRL],
 	["tackle", "Dive / tackle (pre-snap: cycle route)", KEY_F],
 	["spin_left", "Spin left (pre-snap: play picker)", KEY_Q], ["spin_right", "Spin right", KEY_E],
-	["dash", "Dash", KEY_C], ["handoff", "Handoff", KEY_G], ["timeout", "Team timeout", KEY_U],
-	["taunt", "Taunt (wheel picks)", KEY_T],
+	["dash", "Dash (when charged)", KEY_R], ["handoff", "Handoff", KEY_G], ["timeout", "Team timeout", KEY_T],
+	["taunt", "Taunt (wheel picks)", KEY_C],
 	["scoreboard", "Show scoreboard (hold)", KEY_TAB],
-	["next", "Next play", KEY_R], ["replay", "Instant replay", KEY_V],
+	["next", "Next play", KEY_ENTER], ["replay", "Instant replay", KEY_V],
 	["try1", "Extra point", KEY_1], ["try2", "Two-point try", KEY_2],
 ]
 const OTHER_CONTROLS := [
-	"Mouse: look live · middle drag: look pre-snap · wheel: pick taunt (T performs)",
+	"Mouse: look live · middle drag: look pre-snap · wheel: pick taunt (C performs)",
 	"QB / passer: mouse aims your view (look up = loft) · hold left click to charge distance, release to throw",
 	"Hold right click: block",
 	"Gamepad: left stick move · right stick QB aim · A snap · B dive · X / Y spin · R3 handoff · RT pass · LT sprint",
@@ -36,6 +37,11 @@ const PAD_BUTTONS := {
 }
 ## Gamepad trigger axis -> action (held while past TRIGGER_ON)
 const PAD_TRIGGERS := {JOY_AXIS_TRIGGER_RIGHT: "throw", JOY_AXIS_TRIGGER_LEFT: "sprint"}
+
+## Saved bindings are stored as overrides of the default keys, so a default change
+## needs a migration. Version 1 = before #138 (C dash, U timeout, T taunt, R next).
+const BINDINGS_VERSION := 2
+const V1_DEFAULTS := {"dash": KEY_C, "timeout": KEY_U, "taunt": KEY_T, "next": KEY_R}
 
 static func default_key(action: String) -> int:
 	for a in ACTIONS:
@@ -89,6 +95,33 @@ static func rebind(bindings: Dictionary, action: String, key: int) -> Dictionary
 	else:
 		b[action] = key
 	return b
+
+## Bring bindings saved under an older default layout up to BINDINGS_VERSION.
+## Actions the player never rebound take the new defaults; rebound actions keep their key.
+## If a rebound key sits on one of the new defaults (e.g. the player moved dash to R,
+## which swapped next play onto C), the moved actions keep their old keys instead, so
+## the player's layout stays exactly as it was and no two actions share a key.
+static func migrate_bindings(bindings: Dictionary, from_version: int) -> Dictionary:
+	if from_version >= BINDINGS_VERSION:
+		return bindings
+	var out := {}
+	for a in bindings:
+		out[a] = int(bindings[a])
+	var taken := {}
+	for a in out:
+		taken[out[a]] = true
+	var clash := false
+	for a in V1_DEFAULTS:
+		if not out.has(a) and taken.has(default_key(a)):
+			clash = true
+	if clash:
+		for a in V1_DEFAULTS:
+			if not out.has(a):
+				out[a] = V1_DEFAULTS[a]
+	for a in out.keys():
+		if out[a] == default_key(a):
+			out.erase(a)
+	return out
 
 ## Movement keys the left stick holds down for a given stick vector.
 static func stick_keys(v: Vector2) -> Dictionary:

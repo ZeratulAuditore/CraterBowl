@@ -23,7 +23,7 @@ Bots fill every empty slot, so a 1v1 friend game or a two-player casual queue st
 
 ### Private lobby (in the match scene, text HUD)
 - HUD: `PRIVATE MATCH LOBBY  Invite code: …`, settings, seats taken (`6/6 players`) and names (✓ = ready).
-- **Enter** toggles ready. The host can press **3/5/7** for team size, **M** for classic/Chaosball, **Q** for halves/quarters and **H** for the duration. Defaults are 7v7 and five-minute halves. See [clock rules](rules.md#clock-srcsimclockgd) for the duration choices.
+- **Enter** toggles ready. The host can press **3/5/7** for team size, **M** for classic/Chaosball, and **H** for the quarter length. Every match plays four quarters (#130); defaults are 7v7 and 2.5-minute quarters. See [clock rules](rules.md#clock-srcsimclockgd) for the duration choices.
 - Any settings change un-readies everyone except the host.
 - Hosting from the menu with Chaosball selected opens the lobby in Chaosball 3v3, whatever size was picked (`--host --mode=chaosball` does the same). The host can still press **M** to switch back to classic (#74).
 - Starts automatically when **every player is ready and at least 2 are present**. A host alone can't start a private match.

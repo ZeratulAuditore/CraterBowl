@@ -43,7 +43,7 @@ holding right mouse (a "shield"). Rushers beat blocks by waiting out the hold or
 ### Pass rush
 - DL bots (and the LB on blitz calls) sprint at the ball carrier, leading him by up to 0.6 s, and dive within
   `AI_DIVE_RANGE` (2.0 yd).
-- A human rusher can wait out the 1.5 s hold, or spend a move charge: **F** spin or **C** dash both break the block,
+- A human rusher can wait out the 1.5 s hold, or spend a move charge: **Q/E** spin or **R** dash both break the block,
   and a spinning player can't be engaged. See [movement.md](movement.md).
 - A bot QB drifts away from any rusher within 4 yd (never past the LOS) and throws early under `AI_QB_PRESSURE` (3 yd).
 

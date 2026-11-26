@@ -170,7 +170,9 @@ acknowledgments. A rejected snapshot leaves the previous game state and tick int
 `apply_snapshot` writes accepted state into the client's `World` and `Match`. Dive and ground
 flags become token timers (`0.01`), and optional fields retain their compatibility defaults.
 When adding wire fields, update the encoder, validator, decoder and protocol tests together.
-The quarter fields extend the clock array after its four original entries. If they are absent, the client uses halves.
+The quarter fields extend the clock array after its four original entries. If they are absent (a pre-quarters host),
+the client maps the half to Q1/Q3; a zero quarter length (the old halves marker) falls back to the default 2:30
+quarter, so no client ever shows H1/H2 (#130).
 
 ## Client prediction (`client_predictor.gd`)
 
@@ -202,7 +204,7 @@ and full rollback of the whole sim is overkill when the host owns every contact.
 
 1. Host: `_host_game` makes a `Lobby` (`host_id = 1`), sets `code` (invite code), `expected` (queue
    matches), and `NetSession.lobby_mode = true`. Host keys (`main.gd:lobby_key`): Enter ready, 3/5/7 size,
-   M classic/chaosball (forces size 3), Q halves/quarters, H duration (2/5/8 min halves or 1/2/3 min quarters).
+   M classic/chaosball (forces size 3), H quarter length (1/2/2.5/3 min; every match plays quarters, #130).
    Any setting change clears the guests' ready state. A size or mode change whose capacity is below
    `players.size()` is refused and sets `lobby.notice` (shown in the host lobby HUD) rather than kicking
    anyone; an accepted change clears it. Chosen over disconnecting extras because it never throws a
