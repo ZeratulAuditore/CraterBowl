@@ -76,7 +76,7 @@ Bots fill every empty slot, so a 1v1 friend game or a two-player casual queue st
 - **Invite code = address.** No server is needed to resolve codes. The downside is that a code changes whenever the host's IP or port does.
 - **Queue matches start only with the full matched group** (`Lobby.expected`), so no one is seated by a bot because they joined late.
 - **No team or position changes online.** The old team/slot requests are rejected rather than kept as an online position-selection API ahead of #18.
-- Teams come from the party-aware `unit_teams`. The older rating snake draft (`snake_teams`) is unused outside tests (#58).
+- Teams come from the party-aware `unit_teams`.
 
 ## Code and tests
 - `src/net/net_session.gd`: ENet host/join, seat assignment, lobby relay, disconnect → release.
@@ -103,5 +103,4 @@ Bots fill every empty slot, so a 1v1 friend game or a two-player casual queue st
 - #48 Decide: host the public matchmaker (VPS/AWS + DNS)?
 - #85 Joining a bad code / unreachable host hangs forever
 - #86 A crashed host takes ~10 s to detect
-- #58 Dead matchmaker code: whoami/you path and snake_teams
 - #75 Stadium screen shows a running-match clock in the private lobby

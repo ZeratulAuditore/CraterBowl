@@ -6,7 +6,6 @@ signal host_match(settings: Dictionary)
 signal join_match(code: String)
 signal lobbies(list: Array)
 signal registered(ok: bool)
-signal public_ip(ip: String)
 signal connected
 signal failed
 
@@ -53,9 +52,6 @@ func register_lobby(info: Dictionary) -> void:
 func unregister_lobby() -> void:
 	_send({"k": "unregister"})
 
-func request_ip() -> void:
-	_send({"k": "whoami"})
-
 func send_hosting(code: String) -> void:
 	_send({"k": "hosting", "code": code})
 
@@ -72,8 +68,6 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 			lobbies.emit(l if l is Array else [])
 		"registered":
 			registered.emit(msg.get("ok", false) == true)
-		"you":
-			public_ip.emit(str(msg.get("ip", "")))
 		"queued":
 			queued.emit(msg.get("ok", false) == true, int(msg.get("n", 0)))
 		"match":

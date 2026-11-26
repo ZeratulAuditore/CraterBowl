@@ -155,13 +155,3 @@ static func unit_teams(units: Array, size: int) -> Dictionary:
 		n[t] += k
 		sum[t] += u["rating"] * k
 	return teams
-
-## Snake draft by rating (highest first): A B B A A B B A ...
-static func snake_teams(entries: Array) -> Dictionary:
-	var sorted := entries.duplicate()
-	sorted.sort_custom(func(a, b): return a["rating"] > b["rating"])
-	var teams := {}
-	for i in sorted.size():
-		var r := i % 4
-		teams[sorted[i]["id"]] = 0 if (r == 0 or r == 3) else 1
-	return teams

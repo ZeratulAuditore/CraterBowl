@@ -42,8 +42,6 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 			_send(from, {"k": "registered", "ok": info is Dictionary and registry.register(from, info, _now())})
 		"unregister":
 			registry.remove(from)
-		"whoami":
-			_send(from, {"k": "you", "ip": peer.get_peer(from).get_remote_address()})
 		"enq":
 			var size = msg.get("size", 7)
 			var rating = msg.get("rating", 1000.0)
