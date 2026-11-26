@@ -27,22 +27,21 @@ not in markdown checklists. Full protocol with `gh` commands: `docs/workflow.md`
    (then close it with that commit). The point is a traceable history to come back to. List the issues
    you opened in your report.
 
-### Committing: commit everything, by default
-When you finish a task (or a loop iteration), commit **everything** in the working tree without
-asking: `git add -A && git commit`. That includes files other parallel sessions changed. The owner
-wants the tree clean and every change in history rather than work-in-progress left lying around.
-- Commit each completed feature to local `main` after verification. If development starts on another
-  branch, integrate the verified feature into local `main` before reporting it complete. Preserve
-  unrelated work. Don't push or publish unless asked.
-- Never `git stash`, reset or checkout files to isolate your changes. Other sessions share this
-  worktree and that discards or tangles their work.
-- Write the message about your change, and add a line listing other sessions' files that rode
-  along (`Also includes in-progress work: src/net/..., ...`). Check `git show --stat` afterwards.
-- Never commit secrets (`.env`, keys, credentials). `.gitignore` covers build output and `user://` data.
-
-Code map: `src/sim/` = rules (pure, deterministic, unit-tested), `src/game/` = presentation (views,
-camera, HUD, art in `src/game/art/`), `src/net/` = netcode, `src/ui/` = menus/settings,
-`tests/` = tests and harnesses, `tools/` = dev/diagnosis scripts, `scripts/` = the commands below.
+### Shipping: one PR per change; the owner reviews and merges
+Every change reaches `main` through a GitHub PR that the owner reviews and merges. Never commit to
+or push `main` yourself, and never merge a PR (not even your own, not even when checks are green).
+1. **Own worktree, own branch** off the latest `origin/main`:
+   `git fetch origin && git worktree add ../football-game-<topic> -b <type>/<N>-<topic> origin/main`.
+   Parallel sessions share this machine. Never `git stash`, reset or check out files in someone else's
+   worktree, and stage only your own paths (`git add <files>`, not `git add -A`).
+2. **Before opening:** merge the latest `origin/main` into your branch, run `./scripts/check.sh` (must
+   pass), then `git push -u origin <branch>`.
+3. **Open the PR:** `gh pr create` with what changed and why, how it was verified (check.sh results,
+   screenshots for visual changes per the PR evidence rules), and `Closes #N`. One issue or feature per PR.
+4. **After review:** push fixes to the same branch. If `main` moves, merge it in and re-run check.sh.
+5. **Clean up** once the owner merges: remove your worktree (`git worktree remove ../football-game-<topic>`),
+   or run `/football-janitor`, which removes merged, clean and idle worktrees and branches for everyone.
+- `tests/game_flow.gd` steps share one frame timeline: pick an unused window and say which in the PR.
 
 ### Opening pull requests
 
@@ -55,7 +54,7 @@ camera, HUD, art in `src/game/art/`), `src/net/` = netcode, `src/ui/` = menus/se
   test-generated screenshot and link to the video. Verify the media displays in the PR.
   Include the Actions artifact link for the full set of captures and logs.
 - Use a topic branch based on `origin/main` and open the PR after verification. Preserve other
-  sessions' work. The local-main commit instructions above apply to local-only work.
+  sessions' work (see Shipping above).
 
 ### Building your own loop
 
@@ -66,8 +65,8 @@ Every unit of work, whether a loop iteration, a bug fix or a perf pass, has the 
 3. **Smallest complete change.** One item per loop. Rules in `src/sim`, visuals in `src/game`.
 4. **Gate.** `./scripts/check.sh` must print `CHECK PASS`. Add tests for every criterion *before* calling it done.
 5. **Look** at visual changes with `./scripts/shot.sh` and actually view the PNGs.
-6. **Record.** Docs that own what you changed (below), `ITERATIONS.md` (cite the issue), and the issue itself (close or narrow it).
-7. **Commit everything** (`git add -A`, see Committing below), then check `git show --stat`.
+6. **Record.** Docs that own what you changed (below), `ITERATIONS.md` (cite the issue), and the issue itself (link the PR or narrow it).
+7. **Ship a PR** (see Shipping above): commit your own files on your branch, check `git show --stat`, push, and `gh pr create`. Never commit to `main` and never merge.
 
 A loop that can't measure its own success isn't done. If an item has no test, perf number or
 screenshot proving it, add one.
