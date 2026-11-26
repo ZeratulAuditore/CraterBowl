@@ -3,7 +3,7 @@
 Each run is one iteration. Each iteration builds on the last. **Tackle exactly one issue.** Work tracking rules (labels, claim/close, side findings): `docs/workflow.md`.
 
 ## Steps
-1. **Orient.** Read `docs/vision.md` (pillars), the last 3 entries of `ITERATIONS.md`, and `git log --oneline -10`. Run `./scripts/test.sh` first. If it's red, open (or find) a `type:bug` issue for it; fixing it is this iteration's one thing.
+1. **Orient.** Read `docs/vision.md` (pillars), the last 3 merged PRs (`gh pr list --state merged -L 3`), and `git log --oneline -10`. Run `./scripts/test.sh` first. If it's red, open (or find) a `type:bug` issue for it; fixing it is this iteration's one thing.
 2. **Pick** the first match, skipping `status:in-progress`, `status:blocked` and `status:needs-decision`:
    - open `type:bug`, oldest first, then
    - `P0`, then `P1`, then `P2`, oldest first. Issues were created in build order.
@@ -12,11 +12,12 @@ Each run is one iteration. Each iteration builds on the last. **Tackle exactly o
    F='-label:status:in-progress -label:status:blocked -label:status:needs-decision sort:created-asc'
    gh issue list --label type:bug --search "$F"; gh issue list --label P0 --search "$F"
    ```
-   **Claim it:** `gh issue edit N --add-label status:in-progress` + a comment naming the session, branch and iteration number. Number the iteration `NNN` = last + 1. If the issue carries `question`, follow its documented default and say so in the iteration doc.
-3. **Brainstorm.** Write `docs/iterations/NNN-<slug>.md` starting with `Issue: #N`, then:
+   **Claim it:** `gh issue edit N --add-label status:in-progress` + a comment naming the session and branch. If the issue carries `question`, follow its documented default and say so in the design comment (step 3).
+3. **Brainstorm.** Post a design comment on the issue (no new doc file):
    - Goal (1–2 sentences) and how Gridiron does it (genre mechanic only).
    - 2–3 design options, the pick, and why. Note one way to make it *better* than Gridiron.
-   - Acceptance criteria written as testable statements, starting from the issue's list.
+   - Acceptance criteria written as testable statements: refine the issue's Scope / Accept list.
+   The pick and its *why* also go in the feature doc's **Design decisions** at step 6; that's the durable home.
    - If the issue is too big for one iteration, split it: open child issues (`Part of #N`), narrow #N in a comment, and do the first part.
 4. **Build.** Smallest complete version that meets the criteria.
    - Game rules/physics math go in `src/sim/` as plain `RefCounted` scripts (no Node/scene deps, deterministic, input-driven). This keeps them unit-testable and ready for server authority.
@@ -36,14 +37,14 @@ Each run is one iteration. Each iteration builds on the last. **Tackle exactly o
    - `./scripts/perf.sh` (in check.sh): render budget plus CPU medians. If you made something cheaper, lower its budget (ratchet); if you must raise one, log why in `docs/optimization/LOG.md`.
    Iterate until check.sh passes. Do not weaken or delete older tests to go green. **Never launch a windowed game** (`godot --path .`) to check your work; it opens on the user's desktop. Everything in `docs/TESTING.md` runs offscreen.
 6. **Record.** In the same commit:
-   - Update the feature doc for the area (`docs/features/<area>.md`: how it plays now, decisions, what didn't work, open-issues list), and the design doc if you built a subsystem or protocol (`docs/design/`).
+   - Update the feature doc for the area (`docs/features/<area>.md`: how it plays now, decisions and why, rejected options, what didn't work, open-issues list), and the design doc if you built a subsystem or protocol (`docs/design/`).
    - Update other owning docs (`docs/README.md` says which: testing → `docs/TESTING.md`, perf → `docs/optimization/`).
-   - Append to `ITERATIONS.md`: number, issue `#N`, what was built, test counts, known gaps. **Every known gap is an issue**; list their numbers rather than leaving prose gaps.
-7. **Open a PR** from your branch (see "Shipping" in `AGENTS.md`): commit your own files as `iter NNN: <title> (#N)`, merge the latest `origin/main`, re-run `./scripts/check.sh`, push the branch, and `gh pr create` with `Closes #N` plus test evidence. Never commit to or push `main`, and never merge the PR; the owner reviews and merges.
+   - There is no iteration log: what was built, test counts and known gaps go in the PR description. **Every known gap is an issue**; list their numbers rather than leaving prose gaps.
+7. **Open a PR** from your branch (see "Shipping" in `AGENTS.md`): commit your own files as `<title> (#N)`, merge the latest `origin/main`, re-run `./scripts/check.sh`, push the branch, and `gh pr create` with `Closes #N` plus test evidence. Never commit to or push `main`, and never merge the PR; the owner reviews and merges.
 8. **Update the issue:** comment the PR link (`gh issue comment N --body "PR #M: …"`). The issue closes when the owner merges the PR. If only part is done, remove `status:in-progress`, comment what's left, and leave it open.
 9. **Report.** Summarize what shipped, the test results, the issues closed/opened, and what's next, ending with a `result:` line.
 
 ## Guardrails
 - One issue per iteration. If an issue is too big, split it into child issues and do the first part.
-- If blocked (missing tool, a design decision only the user can make), comment on the issue, add `status:needs-decision` or `status:blocked`, record it in `ITERATIONS.md`, and report `needs input:`. Don't guess on irreversible things.
+- If blocked (missing tool, a design decision only the user can make), comment on the issue, add `status:needs-decision` or `status:blocked`, and report `needs input:`. Don't guess on irreversible things.
 - Keep the game runnable: `godot --path . ` opens to a playable scene after every iteration. Verify that with `./scripts/smoke.sh` + `./scripts/shot.sh`, not by opening a window.

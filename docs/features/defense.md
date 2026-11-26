@@ -48,6 +48,7 @@ non-linemen press Space to break stance and roam up to a visible barrier at the 
 ### Pre-snap stance and roam
 - Every defender starts set (`set_lock`). A locked defender can turn but not move.
 - **Space** (gamepad A) on defense breaks stance for LB, CB and S. It is one-way for the play. DL can never break stance.
+- A set LB/CB/S holds the shield stance; once roaming he stands in a plain idle, so roamers read differently from set teammates.
 - HUD: `PRE-SNAP: SET`, then `PRE-SNAP: ROAMING`; DL see `PRE-SNAP (hold your stance)`.
 - Neutral zone: offense stops `NEUTRAL_ZONE_HALF` (0.5 yd) short of the LOS, defense 0.5 yd past it. The same clamp
   runs in client prediction, so there is no rubber-banding.
@@ -58,15 +59,22 @@ non-linemen press Space to break stance and roam up to a visible barrier at the 
 - Gold tether = man matchup; teal disc = underneath zone; blue disc = deep zone; red line = rush. Your own is thicker.
 
 ## Design decisions
-- Curated nine-call list with stable ids, families and shells (030) over a flat list (hard to group) or a generator
+- Curated nine-call list with stable ids, families and shells over a flat list (hard to group) or a generator
   (too many combinations to balance).
-- The call lives in the sim and rides match snapshots (031) so late joiners see it; the server pre-selects the
+- The call lives in the sim and rides match snapshots so late joiners see it; the server pre-selects the
   suggestion so the defense can just accept it.
-- Cover 2 cut deep completions from 8 to 1 across 24 matched bot snaps versus legacy coverage (032).
+- Cover 2 cut deep completions from 8 to 1 across 24 matched bot snaps versus legacy coverage.
+- Calls ride the normal pre-snap action channel, not a separate timed match phase (extra state to sync, slower practice snaps).
+  Assignments are drawn on the field so they read from the normal camera.
 - Stance-lock plus Space (C08d) over always-free or auto-unlock on push (accidental breaks). One key routed by side:
   offense snaps, defense breaks stance.
-- Iteration 032's "five-second call view" with L/X/Y keys is gone; the picker stays open until Q or the snap.
-- `AI_RUSH_DELAY` (2.5 s hold before pursuit, iteration 005) is defined in `tuning.gd` but no longer used.
+- The barrier is one vertical wall. A recolored ground line is flat and doesn't read as "can't pass"; a two-wall
+  neutral-zone box doubles the visual noise, and the camera sits behind one wall anyway. The proximity reveal keeps it
+  near-invisible from the backfield, and the ripple gives feedback instead of an invisible stop.
+- The barrier shader is unshaded with `depth_draw_never`, so it never hides athletes behind it, and uses plain
+  uniform arrays because GL-compat has no instance uniforms.
+- An earlier five-second call view with L/X/Y keys is gone; the picker stays open until Q or the snap.
+- `AI_RUSH_DELAY` (2.5 s hold before pursuit) is defined in `tuning.gd` but no longer used.
 
 ## Code and tests
 - `src/sim/defensive_playbook.gd` — call catalog and `suggest()`.
@@ -76,13 +84,6 @@ non-linemen press Space to break stance and roam up to a visible barrier at the 
 - `src/game/art/los_barrier.gd` + `los_barrier.gdshader` — barrier view. `src/net/protocol.gd` — `defense`, `recall_call`, `snap` routing.
 - Tests: `tests/test_defensive_playbook.gd`, `tests/test_presnap_roam.gd`, `tests/test_bots.gd` (man coverage, break on
   ball, press), `tests/test_turnovers.gd`, `tests/game_flow.gd` (Space on defense), `tests/net_client.gd`.
-
-## History
-- 015 [Bots](../iterations/015-bots.md)
-- 030 [Defensive playbook](../iterations/030-defensive-playbook.md)
-- 031 [Defensive play selection](../iterations/031-defensive-selection.md)
-- 032 [Defensive assignments and play-call huddle](../iterations/032-defensive-huddle.md)
-- 032 [Pre-snap defensive roam + LOS barrier](../iterations/032-presnap-defense-roam.md)
 
 ## Open issues
 - #35 B02 DB press / jam mechanic

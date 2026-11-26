@@ -41,6 +41,8 @@ ride along in your commit and would block it. Turn it on for a solo clone or CI-
 - Test through the real entry point the player uses (`_key()` / `--press`), not internals.
 - Assert the property, not the implementation. Example: "views show replay frames" asserts the view's
   *target* equals the replay sample exactly, plus that the drawn position is within one interpolation step.
+- When an end-to-end check covers several rules (e.g. the net flow's rejected seat requests), also assert each
+  rule in a unit test, so a failure names the rule that changed.
 - A new gate must fail when you plant the bug it's meant to catch. Plant it once, see it go red, then revert.
 - Never weaken or delete an older test to go green. If a test encodes old behavior on purpose,
   change it in the same commit as the behavior and say so in the message.
@@ -113,8 +115,8 @@ Notes:
 - `xvfb-run -a` picks a free display, so parallel sessions don't collide.
 - llvmpipe is a software rasterizer. Use it to check *what is drawn*, not frame rate or GPU-only
   effects. Perf numbers have to come from the user's real GPU, so ask them.
-- Don't put screenshots in the repo. Write them to the job tmp dir; if one belongs in an iteration
-  doc, describe it in words.
+- Don't put screenshots in the repo. Write them to the job tmp dir; if one belongs in a doc,
+  describe it in words.
 
 ## Driving gameplay from scripts
 
