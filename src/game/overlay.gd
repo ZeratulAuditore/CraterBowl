@@ -27,6 +27,7 @@ var picker_title: Label
 var picker_grid: GridContainer
 var route_select: OptionButton
 var picker_side := -1
+var picker_calls: Array = []
 var scoreboard: PanelContainer
 var scoreboard_label: Label
 var me_panel: PanelContainer
@@ -298,8 +299,8 @@ func refresh(main, delta: float) -> void:
 	if pre_game or s == null:
 		_was_pre_game = true
 		return
-	# Per frame: the throw meter (it fills while you hold) and the banner animation.
-
+	_refresh_picker(main, final)
+	scoreboard.visible = main.scoreboard_held
 	_animate_banner(delta)
 	_text_t -= delta
 	if _text_t > 0.0 and not _was_pre_game:
@@ -319,11 +320,9 @@ func refresh(main, delta: float) -> void:
 	play_clock_l.label_settings.font_color = ALERT if pc <= 5 else ACCENT
 	mode_l.text = _mode_text(main)
 	status_l.text = _status_text(main)
-	_refresh_picker(main, final)
 	_refresh_me(main)
 	me_panel.visible = not final
 	bug.visible = true
-	scoreboard.visible = main.scoreboard_held
 	if scoreboard.visible:
 		scoreboard_label.text = "%s     %d – %d     %s\n%s     ·     %s\n%s possession" % [
 			TEAM_NAMES[0], s.score[0], s.score[1], TEAM_NAMES[1], clock_l.text,
@@ -335,7 +334,6 @@ func refresh(main, delta: float) -> void:
 	elif not _prev.is_empty() and _prev["k"][0] != key[0] and _prev["k"][1] == 4 and _prev.get("score", []) == s.score and not final:
 		show_banner("TURNOVER ON DOWNS", "", ALERT, 1.8)
 	_prev = {"k": key, "score": s.score.duplicate()}
-	hints.text = _hints(main)
 
 ## Banner animation: punch in, hold, fade (every frame).
 func _animate_banner(delta: float) -> void:
@@ -399,8 +397,9 @@ func _refresh_picker(main, final: bool) -> void:
 	var side := 0 if w.get_athlete(main.my_id).team == w.offense_team else 1
 	var offense := side == 0
 	var calls: Array = w.available_plays() if offense else w.DefensivePlaybook.CALLS.keys()
-	if picker_side != side:
+	if picker_side != side or picker_calls != calls:
 		picker_side = side
+		picker_calls = calls
 		for child in picker_grid.get_children():
 			picker_grid.remove_child(child)
 			child.queue_free()
