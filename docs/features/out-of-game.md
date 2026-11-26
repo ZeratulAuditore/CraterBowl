@@ -33,7 +33,7 @@ Feature-level doc: how this works **today** on `main`. The in-match game is in t
 
 ## Finding games + internet play
 - **Matchmaker** (`--matchmaker`) does queues (casual/competitive, parties, Chaosball) and now also the **server browser**: hosts `register` their lobby every 5 s (`src/net/lobby_advertiser.gd`); entries expire after 20 s (`src/net/lobby_registry.gd`). `whoami` returns the caller's public IP.
-- **UPnP** (`src/net/port_mapper.gd`): before hosting or queueing, the menu asks the router to forward the UDP port (24565 for hosting, 24566 for queue hosts). It puts the router's **public IP in the invite code**, so friends on other networks can join without manual port forwarding. If UPnP fails, or the connection is behind carrier-grade NAT, the code falls back to the LAN address and the menu says what to forward.
+- **UPnP** (`src/net/port_mapper.gd`): before hosting or queueing, the menu asks the router to forward the UDP port (24565 for hosting, 24566 for queue hosts). It puts the router's **public IP in the invite code**, so friends on other networks can join without manual port forwarding. If UPnP fails, including when the router reports a carrier-grade NAT address, the code falls back to the LAN address. The host sees the failure and the UDP port to forward alongside the invite code in the match lobby.
 
 ## Distribution
 - `./scripts/export.sh [Linux|Windows|macOS]` builds `build/dist/CraterBowl-<VERSION>-{windows,linux,macos}.zip` (~30/24/50 MB). It syncs `VERSION` into `project.godot` + presets, then boot-checks the exported Linux binary (headless practice drill, version line).
@@ -54,7 +54,6 @@ Open owner decisions and known gaps moved to GitHub issues on 2026-11-25 (#1):
 - #32 B07 NAT relay for CGNAT/strict routers + hosted public matchmaker
 - #33 Gamepad: right-stick aiming
 - #46 Windows exe icon (rcedit)
-- #47 UPnP failure notice appears after the match instead of in the lobby
 - #24 C18 Guided tutorial
 - #25 C19 Accessibility & camera options
 - #22 C16 Audio foundation + live play feed (no in-match audio yet; the menu soundtrack exists)
