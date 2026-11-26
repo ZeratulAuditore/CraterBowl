@@ -20,6 +20,7 @@ var frozen_y := 0.0
 var auto_replay_default := false
 var wr_id := -1
 var kick_events: Array = []
+var fc_ret = null   # #189 fair-catch step's returner
 var fp_lb = null          # C06a forward progress: the defender driving the carrier back
 var fp_contact_y := INF
 var fp_driven_y := 0.0
@@ -367,6 +368,32 @@ func _initialize() -> void:
 		[11940, func(): main.aim_point = Vector2(main.field.width / 2.0, main.field.posts_y())],
 		[11941, func(): _key(KEY_J)],
 		[12200, func(): check(main.last_whistle == "FIELD GOAL GOOD", "field goal good (%s)" % main.last_whistle); main.next_play(); check(main.series.score[0] == 3, "+3"); check(main.series.state == main.Match.State.KICKOFF, "then a kickoff"); main.ai.defense_enabled = true],
+		# #189 fair catch through the real Snap key: you're the punt returner, Space while the punt is
+		# in the air signals, the catch ends the play at the spot. Frames 13600-13900 (after the last step).
+		[13600, func():
+			_force_dead_if_live()
+			var mine: int = main.world.get_athlete(main.my_id).team
+			main.series.start(1 - mine, 30.0); main.series.downs.down = 4
+			check(main.series.call_kick("punt"), "bot offense lines up to punt")
+			fc_ret = main.world.returner(); main.set_controlled(fc_ret.id)
+			check(fc_ret.team == mine, "you are the punt returner")],
+		[13601, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.PRESNAP and main.world.fair_catch_id == -1, "Space on the return team before the snap does not signal"); main.world.snap()],
+		[13650, func():
+			var ov = main.pres.overlay
+			check(main.world.kick_in_air(), "bot punter kicked it (%s)" % main.world.kick_play)
+			check(ov.fair_catch_prompt(main.world, main.controlled_id) == "PRESS SPACE FOR A FAIR CATCH", "returner prompt while the punt is in the air")
+			fc_ret.position = main.ai._landing_point(main.world)
+			_key(KEY_SPACE)
+			check(main.world.fair_catch_id == fc_ret.id, "Space signals a fair catch")
+			check(ov.fair_catch_prompt(main.world, main.controlled_id).begins_with("FAIR CATCH SIGNALED"), "prompt confirms the signal")],
+		[13900, func():
+			check(main.world.phase == main.World.Phase.DEAD and main.last_whistle == "FAIR CATCH", "play dead on the fair catch (%s)" % main.last_whistle)
+			check(main.pres.overlay.whistle_summary(main.last_whistle, main.world) == "FAIR CATCH", "dead-ball line says FAIR CATCH")
+			var spot: float = main.world.dead_ball_spot.y
+			main.next_play()
+			check(main.series.last_outcome.get("outcome", "") == "fair_catch" and main.world.offense_team == fc_ret.team, "return team's ball after the fair catch")
+			check(absf(main.world.los_y - (100.0 - spot)) < 0.01, "spotted at the catch (%.1f)" % main.world.los_y)
+			main.set_controlled(main.my_id)],
 		# C04b: change quarters on the normal dead-ball advance.
 		[12210, func():
 			main.opening_kickoff = false

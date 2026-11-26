@@ -555,9 +555,19 @@ func _status_text(main) -> String:
 		1:
 			if main.world.is_chaos():
 				return "PASS CLOCK %.1f" % maxf(0.0, main.T.PASS_CLOCK - w.hold_t)
+			if w.kick_in_air():
+				return fair_catch_prompt(w, main.controlled_id)
 			return "MEET THE BACK" if w.handoff_receiver(main.my_id) == null and w.is_run_play() and w.ball.is_held_by(main.my_id) else ""
 		_:
 			return whistle_summary(main.last_whistle, main.world)
+
+## Kick in the air (#189): tell the return team about the fair catch.
+static func fair_catch_prompt(w, my_id: int) -> String:
+	if w.fair_catch_id == my_id:
+		return "FAIR CATCH SIGNALED  ·  CATCH IT TO END THE PLAY"
+	if w.fair_catch_id >= 0:
+		return "FAIR CATCH SIGNALED"
+	return "PRESS SPACE FOR A FAIR CATCH" if w.can_signal_fair_catch(my_id) else ""
 
 func _refresh_picker(main, final: bool) -> void:
 	var w = main.world

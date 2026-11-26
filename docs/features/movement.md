@@ -20,7 +20,7 @@ Defaults from `src/ui/controls.gd`; every keyboard action can be rebound in Sett
 | Spin | F | Y |
 | Dive tackle | E | B |
 | Block (shield) | hold right mouse | none |
-| Snap / break stance | Space | A |
+| Snap / break stance / fair catch (returner, kick in the air: see [kicking](kicking.md)) | Space | A |
 | Look / aim | mouse (middle drag pre-snap) | none (#33) |
 
 Passing, handoff and play-call keys are in [offense.md](offense.md).
