@@ -57,6 +57,25 @@ func test_passer_holds_the_ball_with_both_hands() -> void:
 	assert_true(ball.distance_to(_bone_pos(sk, "spine_03")) < 0.4, "ball held in front of the chest")
 	v.free()
 
+func test_hands_on_the_ball_open_from_the_fist() -> void:
+	var v = _view(Athlete.Role.QB)
+	var sk := _skel(v)
+	var clip: Animation = v.anim.get_animation("Idle")
+	_pose(sk, clip, 0.5)
+	var fist := _curl(sk, "_r")
+	v.pose.weight = 1.0
+	v.pose.apply(sk)
+	var tuck := _curl(sk, "_r")
+	assert_true(fist > 0.5, "the clip holds a fist (finger curl %.2f rad)" % fist)
+	assert_true(tuck < fist * 0.5, "carrying hand opens: curl %.2f -> %.2f rad" % [fist, tuck])
+	assert_true(tuck > 0.0, "fingers keep a slight curl to wrap the ball")
+	assert_true(_curl(sk, "_l") > fist * 0.9, "one-arm tuck leaves the free hand alone")
+	_pose(sk, clip, 0.5)
+	v.pose.two_hand = true
+	v.pose.apply(sk)
+	assert_true(_curl(sk, "_l") < fist * 0.5 and _curl(sk, "_r") < fist * 0.5, "two-hand hold opens both hands")
+	v.free()
+
 func test_throw_release_drops_the_carry_at_once() -> void:
 	var v = _view(Athlete.Role.QB)
 	var ball := Node3D.new()
@@ -103,6 +122,14 @@ func _bone_pos(sk: Skeleton3D, bone: String) -> Vector3:
 
 func _hand_to_chest(sk: Skeleton3D, hand: String) -> float:
 	return _bone_pos(sk, hand).distance_to(_bone_pos(sk, "spine_03") + Vector3(0, 0, 0.12))
+
+## Mean angle (rad) of the middle finger's joints away from the open rest pose.
+func _curl(sk: Skeleton3D, side: String) -> float:
+	var total := 0.0
+	for j in ["01", "02", "03"]:
+		var b := sk.find_bone("middle_%s%s" % [j, side])
+		total += sk.get_bone_pose_rotation(b).angle_to(sk.get_bone_rest(b).basis.get_rotation_quaternion())
+	return total / 3.0
 
 func _arm_rotations(sk: Skeleton3D) -> Array:
 	var out := []
