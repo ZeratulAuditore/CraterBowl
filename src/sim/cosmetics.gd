@@ -37,6 +37,7 @@ var equipped := DEFAULT_LOOK.duplicate()
 var season_rewards: Array = []   # e.g. ["S8100-Gold"] from ranked
 var achievements: Array = []     # unlocked achievement ids
 var games := 0                   # matches finished
+var install_id := ""             # stable per-install id; ranked records are keyed by it (#102). main.gd mints it.
 
 func level() -> int:
 	return xp / XP_PER_LEVEL
@@ -101,6 +102,15 @@ static func sanitize_look(look) -> Dictionary:
 		out["badge"] = b
 	return out
 
+## 16-32 lowercase hex chars (8+ random bytes). Anything else from a peer is ignored.
+static func valid_install_id(v) -> bool:
+	if not (v is String and v.length() >= 16 and v.length() <= 32):
+		return false
+	for ch in v:
+		if not "0123456789abcdef".contains(ch):
+			return false
+	return true
+
 static func color_of(slot: String, id: String) -> Color:
 	return CATALOG.get(slot, {}).get(id, {}).get("color", Color.WHITE)
 
@@ -109,7 +119,7 @@ func save(path: String = DEFAULT_PATH) -> bool:
 	if f == null:
 		return false
 	f.store_string(JSON.stringify({"version": 1, "xp": xp, "equipped": equipped, "season_rewards": season_rewards,
-		"achievements": achievements, "games": games}))
+		"achievements": achievements, "games": games, "install_id": install_id}))
 	return true
 
 func load_file(path: String = DEFAULT_PATH) -> void:
@@ -118,6 +128,7 @@ func load_file(path: String = DEFAULT_PATH) -> void:
 	season_rewards = []
 	achievements = []
 	games = 0
+	install_id = ""
 	if not FileAccess.file_exists(path):
 		return
 	var d = JSON.parse_string(FileAccess.get_file_as_string(path))
@@ -126,6 +137,7 @@ func load_file(path: String = DEFAULT_PATH) -> void:
 		season_rewards = d.get("season_rewards", []) if d.get("season_rewards") is Array else []
 		achievements = d.get("achievements", []) if d.get("achievements") is Array else []
 		games = int(d.get("games", 0))
+		install_id = d["install_id"] if valid_install_id(d.get("install_id")) else ""
 		var eq = sanitize_look(d.get("equipped", {}))
 		eq["number"] = int(eq["number"])
 		equipped = eq

@@ -77,6 +77,8 @@ func _on_lobby(st: Dictionary) -> void:
 
 func _on_welcome(id: int) -> void:
 	aid = id
+	if first_team < 0 and main.profile.install_id != "":   # once: net_test.sh matches this against what the host received (#102)
+		print("NET client install id %s" % main.profile.install_id)
 	if first_team < 0:
 		first_team = main.world.get_athlete(id).team
 
