@@ -2,6 +2,7 @@ extends SceneTree
 ## Scripted end-to-end flow through the real main scene (presentation glue).
 ## Each step: [physics frame @60Hz, callable]. Exits 1 on failed check.
 
+const Emotes := preload("res://src/sim/emotes.gd")
 const RIVAL_INSTALL := "feedfacecafebeef"   # #102: the ranked rival's install id
 var main
 var frame := 0
@@ -339,15 +340,49 @@ func _initialize() -> void:
 			check(qb.move_t == 0.0 and qb.move_charge == c0, "R without a charge does not dash")],
 		[12680, func(): main.world.get_athlete(main.controlled_id).facing = Vector2(0, 1); _key(KEY_F); check(main.world.get_athlete(main.controlled_id).is_diving(), "F dives with the ball")],
 		[12720, func(): check(main.world.phase == main.World.Phase.DEAD and main.last_whistle == "TACKLE", "carrier dive: down where he lands (%s)" % main.last_whistle)],
-		[12721, func():
+		# #139 radial taunt wheel through the real C key + mouse handlers, on a pre-snap QB in
+		# POV aim (the mode where mouse motion matters most). Window 12730-12800.
+		[12730, func(): main.configure(7); main.ai.defense_enabled = false; main.mouse_captured_override = true],
+		[12732, func():
+			var qb = main.world.get_athlete(main.controlled_id)
+			var w = main.taunt_wheel
+			check(main.pov_active() and qb.emote_cd == 0.0, "taunt wheel step: QB in POV aim, no taunt yet")
 			var ev := InputEventMouseButton.new()
 			ev.button_index = MOUSE_BUTTON_WHEEL_DOWN
 			ev.pressed = true
 			main._unhandled_input(ev)
-			check(main.emote_picker.index == 1 and main.emote_picker.show_t > 0.0, "wheel scrolls the taunt picker")
+			check(not w.open and qb.emote_cd == 0.0, "mouse wheel no longer picks or performs taunts")
+			_mouse(Vector2(40, 0))
+			check(main.aim_yaw > 0.0, "mouse motion turns the aim while the wheel is closed")
+			main.reset_aim()
+			var before := [main.aim_yaw, main.aim_pitch, main.camera_orbit, main.aim_distance]
 			_key(KEY_C)
+			check(w.open and w.visible and w.ids.size() == 8, "holding C opens the wheel: a slice per taunt")
+			_mouse(Vector2(0, -80))
+			check(w.highlighted() == w.ids[0], "drag up highlights the top slice (%s)" % w.highlighted())
+			_mouse(Vector2(160, 80))
+			check(w.highlighted() == w.ids[2], "drag right highlights the right slice (%s)" % w.highlighted())
+			check([main.aim_yaw, main.aim_pitch, main.camera_orbit, main.aim_distance] == before, "camera and aim hold still while the wheel is open")
+			_key(KEY_C, false)
 			var v = main.views[main.controlled_id]
-			check(v.emote_t > 0.0 and v.emote_id == main.emote_picker.selected() and v.bubble.visible, "C performs the selected taunt (%s)" % v.emote_id)
+			check(not w.open and qb.emote_cd > 0.0 and v.emote_id == w.ids[2] and v.emote_t > 0.0 and v.bubble.visible, "releasing C performs the highlighted taunt (%s)" % v.emote_id)
+			_mouse(Vector2(40, 0))
+			check(main.aim_yaw > 0.0, "the aim turns again once the wheel closes")
+			main.reset_aim()],
+		[12800, func():
+			var qb = main.world.get_athlete(main.controlled_id)
+			var w = main.taunt_wheel
+			var v = main.views[main.controlled_id]
+			check(qb.emote_cd == 0.0, "taunt cooldown over")
+			_key(KEY_C)
+			_mouse(Vector2(0, -60))
+			_mouse(Vector2(0, 60))
+			_key(KEY_C, false)
+			check(not w.open and qb.emote_cd == 0.0, "releasing C in the dead zone cancels")
+			_key(KEY_C)
+			_key(KEY_C, false)
+			check(qb.emote_cd > 0.0 and v.emote_id == w.ids[2] and v.emote_t > Emotes.DURATION - 0.05, "tapping C repeats the last taunt (%s)" % v.emote_id)
+			main.mouse_captured_override = null
 			main.ai.defense_enabled = true
 			main.pov_enabled = false],   # later steps aim at a field point
 		# C04c (#89): Q1 runs out on a live play snapped with Space -> after the whistle the
@@ -523,6 +558,12 @@ func _hold(code: int, pressed: bool) -> void:
 	ev.pressed = pressed
 	Input.parse_input_event(ev)
 	Input.flush_buffered_events()
+
+## Relative mouse motion through the real handler (#139 taunt wheel / mouse look).
+func _mouse(rel: Vector2) -> void:
+	var ev := InputEventMouseMotion.new()
+	ev.relative = rel
+	main._unhandled_input(ev)
 
 func _key(code: int, pressed := true) -> void:
 	var ev := InputEventKey.new()

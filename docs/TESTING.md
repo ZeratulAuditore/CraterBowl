@@ -191,7 +191,9 @@ when the question is visual: does it look right, is it visible, is the camera fr
 legible, does the new art read.
 
 Input rule (from LOOP.md): player-facing input must be exercised through the real key handler.
-In game_flow that's `_key()`; in shot.sh that's `--press`.
+In game_flow that's `_key()`; in shot.sh that's `--press`. Mouse motion goes through `_mouse(rel)`
+(`main._unhandled_input`). Headless can't capture the mouse, so a step that needs mouse-look sets
+`main.mouse_captured_override = true` and clears it after (the #139 taunt-wheel step does).
 
 Scripted contact: to make one body push another, place the pusher at a fixed overlap each frame
 (e.g. 0.75 yd). Moving it a fixed step per frame lets it pass through the other body on the software-GL
