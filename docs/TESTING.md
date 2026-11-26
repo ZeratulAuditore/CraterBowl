@@ -4,12 +4,50 @@
 real window on the user's desktop, and several sessions doing it at once is disruptive. Use the tools
 below instead. Every check here runs offscreen and in parallel with other sessions.
 
+**The one command:** `./scripts/check.sh` (full, about 3–4 min) or `./scripts/check.sh --fast` (about 45 s).
+Run the full one before every commit that touches code. The pre-commit hook runs `--fast`.
+
 | What you want to know | Command | Time |
 |---|---|---|
+| Everything below in order, fail-fast | `./scripts/check.sh [--fast]` | 45s / 3–4 min |
+| Every script compiles + perf/purity lint rules | `./scripts/lint.sh` | ~5s |
 | Rules/sim logic is right | `./scripts/test.sh` | ~10s |
+| Nothing got slower (render budget + CPU medians) | `./scripts/perf.sh` | ~30s |
 | Scene boots clean + scripted play works | `./scripts/smoke.sh` (also runs net + mm) | ~2–3 min |
 | Networked behavior | `./scripts/net_test.sh`, `./scripts/mm_test.sh` | ~15s each |
 | **What it looks like** (visuals, HUD, camera, art) | `./scripts/shot.sh ...` then view the PNGs | ~30s |
+
+## The gate tiers (`scripts/check.sh`)
+
+| Tier | Steps | Catches |
+|---|---|---|
+| `lint` | `tools/lint.gd` compiles every `.gd` (src, tests, tools); grep rules: no default-tessellation primitive meshes in `player.gd`, no engine/time/random calls in `src/sim` | parse errors in files no test loads; perf anti-patterns; sim purity breaks (determinism, server safety) |
+| `unit` | `tests/test_*.gd` via `tests/run_tests.gd` | rule/sim regressions. Includes `test_determinism.gd` (two 7v7 and Chaosball bot games stay bit-identical) and `test_render_perf.gd` (view interpolation, cache sharing, low-poly primitives) |
+| `perf` | `tests/render_budget.gd` (triangles, instances, shadow casters, materials, skinned meshes in the real scene: counts, so they never flake) plus `tools/bench.gd` (median per-tick CPU, object growth) | order-of-magnitude slowdowns, per-frame allocation leaks. Budgets: `docs/optimization/README.md` §4 |
+| `smoke` | boot 300 frames, `tests/game_flow.gd`, `tests/menu_flow.gd`, net, matchmaking (casual and competitive), user-data guard | anything player-facing end to end |
+
+**User data is isolated.** `check.sh` points `XDG_DATA_HOME` at a fresh temp dir, so `user://`
+for every test process is throwaway. Tests can't touch the player's saves or settings, and the user
+(or another session) changing settings mid-run can't fail the guard. Running `smoke.sh` alone still
+uses the real dir plus its before/after guard, so prefer `check.sh`.
+
+**Pre-commit hook (optional, off by default).** `./scripts/install-hooks.sh` sets `core.hooksPath=scripts/githooks`
+(shared by all worktrees): commits touching `.gd/.tscn/.tres/.sh/.godot` then run `check.sh --fast`.
+It's off because of the commit-everything rule (`AGENTS.md`): another session's half-finished files
+ride along in your commit and would block it. Turn it on for a solo clone or CI-like use. Either way,
+**run `./scripts/check.sh` yourself before committing your change.**
+
+**Writing tests that catch real bugs:**
+- Test through the real entry point the player uses (`_key()` / `--press`), not internals.
+- Assert the property, not the implementation. Example: "views show replay frames" asserts the view's
+  *target* equals the replay sample exactly, plus that the drawn position is within one interpolation step.
+- A new gate must fail when you plant the bug it's meant to catch. Plant it once, see it go red, then revert.
+- Never weaken or delete an older test to go green. If a test encodes old behavior on purpose,
+  change it in the same commit as the behavior and say so in the message.
+- Anything that binds a port picks a random one per run (`net_test.sh`, `mm_test.sh`, `menu_flow.gd`):
+  several sessions run `smoke.sh` at once, and a fixed port made `menu_flow` fail whenever two overlapped.
+- Timing checks use medians and generous budgets. Count-based checks (triangles, nodes, events) are preferred
+  because they're identical on every machine.
 
 ## Two ways to run Godot offscreen
 
