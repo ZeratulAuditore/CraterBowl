@@ -18,7 +18,7 @@ match starts, the screens show the score and the configured game clock.
 | You | A team-colored ground ring marks the athlete you control. Nothing floats above your head. | `presentation.gd` |
 | Camera | Follow camera behind your player. The mouse moves the aim range on the turf. Your ground ring always stays above the scorebug (#128). While you're the passer, an over-the-shoulder POV that keeps the line and backs in frame. | `src/game/main.gd` `_update_camera`, `_framed_look`, `_camera_target_yaw` |
 | Effects | Camera shake on big events, tackle dust, touchdown fireworks, crowd excitement, jumbotron | `presentation.gd` |
-| Overlay | Scorebug (possession, score, period and game clock, play clock, down and distance, timeout pips, ball spot, mode and mini field), status line, play-call picker, movement meters, hold-Tab scoreboard, event banners | `src/game/overlay.gd` |
+| Overlay | Scorebug (team logos, possession, score, period and game clock, play clock, down and distance, timeout pips, ball spot, mode and mini field), status line, play-call picker, movement meters, hold-Tab scoreboard (flanked by the team logos), event banners | `src/game/overlay.gd` |
 | Play art | Routes, run paths, blocking targets and coverage drawn on the turf before the snap | `offense.md`, `defense.md` |
 | Quality | `--gfx=low\|medium\|high`. Software rasterizers (llvmpipe etc.) auto-select `low`. | `src/game/art/quality.gd` |
 
@@ -37,10 +37,19 @@ code. The play-call picker uses the menu theme and is pinned top-right, over the
 hints are a backed bar of key + action pairs just above the scorebug. Post-game, only the featured
 player stands on stage while their stat card is up, and the hint is a backed pill in the corner.
 
+**Teams (#233).** The league has eight original clubs, listed in `src/sim/teams.gd`: HELIOS (HEL),
+NEBULA (NEB), ECLIPSE (ECL), REGOLITH (REG), SELENE (SEL), APOGEE (APG), QUASAR (QSR) and TYCHO
+(TYC). Each has a name, a 3-letter code, primary and secondary colors and a logo
+(`assets/teams/<id>.png`). Every match is still HELIOS (team 0) vs NEBULA (team 1): the host's
+team picker is #234. The scorebug shows each team's logo between its color tab and its code, and
+the hold-Tab scoreboard puts HELIOS's logo on the left and NEBULA's on the right. Logos on the
+lobby, match intro and game overview are #235, and on the jumbotron #135.
+
 **Audio today:** only the menu soundtrack. It plays `assets/music/tracks.json` in order, loops the playlist, and has a "now playing" widget (prev / pause / next). Credits are in `assets/music/CREDITS.md`. Volume follows the music and master settings. A match plays no SFX, crowd or whistle (#22).
 
 ## Design decisions
 - **Original look only.** It's a sci-fi lunar dome, never Gridiron's art or UI. Assets must be CC0 or compatible-license, logged in `ASSETS.md`.
+- **Team logos are generated art, shown once per team (#233).** Logo provenance is in `ASSETS.md`. The names avoid real pro and college nicknames: `tests/test_teams.gd` checks them against a deny list of space-themed ones (ROCKETS, ASTROS, COMETS, GALAXY…). Teams are pure data in `src/sim/teams.gd` (logo *paths* only), and `src/game/art/team_logos.gd` loads each texture once and caches it for every view. The PNGs are 512 px and imported with mipmaps. Without mipmaps the 34 px scorebug copy shimmers, and a 128 px copy would just be a second file to keep in sync. The scorebug's fixed width (#116) grows from 660 to 744 px for the two logos and their gaps. The movement meters still fit to its left at 1280×720. The overlay's `TEAM_NAMES`/`TEAM_ABBR` now come from the roster, and `set_teams(ids)` swaps them for #234. The end-zone text, POTG and game overview still hard-code HELIOS/NEBULA until #234 routes them through `Teams`; `test_teams.gd` checks they agree with the roster defaults.
 - **Presentation never owns rules.** Views mirror sim state and are interpolated per render frame, so the sim stays deterministic and testable headless.
 - **Rigged athletes are the most expensive thing on screen** (about 8 ms each on WSL's GL path). Measure before adding bones or characters. Details: `../optimization/README.md`.
 - **No floating marker over your player (#141).** A spinning cyan chevron used to hover above the controlled athlete. The owner removed it: you can never switch athletes (your seat is fixed for the match, position changes are rejected and Tab only shows the scoreboard), so there is no switch to re-find yourself after. The team-colored ground ring stays as the "you" marker. #12 plans rings for every athlete, with yours kept distinct.
@@ -60,6 +69,7 @@ player stands on stage while their stat card is up, and the hint is a backed pil
   - Visuals are verified with `./scripts/shot.sh` PNGs (`../TESTING.md`)
   - `tests/game_flow.gd` exercises the live overlay. `./scripts/visual_test.sh` checks and captures the scorebug in scrimmage, kickoff and conversion states, and `tests/visual/you_marker_test.gd` checks the ground ring (and no floating chevron) in a match, an instant replay and the training ground.
   - `tests/visual/camera_framing_test.gd` (#128) projects your ring to the screen and asserts it sits above the scorebug pre-snap on defense, every frame of a backpedal at max aim range, and at a sack's whistle; and that every offensive teammate within 8 yd of the QB is whole in the pre-snap POV. `tests/test_main_scene.gd` checks `_framed_look` across camera distances, FOVs, aim ranges and lag.
+  - `tests/test_teams.gd` (#233) checks that there are 8+ teams with unique ids, names and 3-letter codes and none is a real nickname, that every logo loads as a 512 px square PNG with a transparent background and mipmaps, that the defaults are still HELIOS/NEBULA with unchanged colors, and that the overlay's scorebug and Tab-board logos come from the roster. `tests/visual/team_logos_test.gd` holds Tab through the real input handler and checks that each logo sits inside the bug, left of its score, and that the logos flank the Tab board without covering its text. It captures `team-logos-scorebug` and `team-logos-tab-board`.
   - `tests/visual/hud_polish_test.gd` asserts the fixed scorebug width (presnap, live, whistle), the dead-ball summary, the status pill clearing the scorebug, the themed picker pinned top-right and the meters beside the bug.
 
 ## Open issues
@@ -72,3 +82,5 @@ player stands on stage while their stat card is up, and the hint is a backed pil
 - #43 C28 Commentary barks
 - #44 C29 Events and variety: weather, time of day, rotating modes
 - #228 POV passer camera: your own ring sits behind the scorebug
+- #234 Team picker: host picks teams in the lobby, random for vs-bots, synced over the protocol
+- #235 Team logos on the lobby/match intro and game overview/POTG

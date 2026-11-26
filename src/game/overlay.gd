@@ -12,14 +12,25 @@ const DefensivePlaybook := preload("res://src/sim/defensive_playbook.gd")
 ## Picker buttons, built once (#169): the longest list either side shows. Offense with a run
 ## back: passes + runs + Repeat last/Flip play; defense: calls + Repeat last.
 var PICKER_POOL := maxi(Routes.PLAY_NAMES.size() + Routes.RUN_NAMES.size() + 2, DefensivePlaybook.CALLS.size() + 1)
-const TEAM_NAMES := ["HELIOS", "NEBULA"]
-const TEAM_ABBR := ["HEL", "NEB"]
+const Teams := preload("res://src/sim/teams.gd")
+const TeamLogos := preload("res://src/game/art/team_logos.gd")
+## The two teams on the bug (#233): team 0 = HELIOS, team 1 = NEBULA until the team picker
+## (#234) calls set_teams(). Names/codes come from src/sim/teams.gd, not literals.
+var team_ids: Array = Teams.DEFAULT_IDS.duplicate()
+var TEAM_NAMES: Array = [Teams.default_team(0)["name"], Teams.default_team(1)["name"]]
+var TEAM_ABBR: Array = [Teams.default_team(0)["code"], Teams.default_team(1)["code"]]
+var team_logo: Array[TextureRect] = []    # scorebug logo per team
+var board_logo: Array[TextureRect] = []   # hold-Tab scoreboard logo per team
+var _abbr_l: Array[Label] = []
+## Logo sizes: the bug's team row is 34 px tall; the Tab board is a big centered card.
+const BUG_LOGO := 34.0
+const BOARD_LOGO := 88.0
 const NAVY := Color(0.055, 0.078, 0.14, 0.9)
 const ACCENT := Color(0.36, 0.88, 1.0)
 const ALERT := Color(1.0, 0.42, 0.12)
 ## Fixed scorebug width (#116): reserving the play-clock cell keeps the bug from jumping
 ## and re-centering at the snap and the whistle. Content wider than this still grows it.
-const BUG_W := 660.0   # fits every state in Teko (#125 Slice A; was 600 with Rajdhani)
+const BUG_W := 744.0   # fits every state in Teko (#125 Slice A; was 600 with Rajdhani), +2 × (34 px logo + 8 px gap) for the team logos (#233)
 ## Bottom HUD stack (#116): scorebug flush to the bottom, the movement meters beside it and
 ## the status pill on its top-left edge, so nothing floats over the controlled player.
 const BUG_BOTTOM := 14.0
@@ -133,11 +144,16 @@ func _build_scorebug() -> void:
 		tab.custom_minimum_size = Vector2(6, 34)
 		cell.add_child(tab)
 		team_tab.append(tab)
+		var logo := TeamLogos.rect(team_ids[t], BUG_LOGO)
+		logo.name = "TeamLogo%d" % t
+		cell.add_child(logo)
+		team_logo.append(logo)
 		var team_label := VBoxContainer.new()
 		team_label.alignment = BoxContainer.ALIGNMENT_CENTER
 		team_label.add_theme_constant_override("separation", 0)
 		var name_l := _label(22, Color(0.92, 0.95, 1.0), 700)
 		name_l.text = TEAM_ABBR[t]
+		_abbr_l.append(name_l)
 		team_label.add_child(name_l)
 		var pips := _label(11, Color(0.85, 0.92, 1.0), 700)
 		timeout_pips.append(pips)
@@ -321,11 +337,39 @@ func _build_scoreboard() -> void:
 	scoreboard.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	scoreboard.grow_vertical = Control.GROW_DIRECTION_BOTH
 	root.add_child(scoreboard)
+	# Logos flank the text (#233): team 0's on the left, beside its name and score.
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 18)
+	scoreboard.add_child(row)
 	scoreboard_label = _label(23)
 	scoreboard_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	scoreboard_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	scoreboard_label.custom_minimum_size = Vector2(440, 0)
-	scoreboard.add_child(scoreboard_label)
+	for t in 2:
+		var logo := TeamLogos.rect(team_ids[t], BOARD_LOGO)
+		logo.name = "BoardLogo%d" % t
+		board_logo.append(logo)
+	row.add_child(board_logo[0])
+	row.add_child(scoreboard_label)
+	row.add_child(board_logo[1])
 	scoreboard.hide()
+
+## Show teams `ids` (two Teams ids) on the scorebug and Tab board. The team picker (#234)
+## calls this; until then every match is the default HELIOS vs NEBULA. Unknown ids keep the
+## side's current team.
+func set_teams(ids: Array) -> void:
+	for t in 2:
+		var team := Teams.team(str(ids[t])) if t < ids.size() else {}
+		if team.is_empty():
+			continue
+		team_ids[t] = team["id"]
+		TEAM_NAMES[t] = team["name"]
+		TEAM_ABBR[t] = team["code"]
+		if t < _abbr_l.size():
+			_abbr_l[t].text = team["code"]
+			team_logo[t].texture = TeamLogos.logo(team["id"])
+			board_logo[t].texture = TeamLogos.logo(team["id"])
 
 func _build_banner() -> void:
 	banner = _label(84, Color.WHITE, 800)
