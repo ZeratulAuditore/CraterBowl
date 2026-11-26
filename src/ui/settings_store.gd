@@ -2,6 +2,8 @@ extends RefCounted
 ## Player settings persisted to user://settings.cfg (ConfigFile). Pure data + an
 ## apply() that pushes video/audio values into the engine. Tests pass a temp path.
 
+const Controls := preload("res://src/ui/controls.gd")
+
 const DEFAULT_PATH := "user://settings.cfg"
 const DEFAULT_MM := "127.0.0.1:24600"   # matchmaker; point at the hosted one once deployed
 const FPS_CAPS := [0, 30, 60, 120, 144, 240]
@@ -48,6 +50,8 @@ func load_file(path: String = DEFAULT_PATH) -> void:
 	upnp = bool(cf.get_value("online", "upnp", upnp))
 	var b = cf.get_value("controls", "bindings", {})
 	bindings = b if b is Dictionary else {}
+	# Files without a version predate #138's Gridiron key layout.
+	bindings = Controls.migrate_bindings(bindings, int(cf.get_value("controls", "bindings_version", 1)))
 
 func save(path: String = DEFAULT_PATH) -> bool:
 	var cf := ConfigFile.new()
@@ -62,6 +66,7 @@ func save(path: String = DEFAULT_PATH) -> bool:
 	cf.set_value("online", "matchmaker", matchmaker)
 	cf.set_value("online", "upnp", upnp)
 	cf.set_value("controls", "bindings", bindings)
+	cf.set_value("controls", "bindings_version", Controls.BINDINGS_VERSION)
 	return cf.save(path) == OK
 
 ## Names: 2..16 printable chars, no "|" (leaderboard key separator), not reserved.

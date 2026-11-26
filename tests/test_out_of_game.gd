@@ -10,6 +10,7 @@ const PortMapper := preload("res://src/net/port_mapper.gd")
 const Advertiser := preload("res://src/net/lobby_advertiser.gd")
 const Lobby := preload("res://src/net/lobby.gd")
 const Menu := preload("res://src/ui/main_menu.gd")
+const GameOverview := preload("res://src/ui/game_overview.gd")
 
 const TMP := "user://test_ooo"
 
@@ -176,3 +177,26 @@ func test_replay_listing_newest_first_skips_tests() -> void:
 	var l := Menu.list_replays(TMP + "_rp")
 	assert_eq(l.map(func(p): return p.get_file()), ["2026-11-25_b.json", "2026-11-20_a.json"], "order")
 	_rm(TMP + "_rp")
+
+func test_game_overview_box_score_keeps_readable_team_columns() -> void:
+	var panel := VBoxContainer.new()
+	var overview := GameOverview.build(panel, {
+		"team_names": ["HELIOS", "NEBULA"],
+		"teams": [{"rush_yds": 40}, {"rush_yds": 70}],
+	})
+	var grid := overview.find_child("BoxScore", true, false) as GridContainer
+	assert_true(grid != null, "the overview includes the team stats grid")
+	if grid != null:
+		var inset := grid.get_parent() as MarginContainer
+		assert_true(inset != null and inset.get_theme_constant("margin_right") >= 8,
+			"team stats leave a gutter next to the scrollbar")
+		assert_eq(grid.columns, 3, "stat name plus two team columns")
+		assert_eq(grid.get_child_count(), 21, "headers and six rows")
+		for team in 2:
+			var header := grid.get_child(team + 1) as Label
+			var rush_yards := grid.get_child(team + 7) as Label
+			assert_eq(header.text, ["HELIOS", "NEBULA"][team])
+			assert_eq(rush_yards.text, ["40", "70"][team])
+			assert_eq(header.horizontal_alignment, HORIZONTAL_ALIGNMENT_RIGHT)
+			assert_eq(rush_yards.horizontal_alignment, HORIZONTAL_ALIGNMENT_RIGHT)
+	panel.free()

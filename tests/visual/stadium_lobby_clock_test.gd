@@ -13,7 +13,7 @@ func _run() -> void:
 	var port := 30000 + (Time.get_ticks_usec() + OS.get_process_id() * 7) % 20000
 	game._host_game(port, {"advertise": "127.0.0.1"})
 	check(game.is_server() and game.in_lobby(), "private match lobby is open")
-	check(game.lobby.set_setting(game.LOCAL_PLAYER, "quarters", true), "host selects quarters")
+	check(game.lobby.settings["quarters"], "lobby plays quarters by default (#130)")
 	check(game.lobby.set_setting(game.LOCAL_PLAYER, "quarter_minutes", 3), "host selects three-minute quarters")
 	await _refresh()
 	_check_screens(game, "PRIVATE MATCH LOBBY")
