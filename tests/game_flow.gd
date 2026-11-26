@@ -120,9 +120,9 @@ func _initialize() -> void:
 			check(absf(angle_difference(main.cam_yaw, PI)) < 0.05, "defense camera swung around (yaw %.2f)" % main.cam_yaw)
 			check(main.camera.global_position.z < me_z - 3.0, "defense camera sits on the far side, looking at the offense")
 			check(-main.camera.global_transform.basis.z.z > 0.5, "defense camera looks back up the field toward the ball")
-			_key(KEY_W)
+			_hold(KEY_W, true)   # read_input polls Input, so the key state must go through Input
 			check(main.read_input().y < -0.9, "W moves a defender toward the ball (up the screen)")
-			_key(KEY_W, false)],
+			_hold(KEY_W, false)],
 		[4171 + int(60 * 5.0) + 10, func(): check(main.world.phase != main.World.Phase.PRESNAP, "bot offense snapped by itself")],
 		# A15: rebuild as 3v3 in place
 		[4500, func(): main.configure(3)],
@@ -309,6 +309,15 @@ func _chase_tick() -> void:
 		_key(KEY_E)
 
 ## Inject a real key press through main's key handler.
+## Press/release a key in Godot's Input state (for code that polls Input.is_key_pressed).
+func _hold(code: int, pressed: bool) -> void:
+	var ev := InputEventKey.new()
+	ev.keycode = code
+	ev.physical_keycode = code
+	ev.pressed = pressed
+	Input.parse_input_event(ev)
+	Input.flush_buffered_events()
+
 func _key(code: int, pressed := true) -> void:
 	var ev := InputEventKey.new()
 	ev.keycode = code
