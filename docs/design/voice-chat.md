@@ -1,6 +1,6 @@
 # Team voice chat — plan
 
-Status: **planned** (2026-11-25). Nothing implemented yet.
+Status: **planned** (2026-11-25). Nothing implemented yet. Work: issue #31 (milestones, open owner questions). Player-facing summary: `../features/social.md`.
 
 ## Goal
 
@@ -117,3 +117,8 @@ shows zero voice packets reaching the opposing team's clients.
 2. Should push-to-talk be the default, or open mic?
 3. Is a native GDExtension (Opus) acceptable later, or should we stay pure
    GDScript forever?
+
+## Open issues
+- #31 Team voice chat (team-only, host-relayed): milestones and owner questions
+- #19 C13 Communication: quick-chat wheel, pings, text chat (shares the relay and team routing)
+- #22 C16 Audio foundation (shared bus layout)

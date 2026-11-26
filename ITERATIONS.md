@@ -235,3 +235,8 @@
 - Each half has a one-minute warning. A live play can finish before the warning. A half can also end between snaps.
 - U spends a team timeout between plays. The scorebug shows three per team, or two in 3v3. The host validates the caller, and halftime restores the counts.
 - Verified 245 unit tests and full headless smoke, including a remote timeout. Viewed offscreen captures of the timeout banner and visible pips before and after the snap. Quarters and the mercy rule remain in C04b.
+
+## Process: backlog → GitHub issues (2026-11-25, #1)
+- Not a game iteration (no number). The backlog moved from `FEATURES.md` / `docs/gaps/TODO.md` checklists to GitHub issues #2–#51, with labels for type, priority, area and status. Old ids map via `docs/backlog/legacy-ids.md`. Team voice chat was planned as #31.
+- Docs split into feature level (`docs/features/`) and design level (`docs/design/`). `PLAN.md` → `docs/vision.md`, `docs/gaps/` → `docs/research/`, plus a new `docs/workflow.md`. `LOOP.md` now picks from issues, and the daily gap review files and updates issues.
+- From here on, every iteration entry cites its issue, and every "known gap" is an issue number.

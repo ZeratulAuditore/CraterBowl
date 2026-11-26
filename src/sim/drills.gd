@@ -2,7 +2,7 @@ extends RefCounted
 ## Practice drills + the training ground. Build their own athletes, score reps,
 ## reset. Pure (file IO only for personal bests, like leaderboard.gd).
 ##
-## Training kinds (docs/TRAINING.md):
+## Training kinds (docs/features/training.md):
 ##   hub       - training ground: free roam with a ball, 3 portals to the stations below.
 ##               Also the waiting lobby while queued for an online match.
 ##   blocking  - you're the center: keep the bot QB clean for the pocket clock.
