@@ -71,6 +71,7 @@ post-game overview or the command line. Online skip votes, a free camera and cli
 - Playback is view-only: views read interpolated replay frames, and the sim is never rewound, so replay can't desync a match.
 - Plays are classified by the recorder from sim events, so the sim needs no replay-specific code and saved files carry their highlights.
 - Only highlights auto-replay. Replaying every play would train players to skip.
+- No director AI picking cuts per frame: it needs a lot of tuning and belongs with the free-cam theater (#36).
 - The replay overlay is its own CanvasLayer (`process_priority` 100, after the match overlay). It finds match-overlay
   widgets by name, so a rework of `overlay.gd` can't break replays.
 - Scripted flow tests turn auto replay off (their timings assume the offline sim never pauses) and turn it on only
@@ -94,10 +95,6 @@ post-game overview or the command line. Online skip votes, a free camera and cli
   - `tests/game_flow.gd` (real keys): V replay, auto highlight after a TD, overlay, camera, frame-step, skip,
     no re-trigger, widgets restored, final whistle ends an auto highlight, the reel at FINAL with postgame waiting
   - `tests/test_out_of_game.gd`: replay listing
-
-## History
-- 026 [Replays](../iterations/026-replays.md)
-- 036 [Play replays](../iterations/036-play-replays.md) (B04a)
 
 ## Open issues
 - #36 B04 Instant replay + highlight clips (remaining after B04a: online skip vote, free-cam theater, clip export, Settings toggle)
