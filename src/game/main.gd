@@ -858,6 +858,17 @@ func _join_game(target: String, port: int, opts: Dictionary) -> void:
 				net.send_lobby_action({"a": "ready"}))
 	net.snapshot_received.connect(_on_snapshot)
 	net.event_received.connect(_on_world_event)
+	net.host_lost.connect(_on_host_lost)
+
+const HOST_LOST_STATUS := "Host disconnected"
+## #56: the host quit or dropped. Back to the menu saying why; a finished match keeps
+## its game overview (the host leaving after the final whistle is normal).
+func _on_host_lost() -> void:
+	var launch := get_node_or_null("/root/Launch")
+	if launch == null:
+		return
+	var over: bool = postgame != null or postgame_t >= 0.0
+	launch.go_to_menu(HOST_LOST_STATUS, match_overview() if over and not postgame_done else {})
 
 ## Queued for matchmaking and not yet hosting/joining a match.
 func searching() -> bool:

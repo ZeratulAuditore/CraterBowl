@@ -22,4 +22,26 @@ grep -E "NET " .net-client.log
 if [ $status -ne 0 ] || grep -E "SCRIPT ERROR|Parse Error" .net-client.log .net-host.log | grep -q .; then
   grep -E "SCRIPT ERROR|Parse Error|at: " .net-client.log .net-host.log | head; echo "NET TEST FAIL"; exit 1
 fi
+# Host loss (#56): a client in the match whose host dies (SIGKILL: no goodbye packet)
+# must return to the menu with "Host disconnected".
+PORT2=$((PORT + 1000))
+timeout 80 "$GODOT" --headless --path . -- --host --port="$PORT2" --no-lobby --no-kickoff --profile-file=user://test_net_profile.json --leaderboard-file=user://test_net_lb.json --ranked-file=user://test_net_ranked.json > .net-host2.log 2>&1 &
+HOST=$!
+sleep 1
+ARMED="$(mktemp -u)"
+timeout 70 "$GODOT" --headless --path . -s res://tests/net_client.gd -- --join=127.0.0.1 --port="$PORT2" --host-loss --armed-file="$ARMED" --settings-file=user://test_net_hostloss_settings.cfg --profile-file=user://test_net_client_profile.json > .net-hostloss.log 2>&1 &
+CLIENT=$!
+for i in $(seq 1 200); do
+  [ -f "$ARMED" ] && break
+  kill -0 "$CLIENT" 2>/dev/null || break
+  sleep 0.1
+done
+pkill -9 -P "$HOST" 2>/dev/null   # the godot under `timeout` (SIGKILL on timeout itself would orphan it)
+wait "$HOST" 2>/dev/null
+wait "$CLIENT"; status=$?
+rm -f "$ARMED"
+grep -E "NET " .net-hostloss.log
+if [ $status -ne 0 ] || grep -E "SCRIPT ERROR|Parse Error" .net-hostloss.log | grep -q .; then
+  grep -E "SCRIPT ERROR|Parse Error|at: " .net-hostloss.log | head; echo "NET TEST FAIL (host loss)"; exit 1
+fi
 echo "NET TEST PASS"
