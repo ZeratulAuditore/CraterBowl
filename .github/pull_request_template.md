@@ -8,4 +8,4 @@
 
 ### Testing
 
-<!-- List automated checks and their results. Include a screenshot or video produced by the new integration test for this change. Link the exact Actions artifact and name the relevant file if the evidence is stored there. -->
+<!-- List automated checks and their results. Upload and embed screenshots from the new integration test with ![Descriptive alt text](image-url), or embed the test video. Include the Actions artifact link for the full captures and logs. -->

@@ -49,8 +49,11 @@ camera, HUD, art in `src/game/art/`), `src/net/` = netcode, `src/ui/` = menus/se
 - Use the headings `### Motivation`, `### Solution`, and `### Testing` in the PR description.
 - Add automated integration coverage for the specific behavior changed. The new test must
   generate a screenshot or video of the exercised state. Inspect the capture before sharing it.
-- In Testing, include the evidence and identify the automated checks that produced it. For
-  Actions evidence, link the run's `visual-test-evidence` artifact and name the relevant file.
+- In Testing, name the automated checks that produced the evidence. Upload the relevant
+  test-generated screenshots and embed them inline with `![Descriptive alt text](image-url)`.
+  For video evidence, embed the uploaded video where GitHub supports playback or embed a
+  test-generated screenshot and link to the video. Verify the media displays in the PR.
+  Include the Actions artifact link for the full set of captures and logs.
 - Use a topic branch based on `origin/main` and open the PR after verification. Preserve other
   sessions' work. The local-main commit instructions above apply to local-only work.
 
