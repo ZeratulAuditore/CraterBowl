@@ -272,3 +272,8 @@
 - Q1 and Q3 preserve the drive and timeouts. A live play and its try can finish at 0:00. Q2 ends with the halftime kickoff and timeout reset, and Q4 ends the match. The one-minute warning still occurs once per half.
 - Verified 311 unit tests, 191 gameplay checks, 57 menu checks and 21 network checks. Viewed offscreen captures of the host controls and quarter scorebug. The quarter-transition regression failed when the quarter counter was held at Q1.
 - Updated the rules guide for the coin toss, PAT and fumble roll (#73). Follow-ups #74 and #75 cover the menu's Chaosball selection and the stadium clock during the lobby.
+
+
+## Fix: Host lobby UPnP notice (#47)
+- The host lobby shows the router mapping failure and the UDP port to forward. The invite code still uses the LAN address when mapping fails.
+- The menu flow test simulates a router failure and checks the warning in a real host lobby on a custom port.

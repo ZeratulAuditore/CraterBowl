@@ -768,8 +768,11 @@ func _cli_args() -> Dictionary:
 		out.merge(launch.options, true)
 	return out
 
+var port_mapping_notice := ""
+
 func _setup_net() -> void:
 	var args := _cli_args()
+	port_mapping_notice = str(args.get("port-mapping-notice", ""))
 	if args.has("matchmaker"):
 		var mms := MMServer.new()
 		mms.name = "Matchmaker"
@@ -1746,7 +1749,10 @@ func _process(delta: float) -> void:
 		return
 	if in_lobby():
 		var host_keys := "\nHost: [3/5/7] size   [M] mode   [Q] halves/quarters   [H] period length" if is_server() else ""
-		hud.text = "PRIVATE MATCH LOBBY   Invite code: %s\n%s\n[Enter] ready. Starts when everyone is ready.%s" % [lobby.code, lobby.summary(), host_keys]
+		var lobby_text := "PRIVATE MATCH LOBBY   Invite code: %s\n%s\n[Enter] ready. Starts when everyone is ready.%s" % [lobby.code, lobby.summary(), host_keys]
+		if is_server() and port_mapping_notice != "":
+			lobby_text += "\n\n" + port_mapping_notice
+		hud.text = lobby_text
 		return
 	var clock_txt: String = "%s%dv%d %s" % ["CHAOSBALL " if match_mode == "chaosball" else "", match_size, match_size, series.clock.label()]
 	if world.is_chaos():
