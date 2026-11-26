@@ -72,6 +72,11 @@ const POV_PITCH_MIN := deg_to_rad(-25.0)
 const POV_PITCH_MAX := deg_to_rad(60.0)
 const POV_PITCH_START := deg_to_rad(10.0)
 const POV_ANGLE_OFFSET := 10.0      # launch angle = view pitch + this (deg): level view = a line drive
+## Aim-zoom (#109, Gridiron 1.0.4.24): holding the throw narrows the FOV with the
+## charge (charge = distance), so a long throw zooms in furthest; eases back on release.
+const CAMERA_FOV := 65.0
+const AIM_ZOOM_FOV := 45.0          # FOV at full charge
+const AIM_ZOOM_RATE := 8.0          # 1/s easing rate (frame-rate independent)
 var pov_enabled := true             # tests/bots that aim at a field point turn this off
 var aim_yaw := 0.0                  # 0 = straight downfield (+y), + = right
 var aim_pitch := POV_PITCH_START
@@ -222,7 +227,7 @@ func _ready() -> void:
 		v.sync()
 	camera = Camera3D.new()
 	camera.name = "FollowCamera"
-	camera.fov = 65
+	camera.fov = CAMERA_FOV
 	add_child(camera)
 	camera.make_current()
 	hud = Label.new()
@@ -1242,6 +1247,15 @@ func _update_camera(delta: float) -> void:
 	camera.global_position = follow_pos.lerp(pov_pos, pov_w)
 	camera.look_at(follow_look.lerp(pov_look, pov_w))
 
+## Target FOV for the follow/POV camera: narrows with the charge while the passer winds up.
+func aim_zoom_fov() -> float:
+	return lerpf(CAMERA_FOV, AIM_ZOOM_FOV, charge) if charging and pov_active() else CAMERA_FOV
+
+func _update_fov(delta: float) -> void:
+	var k := 1.0 if _replay_cam_cut else 1.0 - exp(-AIM_ZOOM_RATE * delta)   # cut out of replays
+	_replay_cam_cut = false
+	camera.fov = lerpf(camera.fov, aim_zoom_fov(), k)
+
 func can_pass() -> bool:
 	return world.can_throw(my_id)
 
@@ -1748,7 +1762,7 @@ func _process(delta: float) -> void:
 		_replay_camera(delta)
 	else:
 		_update_camera(delta)
-		camera.fov = 65
+		_update_fov(delta)
 	var m = player.athlete
 	var my_team: int = m.team
 	var side := "OFFENSE | PLAY: %s" % world.play_name if world.offense_team == my_team else "DEFENSE"

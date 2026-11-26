@@ -304,12 +304,14 @@ func _initialize() -> void:
 			var dir: Vector2 = main.aim_dir()
 			var qb = main.world.get_athlete(main.controlled_id)
 			check(main.screen_to_field(Vector2(0, 1)).dot(main.aim_dir()) > 0.99, "W moves along the passer's view (cam yaw %.2f, aim yaw %.2f)" % [main.cam_yaw, main.aim_yaw])
+			check(main.charging and main.camera.fov < main.CAMERA_FOV - 5.0 and main.camera.fov > main.AIM_ZOOM_FOV, "holding J aim-zooms the camera (fov %.1f, charge %.2f)" % [main.camera.fov, main.charge])
 			_key_up(KEY_J)
 			var v: Vector3 = main.world.ball.velocity - Vector3(qb.velocity.x, qb.velocity.y, 0) * main.T.THROW_INHERIT
 			check(main.world.forward_pass_thrown, "J release throws (POV)")
 			check(Vector2(v.x, v.y).normalized().dot(dir) > 0.999, "ball flies where the QB looked")
 			check(absf(rad_to_deg(atan2(v.z, Vector2(v.x, v.y).length())) - ang) < 0.5, "view pitch = launch angle (%.1f)" % ang)
 			check(not main.pov_active(), "POV ends once the ball is thrown")],
+		[12490, func(): check(absf(main.camera.fov - main.CAMERA_FOV) < 0.5, "FOV eases back after the throw (%.2f)" % main.camera.fov)],
 		[12500, func(): main.configure(7); main.ai.defense_enabled = false],
 		[12501, func(): _key(KEY_SPACE)],
 		[12540, func(): check(main.world.ball.is_held_by(main.controlled_id), "QB has the ball"); _key(KEY_E); check(main.world.get_athlete(main.controlled_id).is_spinning() and main.world.get_athlete(main.controlled_id).spin_dir == 1, "E spins right")],
