@@ -14,7 +14,7 @@ match starts, the screens show the score and the configured game clock.
 | Stadium | Bowl seating with an instanced crowd, LED ribbon boards, light towers, dome arches, jumbotrons, crater rim and regolith | `src/game/art/stadium.gd` |
 | Field | Turf, lines, end zones, line-of-scrimmage barrier (see `defense.md`), sideline chains | `src/game/art/field_art.gd`, `los_barrier.gd`, `presentation.gd` |
 | Athletes | Quaternius rig. Your team wears the CC0 mannequin and helmet, and opponents wear a custom uniform. The open helmet hangs on the `Head` bone and wraps the skull down to its base in every clip, with the face in the opening. Jersey numbers are `Label3D` on chest and back. Cosmetics are view-only. | `src/game/player.gd`, `art/character_art.gd`, `art/football_uniforms.gd` |
-| Ball | Leather spheroid with laces, spiral, flight trail and a landing marker | `src/game/presentation.gd` |
+| Ball | Leather spheroid with laces, spiral, flight trail and a landing marker. A carrier holds it in a tucked right arm, high on the chest; a QB holding before the throw holds it centered in front of the chest, one hand on each side (#244). | `src/game/presentation.gd`, `src/game/art/athlete_pose.gd` |
 | You | A team-colored ground ring marks the athlete you control. Nothing floats above your head. | `presentation.gd` |
 | Camera | Follow camera behind your player. The mouse moves the aim range on the turf. Your ground ring always stays above the scorebug (#128). While you're the passer, an over-the-shoulder POV that keeps the line and backs in frame. | `src/game/main.gd` `_update_camera`, `_framed_look`, `_camera_target_yaw` |
 | Effects | Camera shake on big events, tackle dust, touchdown fireworks, crowd excitement, jumbotron | `presentation.gd` |
@@ -57,11 +57,13 @@ player stands on stage while their stat card is up, and the hint is a backed pil
   - **The kicker keeps `PRESS J OR CLICK TO KICK`, and an offense with a kick called keeps `PUNT · PRESS K TO CHANGE`.** These pills are the only place a new player learns to kick, and they show only for the player who has to act. The kick meter (#68) is meant to take them over. The return team's `GET READY TO RETURN` was narration with nothing to do, so it's gone.
   - **No `LOFT N°` readout** beside the QB crosshair. The view pitch is the loft, and the arc dots and landing reticle already show where the throw goes.
   - **The play clock only alarms on your own snap (#168).** Against bots it counts their 5 s huddle (#136), so the old "red at 5 s" rule painted it red for the whole presnap on defense. Red now means "your clock is running out".
+- **The carry is a procedural arm pose, not a clip (#244).** No Quaternius clip has a football carry, and the run clips swing the hand at the hip, so the old pin (`hand_position() + basis.z * 0.08`, and `+z` is backward in Godot) left the ball inside the torso. `art/athlete_pose.gd` is a `SkeletonModifier3D`: after the clip poses the skeleton it runs two-bone IK on the right arm to a hand target on the chest (`TUCK_HAND`, elbow toward `TUCK_POLE`, both in `spine_03` space), blended by a weight `player.gd` smooths over ~0.2 s. A QB for whom `world.can_throw()` holds instead holds the ball at `HOLD_BALL` in front of the chest, each wrist beside it with palms turned in (`HOLD_HAND_BASIS`), and the ball sits there rather than in the right palm. A first version sent both hands to the chest with the ball still in the right palm, so the hands stacked on one side of it. `throw_release()` zeroes the weight so the throw clip is untouched. The ball sits in a palm socket (`BALL_SOCKET`, `hand_r` space). Two Godot 4.3 facts shaped the code: modifier results exist only during the skeleton update (read the bones at any other time and you get the plain clip pose), so the view pins the ball from `skeleton_updated` and caches the socket transform for `ball_transform()`; and a skeleton outside the tree refreshes global poses lazily, so tests call `force_update_all_bone_transforms()`. Replays don't record the holder, so the pose is off in replays. Rejected: authoring a tuck clip (needs Blender work and an `AnimationTree` with per-bone filters, and doesn't help the later head-look and reach work, #245/#246).
 
 ## Code and tests
 - `src/game/presentation.gd`: ball, markers, effects, crowd, jumbotron
 - `src/game/overlay.gd`: scorebug and HUD
 - `src/game/player.gd`: athlete views
+- `src/game/art/athlete_pose.gd`: procedural arm pose over the clip (ball carry, #244)
 - `src/game/art/`: stadium, field, materials, shaders, quality presets
 - `src/game/render_cache.gd`: shared low-poly meshes and materials (lint forbids default-tessellation meshes)
 - `src/ui/music_player.gd`: menu soundtrack
@@ -72,10 +74,14 @@ player stands on stage while their stat card is up, and the hint is a backed pil
   - `tests/test_helmet_fit.gd` skins the cranium on the CPU (GLB data via `GLTFDocument`) for 66 poses across every clip the view plays plus all taunts. It asserts no vertex crosses the helmet shell, the skull stays covered and the crown and median gaps stay within 1.2 cm and 2.5 cm. `tests/visual/helmet_fit_test.gd` captures head close-ups (front, back, profile, opponent) in eight poses.
   - `tests/visual/camera_framing_test.gd` (#128) projects your ring to the screen and asserts it sits above the scorebug pre-snap on defense, every frame of a backpedal at max aim range, and at a sack's whistle; and that every offensive teammate within 8 yd of the QB is whole in the pre-snap POV. `tests/test_main_scene.gd` checks `_framed_look` across camera distances, FOVs, aim ranges and lag.
   - `tests/visual/hud_polish_test.gd` asserts the fixed scorebug width (presnap, live, whistle), the dead-ball summary, the status pill clearing the scorebug, the themed picker pinned top-right and the meters beside the bug.
+  - `tests/test_athlete_pose.gd` (#244) samples the real Sprint and Idle clips: the tucked hand stays within 0.25 m of the chest (the plain sprint doesn't), a passer's hands sit on opposite sides of the ball (each 0.12–0.3 m from its center), weight 0 leaves the arm untouched, the throw release drops the pose at once, and the palm socket sits in the hand with the ball's long axis along the forearm. `tests/game_flow.gd` frames 39 (QB pre-throw) and 7900 (RB after the handoff) check in the live scene that the pose is on and the ball sits in the palm socket in the same frame.
   - `tests/visual/hud_declutter_test.gd` (#131) asserts a live match shows no mode line while the Tab board does, the toss and kickoff show no phase words or toss key hints (the kicker keeps the kick hint), a bot huddle's play clock isn't red, and no `LOFT` text is drawn beside the QB crosshair.
 
 ## Open issues
-- #159 Football model: prolate spheroid with laces/seams, correct spin axis
+- #159 Football model: prolate spheroid with laces/seams, correct spin axis (the held ball is still a 0.3 m sphere)
+- #245 Head tracks the ball, clamped to human neck limits
+- #246 Catch stance and arm reach toward an incoming ball
+- #247 Hold left click to reach: larger catch radius while held
 - #160 Uniform quality pass: jersey/pads materials, numbers, team colors
 - #173 Skinned athlete vanishes in close-ups during Hit_Knockback (culled by rest-pose AABB)
 - #10 C10 Throw readability: landing marker, aim-zoom
