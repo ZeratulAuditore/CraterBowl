@@ -94,6 +94,7 @@ func _initialize() -> void:
 		[2470, func(): var c = main.world.carrier(); c.position = Vector2(26, 101.0)],
 		[2472, func(): main.next_play(); check(main.series.score[0] == 8, "try good: 8"); check(main.series.state == main.Match.State.KICKOFF and main.world.offense_team == 0 and absf(main.world.los_y - 35.0) < 0.01, "kickoff: home kicks from its 35")],
 		# A09: play clock auto-snap, untimed down, halftime
+		[2474, func(): _check_look_snaps("kickoff reset after the try")],   # #245 (frame 2474 only)
 		[2473, func(): check(main.hud.text.find("Q1 ") >= 0 and main.hud.text.find("H1 ") < 0 and main.hud.text.find("PLAY ") >= 0, "HUD game + play clock"); main.series.clock.play_clock = 0.3],
 		[2500, func(): check(main.world.phase == main.World.Phase.LIVE, "play clock auto-snapped"); main.series.clock.quarter = 2; main.series.clock.remaining = 0.2],
 		[2530, func(): check(main.series.clock.expired(), "clock hit 0:00")],
@@ -668,6 +669,16 @@ func _check_carry_pose(two_hand: bool, context: String) -> void:
 	var lookers: int = main.views.filter(func(o): return o != v and o.pose.look_weight > 0.5).size()
 	check(v.pose.look_weight < 0.2 and lookers >= main.views.size() - 3,   # the carrier's look fades over ~0.3 s
 		"heads track the ball (%s): %d of %d others look, carrier %.2f" % [context, lookers, main.views.size() - 1, v.pose.look_weight])
+
+## #245: after the ball teleports (new spot), heads point at it at once instead of
+## sweeping across the field: every looking view's look point is already at the ball.
+func _check_look_snaps(context: String) -> void:
+	var ball: Vector3 = main.ball_view.global_position
+	var worst := 0.0
+	for o in main.views:
+		if o.pose.look_weight > 0.0:
+			worst = maxf(worst, o._look_point.distance_to(ball))
+	check(worst < 1.0, "heads snap to the ball after a teleport (%s): worst %.1f m behind" % [context, worst])
 
 var _sorted := false
 func _physics_process(_dt: float) -> bool:

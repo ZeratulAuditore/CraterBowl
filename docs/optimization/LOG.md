@@ -8,6 +8,24 @@ Machine for all entries so far: WSL2 Ubuntu 24.04, i7-11800H (16 threads), RTX 3
 
 ---
 
+## 2026-11-26 — perf-05: cost of procedural head look (#245)
+
+Machine: native Windows 11, RTX 3060 Ti, Godot 4.3 console exe, `./scripts/perf.sh` (headless bench, so CPU-side
+only), CPU load 19% at start. Three trees, interleaved, 3 rounds each; medians in µs.
+
+| Tree | scene_frame p50 | scene_frame p99 | sim_tick p50 |
+|---|---|---|---|
+| #244 carry pose only (baseline) | 953 (920–998) | 2436 | 120 |
+| #245 head look, first version | 1052 (1008–1076) | 2730 | 118 |
+| #245 after review fixes | 1050 (1040–1089) | 2713 | 118 |
+
+The head look costs about +100 µs/frame (+10%): the `AthletePose` modifier now runs for all 14 athletes
+(neck + head, a few `get_bone_global_pose` reads each) instead of only the carrier. The sim is unchanged.
+Render budget unchanged (no meshes, materials or shadow casters). What didn't help: the review fixes
+(cache the rig check instead of building `_bones.values()` per athlete per frame, and drop a per-call `[]`
+default in `_open_hand`) removed the per-frame allocations but made no measurable difference (1052 vs 1050,
+inside run-to-run noise of about 150 µs). Not measured: real-GPU frame time with a window.
+
 ## 2026-11-26 — perf-03: flaky object-growth check from play-picker churn (#169)
 
 `perf.sh` failed about half the time on origin/main c50b2ba with "objects grew by >= 51/52 in each of two

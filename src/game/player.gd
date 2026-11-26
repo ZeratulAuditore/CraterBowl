@@ -332,9 +332,11 @@ func ball_local(sk: Skeleton3D) -> Transform3D:
 func _update_look(delta: float, down: bool) -> void:
 	var looking := look_node != null and ball_node == null and not down and celebrate_t <= 0.0
 	var k := 1.0 - exp(-LOOK_K * delta)
-	if looking:
+	if look_node != null:   # keep following while fading out too, so a fading head never points at an old spot
 		var target := look_node.global_position
-		_look_point = target if pose.look_weight <= 0.0 else _look_point.lerp(target, k)
+		# Snap after a teleport (new spot, replay seek) so every head doesn't sweep the field.
+		var snap: bool = pose.look_weight <= 0.0 or target.distance_to(_look_point) > TELEPORT_DIST * 2.0
+		_look_point = target if snap else _look_point.lerp(target, k)
 		pose.look_target = _skel.global_transform.affine_inverse() * _look_point
 	pose.look_weight = lerpf(pose.look_weight, 1.0 if looking else 0.0, k)
 	if pose.look_weight < 0.01 and not looking:
@@ -343,8 +345,7 @@ func _update_look(delta: float, down: bool) -> void:
 func _pin_ball() -> void:
 	if ball_node == null or not is_instance_valid(ball_node):
 		return   # only the carrier pays for this (per-frame work is change-driven)
-	var sk: Skeleton3D = mesh_i.get_parent()
-	var xf := sk.global_transform * ball_local(sk)
+	var xf := _skel.global_transform * ball_local(_skel)
 	_ball_xf = Transform3D(xf.basis.orthonormalized(), xf.origin)
 	_ball_xf_ok = true
 	ball_node.global_transform = _ball_xf

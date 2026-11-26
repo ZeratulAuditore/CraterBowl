@@ -39,6 +39,7 @@ var look_target := Vector3.ZERO   # skeleton space
 var look_weight := 0.0            # 0 = clip's head, 1 = full look
 var _bones := {}
 var _fingers := {}     # "_r"/"_l" -> finger bone ids (joints 01-03)
+var _rig_ok := false   # every bone in _bones exists (checked once: no per-frame allocation)
 
 func _process_modification() -> void:
 	apply(get_skeleton())
@@ -56,7 +57,8 @@ func apply(sk: Skeleton3D) -> void:
 					var b := sk.find_bone("%s_%s%s" % [f, j, side])
 					if b >= 0:
 						_fingers[side].append(b)
-	if _bones.values().has(-1):
+		_rig_ok = not _bones.values().has(-1)
+	if not _rig_ok:
 		return   # rig without these bones: keep the clip
 	if look_weight > 0.0:
 		_look(sk)
@@ -101,7 +103,7 @@ func _look(sk: Skeleton3D) -> void:
 ## Uncurl the clip's fist so the fingers spread around the ball.
 func _open_hand(sk: Skeleton3D, side: String) -> void:
 	var k := HAND_OPEN * weight
-	for b in _fingers.get(side, []):
+	for b in _fingers[side]:
 		sk.set_bone_pose_rotation(b, sk.get_bone_pose_rotation(b).slerp(sk.get_bone_rest(b).basis.get_rotation_quaternion(), k))
 
 ## Two-bone IK (skeleton space): hand to `target`, elbow bent toward `pole`. The hand takes
@@ -133,7 +135,7 @@ func _reach(sk: Skeleton3D, side: String, target: Vector3, pole: Vector3, hand_b
 ## Where the held ball sits, in skeleton space: in front of the chest for the two-hand hold,
 ## else null (the right palm's socket, player.gd). Only valid during the skeleton update.
 func hold_ball(sk: Skeleton3D):
-	if not two_hand or weight <= 0.0 or _bones.is_empty() or _bones.values().has(-1):
+	if not two_hand or weight <= 0.0 or not _rig_ok:
 		return null
 	return sk.get_bone_global_pose(_bones.spine_03) * Transform3D(Basis(), HOLD_BALL)
 
