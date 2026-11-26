@@ -24,6 +24,7 @@ var status_l: Label
 var mode_l: Label
 var picker: PanelContainer
 var picker_title: Label
+var coaching_text: Label
 var picker_grid: GridContainer
 var route_select: OptionButton
 var picker_side := -1
@@ -169,6 +170,8 @@ func _build_picker() -> void:
 	picker.add_child(column)
 	picker_title = _label(17, ACCENT)
 	column.add_child(picker_title)
+	coaching_text = _label(16)
+	column.add_child(coaching_text)
 	picker_grid = GridContainer.new()
 	picker_grid.columns = 2
 	column.add_child(picker_grid)
@@ -280,10 +283,15 @@ func on_event(n: String, d: Dictionary) -> void:
 
 # --- per frame --------------------------------------------------------------
 
+var _last_world
+
 func refresh(main, delta: float) -> void:
 	var s = main.series
 	var w = main.world
-	var pre_game: bool = main.searching() or main.in_lobby()
+	if _last_world != w:
+		_last_world = w
+		_text_t = 0.0
+	var pre_game: bool = main.in_lobby()   # queued + warming up on the training ground still shows the overlay
 	var final: bool = s != null and s.is_final()
 	root.visible = not pre_game
 	# The detailed text HUD stays for lobby/search/final summary only.
@@ -313,10 +321,10 @@ func refresh(main, delta: float) -> void:
 		(poss[t] as Label).modulate.a = 1.0 if w.possession_team() == t and not final else 0.0
 		timeout_pips[t].visible = main.drill == null
 		timeout_pips[t].text = "●".repeat(s.clock.timeouts[t]) + "○".repeat(s.clock.timeout_limit - s.clock.timeouts[t])
-	clock_l.text = "FINAL" if final else s.clock.label()
+	clock_l.text = "FINAL" if final else ("" if main.drill != null else s.clock.label())
 	down_l.text = _down_text(main)
 	var pc := int(ceil(s.clock.play_clock))
-	play_clock_l.text = ":%02d" % pc if int(w.phase) == 0 else ""
+	play_clock_l.text = ":%02d" % pc if int(w.phase) == 0 and main.drill == null else ""
 	play_clock_l.label_settings.font_color = ALERT if pc <= 5 else ACCENT
 	mode_l.text = _mode_text(main)
 	status_l.text = _status_text(main)
@@ -368,14 +376,26 @@ func _mode_text(main) -> String:
 	if main.ranked_match:
 		t += "  ·  RANKED"
 	if main.drill != null:
-		t = "PRACTICE"
+		t = main.drill.title() if _training(main) else "PRACTICE"
+	if main.searching():
+		t = main.queue_text() + "  ·  " + t
 	return t
+
+func _training(main) -> bool:
+	return main.drill != null and main.Drills.is_training(main.drill.kind)
+
+## Drill banners: [title, sub, kind] (good / miss / up / info).
+func show_drill_banner(b: Array) -> void:
+	var c: Color = {"good": Color(0.45, 1.0, 0.6), "miss": ALERT, "up": Color(1.0, 0.86, 0.35)}.get(b[2], ACCENT)
+	show_banner(str(b[0]), str(b[1]), c, 1.6)
 
 func _status_text(main) -> String:
 	var w = main.world
 	var s = main.series
 	if s.is_final():
 		return ""
+	if _training(main):
+		return main.drill.status(w)
 	var lab: String = s.downs.label()
 	var at := lab.find(" at ")
 	var spot := lab.substr(at + 4).to_upper() if at > 0 else ""
@@ -391,6 +411,16 @@ func _status_text(main) -> String:
 
 func _refresh_picker(main, final: bool) -> void:
 	var w = main.world
+	var training := _training(main)
+	coaching_text.visible = training
+	picker_grid.visible = not training
+	if training:
+		picker.visible = not main.scoreboard_held
+		var card: Array = main.drill.card()
+		picker_title.text = card[0]
+		coaching_text.text = card[1]
+		route_select.hide()
+		return
 	picker.visible = not final and w.phase == w.Phase.PRESNAP and main.play_picker_open and not main.scoreboard_held and not main.replay_active
 	if not picker.visible:
 		return

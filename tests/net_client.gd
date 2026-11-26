@@ -29,7 +29,6 @@ var broke_stance := false   # host snapshot shows the lock cleared after our Spa
 var crossed_line := false   # predicted defender ever past the neutral zone
 var defense_call_seen := false
 var defense_recall_seen := false
-var requested_qb_slot := false
 var sent_timeout := false
 var got_timeout_event := false
 var timeout_confirmed := false
@@ -122,7 +121,6 @@ func _physics_process(_dt: float) -> bool:
 	if bad_snap_sent_at > 0 and f == bad_snap_sent_at + 90:
 		pick_rejected = aid == aid_before_pick
 		equipped_number = main.views[aid].number_text
-		main.do_action({"a": "team"})
 	if bad_snap_sent_at > 0 and f > bad_snap_sent_at + 90:
 		_test_remote_handoff()
 	if f == 1500 or remote_handoff_confirmed:
@@ -155,9 +153,6 @@ func _test_remote_handoff() -> void:
 	var me = w.get_athlete(aid)
 	if me == null or me.team != 1:
 		return
-	if not requested_qb_slot:
-		main.do_action({"a": "pick", "slot": main.match_size})
-		requested_qb_slot = true
 	if w.offense_team != 1 or me.role != main.Athlete.Role.QB:
 		return
 	if not sent_timeout and w.phase == w.Phase.PRESNAP:
