@@ -8,7 +8,7 @@ looped. It's short on purpose: each section links to the doc that owns the detai
 | Iteration procedure (orient → pick → design → build → check → record → commit) | `LOOP.md` |
 | **What to work on, status, bugs, ideas** | **GitHub issues** (`gh issue list`), rules in `docs/workflow.md` |
 | How a feature plays today (feature level) | `docs/features/<area>.md` |
-| How it's built (design level) | `docs/design/` (architecture, netcode, voice chat) |
+| How it's built (design level) | `docs/design/` (architecture, netcode, voice chat, regression baselines) |
 | Vision and pillars, history | `docs/vision.md`; history is merged PRs, closed issues and `git log` |
 | Old ids (`B09`, `C05`…) → issue # | `docs/backlog/legacy-ids.md` |
 | How to test anything without a window | `docs/TESTING.md` |
