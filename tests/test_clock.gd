@@ -24,6 +24,15 @@ func _match(los: float = 25.0) -> Match:
 	m.match_event.connect(func(n, _d): mevents.append(n))
 	return m
 
+## Resolve a pending kickoff as a touchback: receiving team's ball at its 25.
+func _touchback(m) -> void:
+	assert_eq(m.state, m.State.KICKOFF)
+	m.world.kicked = true
+	m.world.phase = World.Phase.DEAD
+	m.last_result = {"type": "touchback", "spot": 105.0, "team": m.world.offense_team}
+	m.next_play()
+	assert_eq(m.state, m.State.SCRIMMAGE)
+
 func _tick(m, seconds: float, inputs := {}) -> void:
 	for i in int(round(seconds / DT)):
 		m.tick(DT)
@@ -170,6 +179,7 @@ func test_warning_waits_for_whistle_and_resets_at_halftime() -> void:
 	m.clock.remaining = 0.0
 	m.next_play()
 	assert_eq(m.clock.half, 2)
+	_touchback(m)   # 2nd half opens with a kickoff (B09)
 	_snap_with_holder(m)
 	m.clock.remaining = 60.1
 	_tick(m, 0.25)
@@ -197,7 +207,8 @@ func test_running_presnap_stops_at_warning_and_can_expire_after_warning() -> voi
 	assert_eq(m.last_outcome["outcome"], "halftime")
 	assert_eq(m.clock.half, 2)
 	assert_eq(m.world.phase, World.Phase.PRESNAP)
-	assert_eq(m.world.offense_team, 1)
+	assert_eq(m.state, m.State.KICKOFF, "2nd half opens with a kickoff")
+	assert_eq(m.last_outcome["receiving"], 1)
 
 func test_timeouts_stop_clock_use_actor_team_and_reset_at_half() -> void:
 	var m := _match()
