@@ -22,6 +22,12 @@ const OOB_MARGIN := 2.0
 const SNAP_TIME := 0.35        # seconds for snap flight C -> QB
 const BALL_CARRY_HEIGHT := 1.1 # yards above turf when held
 
+# Run game
+const HANDOFF_REACH := 1.6
+const HANDOFF_COOLDOWN := 0.8
+const AI_HANDOFF_WINDOW := 1.5
+const RUN_BLOCK_LANE_WEIGHT := 0.55
+
 # Passing
 const GRAVITY := 10.73          # yd/s^2
 const RELEASE_HEIGHT := 2.0
@@ -71,6 +77,10 @@ const RECOVER_RADIUS := 0.8
 const RECOVER_MAX_HEIGHT := 1.0
 
 # Bots
+const NEUTRAL_ZONE_HALF := 0.5     # pre-snap: each side stops this far from the LOS
+const BARRIER_HEIGHT := 2.4        # LOS barrier wall height (m)
+const BARRIER_REVEAL_DIST := 3.0   # barrier brightens near athletes within this (yd)
+const BARRIER_DROP_TIME := 0.3     # barrier dissolve after the snap (s)
 const AI_SNAP_DELAY := 2.5         # AI-only offense snaps after this long presnap
 const AI_COVER_REACTION := 0.25   # defender reacts to where the receiver was
 const AI_COVER_TRAIL := 0.8       # yards behind along the receiver's path
@@ -97,3 +107,9 @@ const AI_PASS_CLOCK_MARGIN := 1.2
 const DEFENSE_GOAL_LINE_RANGE := 5.0
 const DEFENSE_PREVENT_DISTANCE := 15.0
 const DEFENSE_PREVENT_TIME := 60.0
+const DEFENSE_UNDER_DEPTH := 8.0
+const DEFENSE_DEEP_DEPTH := 18.0
+const DEFENSE_PREVENT_DEPTH := 25.0
+const DEFENSE_GOAL_DEPTH := 4.0
+const HUDDLE_SECONDS := 5.0
+const PROTECTION_RANGE := 8.0

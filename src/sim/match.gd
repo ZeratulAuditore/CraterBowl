@@ -19,10 +19,12 @@ var downs := Downs.new()
 var clock := Clock.new()
 var opening_receiver := 0
 var score := [0, 0]
+var max_deficit := [0, 0]   # worst trailing margin each team faced
 var state: State = State.SCRIMMAGE
 var try_points := 1
 var last_result := {}
 var last_outcome := {}
+var _possession_changed := false
 
 func _init(w: World) -> void:
 	world = w
@@ -44,27 +46,63 @@ func start(offense: int = 0, los: float = -1.0) -> void:
 		los = kickoff_los()
 	state = State.SCRIMMAGE
 	opening_receiver = offense
+	clock.timeout_limit = Clock.SMALL_MATCH_TIMEOUTS if world.athletes.size() == 6 else Clock.TIMEOUTS_PER_HALF
 	clock.reset()
+	world.last_offensive_calls = ["", ""]
+	world.last_defensive_calls = ["", ""]
 	downs.reset(offense, los)
 	world.set_offense(offense)
 	_setup_formation()
 
 func _setup_formation() -> void:
 	world.setup_formation(downs.los)
+	if not world.is_chaos():
+		if downs.distance() <= 3.0:
+			world.call_play("Slants")
+		elif downs.distance() >= 15.0 and goal() - downs.los >= 25.0:
+			world.call_play("Deep Shot")
+		else:
+			world.call_play("Mesh")
 	world.call_defense(World.DefensivePlaybook.suggest(downs.down, downs.distance(),
 		goal() - downs.los, clock.remaining))
 
 func _on_world_event(n: String, d: Dictionary) -> void:
 	match n:
+		"snap":
+			_possession_changed = false
+			clock.running_between_plays = false
+		"interception":
+			_possession_changed = true
+		"recovery":
+			_possession_changed = _possession_changed or d.get("turnover", false)
 		"tackle", "out_of_bounds":
-			last_result = {"type": n, "spot": d["spot"].y, "team": d.get("team", world.offense_team)}
+			var spot: float = d["spot"].y
+			var team: int = d.get("team", world.offense_team)
+			last_result = {"type": n, "spot": spot, "team": team}
+			clock.running_between_plays = n == "tackle" and _clock_runs_after_tackle(spot, team)
 		"incomplete":
+			clock.running_between_plays = false
 			last_result = {"type": "incomplete", "team": d.get("team", world.offense_team),
 				"spot": (d.get("at", Vector2(0, downs.los)) as Vector2).y}
 		"touchdown":
+			clock.running_between_plays = false
 			last_result = {"type": "touchdown", "team": d.get("team", world.offense_team), "points": d.get("points", TD_POINTS)}
 		"explode":
+			clock.running_between_plays = false
 			last_result = {"type": "explode", "spot": d["spot"].y, "team": d.get("team", world.offense_team)}
+
+func _clock_runs_after_tackle(spot: float, team: int) -> bool:
+	return state == State.SCRIMMAGE and not world.is_chaos() and not clock.expired() \
+		and not _possession_changed and team == downs.offense_team \
+		and spot >= 0.0 and spot < downs.first_down_y and downs.down < 4
+
+func call_timeout(team: int) -> bool:
+	if world.phase == World.Phase.LIVE or not clock.spend_timeout(team):
+		return false
+	if world.phase == World.Phase.PRESNAP:
+		clock.new_play()
+	match_event.emit("timeout", {"team": team, "remaining": clock.timeouts[team]})
+	return true
 
 ## During try presnap: choose 1 (from the 3) or 2 (from the 10).
 func choose_try(points: int) -> bool:
@@ -77,6 +115,8 @@ func choose_try(points: int) -> bool:
 
 func _award(team: int, pts: int, why: String) -> void:
 	score[team] += pts
+	for t in 2:
+		max_deficit[t] = maxi(max_deficit[t], score[1 - t] - score[t])
 	match_event.emit("score", {"team": team, "points": pts, "why": why, "score": score.duplicate()})
 
 func _kickoff(receiving: int) -> Dictionary:
@@ -86,7 +126,19 @@ func _kickoff(receiving: int) -> Dictionary:
 
 ## Advance clocks; auto-snap when the play clock expires.
 func tick(dt: float) -> void:
-	var snap_now := clock.tick(dt, world.phase == World.Phase.LIVE, world.phase == World.Phase.PRESNAP)
+	var live := world.phase == World.Phase.LIVE
+	var presnap := world.phase == World.Phase.PRESNAP
+	var was_running := clock.running_between_plays
+	var snap_now := clock.tick(dt, live and state != State.TRY, presnap)
+	if not live and clock.take_warning():
+		if presnap:
+			clock.new_play()
+		match_event.emit("clock_warning", {"half": clock.half})
+		return
+	if presnap and was_running and clock.expired():
+		if not _advance_expired_half():
+			_line_up_next_play()
+		return
 	if snap_now and world.snap():
 		match_event.emit("auto_snap", {})
 
@@ -154,20 +206,28 @@ func next_play() -> Dictionary:
 	else:
 		last_outcome = downs.apply(r)
 	# Half/game ends once the clock is out and no try is pending.
-	if clock.expired() and state != State.TRY:
-		if clock.half < Clock.HALVES:
-			clock.start_next_half()
-			last_outcome = _kickoff(1 - opening_receiver)
-			last_outcome["outcome"] = "halftime"
-		else:
-			clock.final = true
-			world.phase = World.Phase.DEAD
-			last_outcome = {"outcome": "final", "score": score.duplicate(), "winner": winner()}
-			match_event.emit("final", last_outcome)
-			return last_outcome
+	if clock.expired() and state != State.TRY and _advance_expired_half():
+		return last_outcome
+	_line_up_next_play()
+	return last_outcome
+
+## Returns true when there is no next play.
+func _advance_expired_half() -> bool:
+	if clock.half < Clock.HALVES:
+		clock.start_next_half()
+		last_outcome = _kickoff(1 - opening_receiver)
+		last_outcome["outcome"] = "halftime"
+		return false
+	clock.final = true
+	clock.running_between_plays = false
+	world.phase = World.Phase.DEAD
+	last_outcome = {"outcome": "final", "score": score.duplicate(), "winner": winner()}
+	match_event.emit("final", last_outcome)
+	return true
+
+func _line_up_next_play() -> void:
 	clock.new_play()
 	if downs.offense_team != world.offense_team:
 		world.set_offense(downs.offense_team)
 	_setup_formation()
 	match_event.emit(last_outcome["outcome"], last_outcome)
-	return last_outcome

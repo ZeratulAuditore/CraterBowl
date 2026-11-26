@@ -16,6 +16,7 @@ var bug: PanelContainer
 var team_score: Array = []   # Label per team
 var team_tab: Array = []     # ColorRect per team
 var poss: Array = []         # possession pip per team
+var timeout_pips: Array[Label] = []
 var clock_l: Label
 var down_l: Label
 var play_clock_l: Label
@@ -104,9 +105,16 @@ func _build_scorebug() -> void:
 		tab.custom_minimum_size = Vector2(6, 34)
 		cell.add_child(tab)
 		team_tab.append(tab)
+		var team_label := VBoxContainer.new()
+		team_label.alignment = BoxContainer.ALIGNMENT_CENTER
+		team_label.add_theme_constant_override("separation", 0)
 		var name_l := _label(22, Color(0.92, 0.95, 1.0), 700)
 		name_l.text = TEAM_ABBR[t]
-		cell.add_child(name_l)
+		team_label.add_child(name_l)
+		var pips := _label(11, Color(0.85, 0.92, 1.0), 700)
+		timeout_pips.append(pips)
+		team_label.add_child(pips)
+		cell.add_child(team_label)
 		var sc := _label(30, Color.WHITE, 800)
 		sc.custom_minimum_size.x = 34
 		sc.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -254,6 +262,13 @@ func on_event(n: String, d: Dictionary) -> void:
 		"fumble": show_banner("FUMBLE", "", ALERT)
 		"recovery": show_banner("RECOVERED", "TURNOVER" if d.get("turnover", false) else "", ACCENT)
 		"explode": show_banner("BALL EXPLODED", "", ALERT, 1.6)
+		"clock_warning": show_banner("ONE-MINUTE WARNING", "", ACCENT)
+		"timeout":
+			var team: int = d["team"]
+			show_banner("TIMEOUT", TEAM_NAMES[team], ACCENT)
+		"snap":
+			if banner.text in ["TIMEOUT", "ONE-MINUTE WARNING"]:
+				banner_t = 0.0
 
 # --- per frame --------------------------------------------------------------
 
@@ -279,6 +294,8 @@ func refresh(main, delta: float) -> void:
 		(team_tab[t] as ColorRect).color = main.TEAM_COLORS[t]
 		(team_score[t] as Label).text = str(s.score[t])
 		(poss[t] as Label).modulate.a = 1.0 if w.offense_team == t and not final else 0.0
+		timeout_pips[t].visible = main.drill == null
+		timeout_pips[t].text = "●".repeat(s.clock.timeouts[t]) + "○".repeat(s.clock.timeout_limit - s.clock.timeouts[t])
 	clock_l.text = "FINAL" if final else ("" if main.drill != null else s.clock.label())
 	down_l.text = _down_text(main)
 	var pc := int(ceil(s.clock.play_clock))
@@ -362,11 +379,11 @@ func _status_text(main) -> String:
 		0:
 			var mine: bool = w.offense_team == w.get_athlete(main.my_id).team
 			var t := "BALL ON %s  ·  " % spot if spot != "" else ""
-			return t + ("SPACE TO SNAP" if mine else "DEFENSE  ·  SPACE TO LET THEM SNAP")
+			return t + ("SPACE TO SNAP" if mine else "DEFENSE  ·  Q CHANGE CALL" if not w.defensive_call.is_empty() else "DEFENSE")
 		1:
 			if main.world.is_chaos():
 				return "PASS CLOCK %.1f" % maxf(0.0, main.T.PASS_CLOCK - w.hold_t)
-			return ""
+			return main.handoff_hint()
 		_:
 			return ("%s  ·  R FOR NEXT PLAY" % main.last_whistle) if main.last_whistle != "" else ""
 
@@ -374,16 +391,23 @@ func _refresh_card(main) -> void:
 	var w = main.world
 	var me = w.get_athlete(main.my_id)
 	var offense: bool = me != null and w.offense_team == me.team
+	var remaining: int = main.huddle_remaining()
 	if _training(main):
 		var cd: Array = main.drill.card()
 		card_title.text = cd[0]
 		card_body.text = cd[1]
+	elif remaining > 0 and me != null:
+		card_title.text = "%s HUDDLE  ·  %ds  ·  Q NEXT" % ["OFFENSE" if offense else "DEFENSE", remaining]
+		card_body.text = main.huddle_calls(me.team) + ("\nL Last   ·   X Flip   ·   Y Auto" if offense else "\nL Last   ·   Y Auto")
 	elif offense:
-		card_title.text = "PLAY CALL  [Q]"
+		card_title.text = "AUTO CALL  [Y]" if main.auto_call else "PLAY CALL  [Q]"
 		var body: String = str(w.play_name).to_upper()
 		if w.route_of.has(main.my_id):
 			body += "\nYOUR ROUTE  %s  [F]" % w.route_of[main.my_id]
 		card_body.text = body
+	elif int(w.phase) == 0 and not w.defensive_call.is_empty():
+		card_title.text = "AUTO CALL  [Y]" if main.auto_call else "DEFENSIVE CALL  [Q]"
+		card_body.text = w.DefensivePlaybook.CALLS[w.defensive_call].name
 	else:
 		card_title.text = "DEFENSE"
 		card_body.text = "E / RMB  TACKLE\nSHIFT  SPRINT"
@@ -393,9 +417,9 @@ func _refresh_me(main) -> void:
 	if pv == null:
 		return
 	var a = pv.athlete
-	var slot: int = main.roster.slot_of_athlete(main.my_id)
+	var slot: int = main.roster.slot_of_athlete(a.id)
 	var pos_l: String = main.roster.label(slot) if slot >= 0 else ""
-	var nm: String = main.owner_name(a.id) if a.id != main.my_id else main.player_name
+	var nm: String = main.player_name if a.id == main.controlled_id else main.owner_name(a.id)
 	me_name.text = "#%s  %s  %s" % [pv.number_text, nm.to_upper(), pos_l]
 	stamina_bar.value = a.stamina
 	var low: bool = a.sprint_locked or a.stamina < 0.25
@@ -408,8 +432,18 @@ func _hints(main) -> String:
 	var w = main.world
 	var me = w.get_athlete(main.my_id)
 	var offense: bool = me != null and w.offense_team == me.team
+	var timeout_hint := ""
+	if main.drill == null and me != null and main.series.clock.timeouts[me.team] > 0:
+		timeout_hint = " · %s TIMEOUT" % main.bound_key_name("timeout")
 	if int(w.phase) == 0:
-		return "WASD MOVE · SHIFT SPRINT · TAB POSITION · T TEAM" + (" · Q PLAY · F ROUTE" if offense else "")
+		var hints := "WASD MOVE · SHIFT SPRINT · TAB POSITION · T TEAM"
+		if offense:
+			hints += " · Q PLAY" if not w.route_of.has(main.my_id) else " · Q PLAY · F ROUTE"
+		return hints + timeout_hint
+	if int(w.phase) == 2:
+		return "TAB POSITION · T TEAM" + timeout_hint
 	if int(w.phase) == 1 and main.world.ball.is_held_by(main.controlled_id):
+		if w.is_run_play():
+			return "WASD MOVE · SHIFT SPRINT"
 		return "HOLD J / LMB AIM + CHARGE · RELEASE TO THROW · CTRL LOB"
 	return "WASD MOVE · SHIFT SPRINT · E / RMB TACKLE"

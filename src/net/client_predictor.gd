@@ -16,8 +16,12 @@ func record(dir: Vector2, sprint: bool, dt: float) -> int:
 
 ## Reset athlete to authoritative state (already applied by caller), drop acked
 ## inputs and replay the rest on top.
-func reconcile(athlete, acked_seq: int) -> void:
+## With `world`, replays use its pre-snap rules (stance lock, neutral zone).
+func reconcile(athlete, acked_seq: int, world = null) -> void:
 	while not pending.is_empty() and pending[0][0] <= acked_seq:
 		pending.pop_front()
 	for p in pending:
-		athlete.step(p[1], p[2], p[3])
+		if world != null:
+			world.predict_step(athlete, p[1], p[2], p[3])
+		else:
+			athlete.step(p[1], p[2], p[3])

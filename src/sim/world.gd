@@ -32,7 +32,12 @@ var last_possession := 0
 var dead_ball_team := 0
 var play_time := 0.0
 var play_name := "Verticals"
+var run_flipped := false
+var run_blocks := {}    # blocker id -> defender id (set at snap)
+var handoff_cooldown := 0.0
 var defensive_call := ""
+var last_offensive_calls := ["", ""]
+var last_defensive_calls := ["", ""]
 var route_of := {}      # athlete_id -> route name (eligible offense receivers)
 var route_paths := {}   # athlete_id -> Array[Vector2] absolute, set at snap
 var ruleset := "classic"
@@ -100,6 +105,7 @@ func setup_formation(los: float) -> void:
 	var cx := field.width / 2.0
 	for a in athletes:
 		a.reset_state()
+		a.set_lock = a.team != offense_team   # defense lines up set; Space breaks stance
 		var depth: float = FORMATION_DEPTH.get(a.role, 1.0)
 		var y := los - depth if a.team == offense_team else los + depth
 		a.position = Vector2(a.home_x, y)
@@ -117,6 +123,8 @@ func setup_formation(los: float) -> void:
 	last_thrower_id = -1
 	_snap_to_id = -1
 	route_paths = {}
+	run_blocks = {}
+	handoff_cooldown = 0.0
 	last_possession = offense_team
 	streak = 0
 	hold_t = 0.0
@@ -141,16 +149,53 @@ func receivers_in_order() -> Array:
 		wrs.append(rb)
 	return wrs
 
+func has_run_back() -> bool:
+	return not is_chaos() and find_role(offense_team, Athlete.Role.RB) != null
+
+func available_plays() -> Array:
+	return Routes.PLAY_NAMES + Routes.RUN_NAMES if has_run_back() else Routes.PLAY_NAMES
+
+func is_run_play() -> bool:
+	return Routes.RUN_PLAYS.has(play_name)
+
 func call_play(name: String) -> bool:
-	if not Routes.PLAYBOOK.has(name):
+	if not available_plays().has(name):
 		return false
 	play_name = name
 	route_of = {}
-	var recv := receivers_in_order()
-	var routes: Array = Routes.PLAYBOOK[name]
-	for i in mini(recv.size(), routes.size()):
-		route_of[recv[i].id] = routes[i]
+	run_flipped = false
+	if not is_run_play():
+		var recv := receivers_in_order()
+		var routes: Array = Routes.PLAYBOOK[name]
+		for i in mini(recv.size(), routes.size()):
+			route_of[recv[i].id] = routes[i]
 	return true
+
+func run_path() -> Array:
+	return Routes.run_path(play_name, los_y, field.width, run_flipped)
+
+## Match each lineman to a reachable defender, shading toward the called lane.
+func run_block_assignments() -> Dictionary:
+	var assignments := {}
+	var lane: Vector2 = run_path()[0]
+	for b in athletes:
+		if b.team != offense_team or b.role not in [Athlete.Role.C, Athlete.Role.OL]:
+			continue
+		var landmark := Vector2(lerpf(b.position.x, lane.x, T.RUN_BLOCK_LANE_WEIGHT), los_y)
+		var best := INF
+		var target := -1
+		for d in athletes:
+			if d.team == offense_team or d.is_grounded() or assignments.values().has(d.id):
+				continue
+			if b.position.distance_to(d.position) > T.PROTECTION_RANGE:
+				continue
+			var distance: float = d.position.distance_squared_to(landmark)
+			if distance < best:
+				best = distance
+				target = d.id
+		if target >= 0:
+			assignments[b.id] = target
+	return assignments
 
 func call_defense(id: String) -> bool:
 	if phase != Phase.PRESNAP or is_chaos() or not DefensivePlaybook.CALLS.has(id):
@@ -158,14 +203,138 @@ func call_defense(id: String) -> bool:
 	defensive_call = id
 	return true
 
+func protection_target(blocker: Athlete) -> Athlete:
+	var best: Athlete = null
+	var best_d := T.PROTECTION_RANGE
+	for d in athletes:
+		if d.team == offense_team or d.is_grounded():
+			continue
+		var dist: float = d.position.distance_to(blocker.position)
+		if dist < best_d:
+			best_d = dist
+			best = d
+	return best
+
+func man_assignments() -> Dictionary:
+	var assignments := {}
+	var taken := {}
+	for r in receivers_in_order():
+		var best = null
+		var best_d := INF
+		for d in athletes:
+			if d.team == offense_team or taken.has(d.id):
+				continue
+			if not (d.role == Athlete.Role.CB or d.role == Athlete.Role.S or d.role == Athlete.Role.LB):
+				continue
+			if d.role == Athlete.Role.LB and r.role != Athlete.Role.RB:
+				continue   # LBs only take backs; they spy the QB otherwise
+			var dist: float = d.position.distance_to(r.position)
+			if dist < best_d:
+				best_d = dist
+				best = d
+		if best:
+			assignments[best.id] = r.id
+			taken[best.id] = true
+	return assignments
+
+## Shared coverage landmarks in offense-frame yards. Man defenders use the AI's
+## receiver matching. Line rushers keep their normal pursuit behavior.
+func defense_assignment(a: Athlete) -> Dictionary:
+	if a.team == offense_team or defensive_call.is_empty():
+		return {}
+	var call: Dictionary = DefensivePlaybook.CALLS[defensive_call]
+	var cx := field.width * 0.5
+	if a.role == Athlete.Role.DL or (call.family == DefensivePlaybook.Family.BLITZ and a.role == Athlete.Role.LB):
+		return {"kind": "rush", "target": Vector2(cx, los_y - 5.0)}
+	if call.family == DefensivePlaybook.Family.MAN and a.role != Athlete.Role.S:
+		return {"kind": "man"}
+	var deep := a.role == Athlete.Role.S or (defensive_call == "deep_zone" and a.role == Athlete.Role.CB)
+	var deep_middle := false
+	if defensive_call == "cover_3":
+		var safety := find_role(a.team, Athlete.Role.S)
+		deep_middle = a == safety if safety != null else a.role == Athlete.Role.LB
+		deep = deep_middle or a.role == Athlete.Role.CB
+	elif defensive_call == "cover_2" and athletes.size() < 14:
+		deep = a.role == Athlete.Role.S or (a.role == Athlete.Role.CB and
+			(a.home_x > cx or find_role(a.team, Athlete.Role.S) == null))
+	var depth := T.DEFENSE_DEEP_DEPTH if deep else T.DEFENSE_UNDER_DEPTH
+	if call.shell == DefensivePlaybook.Shell.GOAL_LINE:
+		depth = T.DEFENSE_GOAL_DEPTH
+	elif call.shell == DefensivePlaybook.Shell.PREVENT:
+		depth = T.DEFENSE_PREVENT_DEPTH if deep else T.DEFENSE_DEEP_DEPTH
+	var x := cx if deep_middle else lerpf(cx, a.home_x, 0.72)
+	var y := minf(los_y + depth, field.length + field.endzone_depth * 0.5)
+	return {"kind": "zone", "target": Vector2(x, y), "deep": deep}
+
+func recall_call(team: int) -> bool:
+	if phase != Phase.PRESNAP:
+		return false
+	if team == offense_team:
+		return call_play(last_offensive_calls[team])
+	return call_defense(last_defensive_calls[team])
+
+## Mirror the play across the formation.
+func flip_play() -> bool:
+	if phase != Phase.PRESNAP:
+		return false
+	if is_run_play():
+		run_flipped = not run_flipped
+		return true
+	var receivers := receivers_in_order()
+	if receivers.size() < 2 or receivers[0].role != Athlete.Role.WR or receivers[1].role != Athlete.Role.WR:
+		return false
+	var left: int = receivers[0].id
+	var right: int = receivers[1].id
+	if not route_of.has(left) or not route_of.has(right):
+		return false
+	var route: String = route_of[left]
+	route_of[left] = route_of[right]
+	route_of[right] = route
+	return true
+
+func _record_calls() -> void:
+	last_offensive_calls[offense_team] = play_name
+	last_defensive_calls[1 - offense_team] = defensive_call
+
 func set_route(id: int, route: String) -> bool:
 	var a := get_athlete(id)
 	if a == null or a.team != offense_team or not is_eligible_receiver(a) or a.role == Athlete.Role.QB:
 		return false
-	if not Routes.ROUTES.has(route):
+	if is_run_play() or not Routes.ROUTES.has(route):
 		return false
 	route_of[id] = route
 	return true
+
+## Defense pre-snap: stand up out of stance and roam (non-DL only, one-way per play).
+func break_stance(id: int) -> bool:
+	var a := get_athlete(id)
+	if a == null or phase != Phase.PRESNAP or a.team == offense_team or a.role == Athlete.Role.DL or not a.set_lock:
+		return false
+	a.set_lock = false
+	event.emit("break_stance", {"id": id})
+	return true
+
+func is_stance_locked(a: Athlete) -> bool:
+	return phase == Phase.PRESNAP and a.set_lock
+
+## Pre-snap rules for one athlete's input + resulting position. Shared by the
+## authoritative step and client prediction so both clamp identically.
+func step_athlete(a: Athlete, dir: Vector2, sprint: bool, dt: float) -> void:
+	if is_stance_locked(a):
+		a.face(dir)
+	else:
+		a.step(dir, sprint, dt)
+
+func _go_live() -> void:
+	phase = Phase.LIVE
+	for a in athletes:
+		a.set_lock = false
+
+## Client prediction: one athlete's step with the same pre-snap rules as step().
+func predict_step(a: Athlete, dir: Vector2, sprint: bool, dt: float) -> void:
+	step_athlete(a, dir, sprint, dt)
+	if phase == Phase.PRESNAP:
+		enforce_neutral_zone(a)
 
 ## Drills: go LIVE immediately with `id` carrying the ball (no snap).
 func start_live_with(id: int) -> void:
@@ -173,7 +342,7 @@ func start_live_with(id: int) -> void:
 	ball.hold(a.id)
 	last_possession = a.team
 	play_time = 0.0
-	phase = Phase.LIVE
+	_go_live()
 	_sync_ball()
 	event.emit("snap", {"qb": a.id})
 
@@ -188,11 +357,9 @@ func snap() -> bool:
 		if not ball.is_held_by(qb.id):
 			return false
 		_snap_to_id = -1
-		route_paths = {}
-		for id in route_of:
-			var ra := get_athlete(id)
-			route_paths[id] = Routes.path_for(route_of[id], ra.position, field.width)
-		phase = Phase.LIVE
+		_prepare_assignments()
+		_go_live()
+		_record_calls()
 		event.emit("snap", {"qb": qb.id})
 		event.emit("snap_received", {"qb": qb.id})
 		return true
@@ -203,12 +370,44 @@ func snap() -> bool:
 	_snap_t = 0.0
 	_snap_from = ball.position
 	_snap_to_id = qb.id
+	_prepare_assignments()
+	_go_live()
+	_record_calls()
+	event.emit("snap", {"qb": qb.id})
+	return true
+
+func _prepare_assignments() -> void:
 	route_paths = {}
+	run_blocks = {}
+	if is_run_play():
+		var back := find_role(offense_team, Athlete.Role.RB)
+		if back:
+			route_paths[back.id] = run_path()
+			run_blocks = run_block_assignments()
+		return
 	for id in route_of:
 		var a := get_athlete(id)
 		route_paths[id] = Routes.path_for(route_of[id], a.position, field.width)
-	phase = Phase.LIVE
-	event.emit("snap", {"qb": qb.id})
+
+func handoff_receiver(id: int) -> Athlete:
+	if phase != Phase.LIVE or is_chaos() or handoff_cooldown > 0.0 or forward_pass_thrown or not ball.is_held_by(id):
+		return null
+	var qb := get_athlete(id)
+	if qb == null or qb.team != offense_team or qb.role != Athlete.Role.QB or not qb.can_act() or qb.position.y > los_y:
+		return null
+	var back := find_role(offense_team, Athlete.Role.RB)
+	if back == null or not back.can_act() or back.position.y > los_y or back.position.distance_to(qb.position) > T.HANDOFF_REACH:
+		return null
+	return back
+
+func handoff(id: int) -> bool:
+	var back := handoff_receiver(id)
+	if back == null:
+		return false
+	ball.hold(back.id)
+	_sync_ball()
+	handoff_cooldown = T.HANDOFF_COOLDOWN
+	event.emit("handoff", {"by": id, "to": back.id})
 	return true
 
 ## Throw from the holder toward target (field plane) with power 0..1.
@@ -255,17 +454,18 @@ func carrier() -> Athlete:
 func step(inputs: Dictionary, dt: float) -> void:
 	if phase == Phase.LIVE:
 		play_time += dt
+		handoff_cooldown = maxf(0.0, handoff_cooldown - dt)
 	var prev: Array = []
 	for a in athletes:
 		prev.append(a.position)
 		var inp: Dictionary = inputs.get(a.id, {})
-		a.step(inp.get("dir", Vector2.ZERO), inp.get("sprint", false), dt)
+		step_athlete(a, inp.get("dir", Vector2.ZERO), inp.get("sprint", false), dt)
 	if phase == Phase.LIVE:
 		_step_blocks(prev, dt)
 	_resolve_collisions()
 	if phase == Phase.PRESNAP:
 		for a in athletes:
-			_enforce_neutral_zone(a)
+			enforce_neutral_zone(a)
 	_step_snap(dt)
 	_step_flight(dt)
 	if phase == Phase.LIVE:
@@ -609,15 +809,21 @@ func _end_incomplete(reason: String, data: Dictionary) -> void:
 	data["reason"] = reason
 	event.emit("incomplete", data)
 
-func _enforce_neutral_zone(a: Athlete) -> void:
+## Pre-snap: keep each side behind its edge of the neutral zone. Returns true
+## when it actually stopped the athlete (presentation ripples the barrier).
+func enforce_neutral_zone(a: Athlete) -> bool:
 	if a.team == offense_team:
-		if a.position.y > los_y - 0.5:
-			a.position.y = los_y - 0.5
+		if a.position.y > los_y - T.NEUTRAL_ZONE_HALF:
+			var pushing := a.velocity.y > 0.05
+			a.position.y = los_y - T.NEUTRAL_ZONE_HALF
 			a.velocity.y = minf(a.velocity.y, 0.0)
-	else:
-		if a.position.y < los_y + 0.5:
-			a.position.y = los_y + 0.5
-			a.velocity.y = maxf(a.velocity.y, 0.0)
+			return pushing
+	elif a.position.y < los_y + T.NEUTRAL_ZONE_HALF:
+		var pushing := a.velocity.y < -0.05
+		a.position.y = los_y + T.NEUTRAL_ZONE_HALF
+		a.velocity.y = maxf(a.velocity.y, 0.0)
+		return pushing
+	return false
 
 func _step_snap(dt: float) -> void:
 	if _snap_to_id < 0 or ball.state != Ball.State.IN_FLIGHT:

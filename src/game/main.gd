@@ -18,6 +18,7 @@ const INTERP_DELAY := 0.1   # seconds others render in the past
 const Roster := preload("res://src/sim/roster.gd")
 const LOCAL_PLAYER := 1      # the local human's player id (= host peer id online)
 const Routes := preload("res://src/sim/routes.gd")
+const Controls := preload("res://src/ui/controls.gd")
 const MatchConfig := preload("res://src/sim/match_config.gd")
 const Lobby := preload("res://src/net/lobby.gd")
 const Drills := preload("res://src/sim/drills.gd")
@@ -26,11 +27,15 @@ const Leaderboard := preload("res://src/sim/leaderboard.gd")
 const Ranked := preload("res://src/sim/ranked.gd")
 const Cosmetics := preload("res://src/sim/cosmetics.gd")
 const Replay := preload("res://src/sim/replay.gd")
+const Achievements := preload("res://src/sim/achievements.gd")
 const MMServer := preload("res://src/net/mm_server.gd")
 const MMClient := preload("res://src/net/mm_client.gd")
 const InviteCode := preload("res://src/net/invite_code.gd")
 const T := preload("res://src/sim/tuning.gd")
 const Presentation := preload("res://src/game/presentation.gd")
+const Potg := preload("res://src/sim/potg.gd")
+const PotgStage := preload("res://src/ui/potg_stage.gd")
+const POSTGAME_HOLD := 3.0      # seconds on the FINAL scoreboard before players of the game
 const FieldArt := preload("res://src/game/art/field_art.gd")
 const StadiumArt := preload("res://src/game/art/stadium.gd")
 const ArtMats := preload("res://src/game/art/materials.gd")
@@ -78,12 +83,18 @@ var profile_path := Cosmetics.DEFAULT_PATH
 var looks := {}            # athlete_id -> look (view-only)
 var peer_looks := {}       # server: peer_id -> sanitized look
 var xp_line := ""
+var achievement_line := ""
 var replay := Replay.new()
 var replay_active := false      # views show replay frames instead of the live sim
 var replay_viewer := false      # --replay=FILE standalone viewer
 var replay_dir := "user://replays"
 var saved_replay := ""
 var my_ranks := ""
+var potg: Array = []            # players of the game (server picks; clients receive)
+var team_totals: Array = []     # per-team box score for the lobby's game overview
+var postgame_t := -1.0          # >= 0: counting down to the players-of-the-game presentation
+var postgame: Control           # the presentation while it plays
+var postgame_done := false
 var field_root: Node3D
 var athlete_root: Node3D
 var my_id := -1          # the human's athlete (QB on offense, LB on defense)
@@ -103,6 +114,7 @@ var latest_snap_tick := 0
 var latest_snap_at := 0.0
 var camera: Camera3D
 var hud: Label
+var auto_call := false
 var pres: Presentation   # visuals-only layer (ball model, rings, FX, overlay)
 
 static func to_world(p: Vector2, h: float = 0.0) -> Vector3:
@@ -213,6 +225,13 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	replay.meta = {"size": match_size, "mode": match_mode}
 	replay_active = false
 	summary_lines = []
+	if postgame != null:
+		postgame.get_parent().queue_free()
+		postgame = null
+	potg = []
+	team_totals = []
+	postgame_t = -1.0
+	postgame_done = false
 	series.match_event.connect(_on_match_event)
 	if drill != null:
 		world.event.connect(drill.on_event)
@@ -411,40 +430,150 @@ func _match_awards() -> Dictionary:
 		xp[nm] = Cosmetics.award_xp(lines.get(nm, {}), series.winner() == team_of[nm])
 	return xp
 
-## Every machine credits only its own player's local profile.
-func _apply_award(xp: Dictionary) -> void:
+## Per-human achievement context (merged stats, result, deficit overcome, rating).
+func _match_contexts(ratings: Dictionary) -> Dictionary:
+	var out := {}
+	var team_of := {}
+	for s in roster.slots:
+		if s["owner"] >= 0:
+			team_of[owner_name(s["athlete_id"])] = s["team"]
+	if roster.slots.is_empty():
+		team_of[owner_name(my_id)] = world.get_athlete(my_id).team
+	for nm in team_of:
+		var line := {}
+		for k in stats.lines:
+			if k.get_slice("|", 0) == nm:
+				for f in stats.lines[k]:
+					line[f] = maxf(line.get(f, 0.0), float(stats.lines[k][f])) if f == "max_td_pts" else line.get(f, 0.0) + float(stats.lines[k][f])
+		var t: int = team_of[nm]
+		out[nm] = {"line": line, "won": series.winner() == t, "deficit": series.max_deficit[t],
+			"rating": ratings.get(nm, 0.0), "mode": match_mode}
+	return out
+
+## Every machine credits only its own player's local profile (XP + achievements).
+func _apply_award(xp: Dictionary, ctx: Dictionary = {}) -> void:
 	var me := owner_name(my_id) if not is_client() else player_name
 	if not xp.has(me):
 		return
-	var gained := profile.add_xp(int(xp[me]))
+	var total := int(xp[me])
+	profile.games += 1
+	var unlocked := []
+	if ctx.has(me):
+		var c: Dictionary = ctx[me].duplicate()
+		c["games"] = profile.games
+		for a in Achievements.evaluate(c, profile.achievements):
+			profile.achievements.append(a["id"])
+			unlocked.append(a["name"])
+			total += int(a["xp"])
+	var gained := profile.add_xp(total)
 	profile.save(profile_path)
-	xp_line = "XP +%d (Level %d%s)" % [int(xp[me]), profile.level(), " - LEVEL UP!" if gained > 0 else ""]
+	xp_line = "XP +%d (Level %d%s)" % [total, profile.level(), " - LEVEL UP!" if gained > 0 else ""]
+	achievement_line = ("ACHIEVEMENTS: " + ", ".join(unlocked)) if not unlocked.is_empty() else ""
 
-func _on_match_event(n: String, _d: Dictionary) -> void:
+func _on_match_event(n: String, data: Dictionary) -> void:
+	if n in ["timeout", "clock_warning"]:
+		_on_world_event(n, data)
 	if n == "final" and drill == null:
 		saved_replay = _save_replay()
 		print("REPLAY saved: %s" % saved_replay)
 	if n == "final":
 		if not is_client() and drill == null:
-			var awards := _match_awards()
-			_apply_award(awards)
-			if is_server():
-				net.broadcast_event("awards", {"xp": awards})
 			my_ranks = _record_leaderboard()
+			var ratings := {}
 			if ranked_match:
 				var r := _record_ranked()
 				var rk := Ranked.new()
 				rk.load_file(ranked_path)
 				profile.season_rewards = rk.rewards.get(owner_name(my_id), [])
-				profile.save(profile_path)
+				for nm in r.get("deltas", {}):
+					ratings[nm] = rk.rating(nm)
 				ranked_line = _ranked_text(r)
 				print("RANKED: %s" % str(r))
 				if is_server():
 					net.broadcast_event("ranked", r)
+			var awards := _match_awards()
+			var ctx := _match_contexts(ratings)
+			_apply_award(awards, ctx)
+			if is_server():
+				net.broadcast_event("awards", {"xp": awards, "ctx": ctx})
 		summary_lines = stats.summary_lines()
 		print("MATCH SUMMARY:\n  " + "\n  ".join(summary_lines))
+		if drill == null and not is_client():
+			potg = _decorate_potg(Potg.pick(stats.athletes, series.winner()))
+			team_totals = Potg.team_totals(stats.athletes)
+			print("PLAYERS OF THE GAME: %s" % ", ".join(potg.map(func(e): return "%s (%s %s)" % [e["name"], e["pos"], e["score"]])))
+			_queue_postgame()
 		if is_server():
-			net.broadcast_event("summary", {"lines": summary_lines})
+			net.broadcast_event("summary", {"lines": summary_lines, "potg": potg, "teams": team_totals})
+
+## Display name, jersey number and cosmetics for each pick (sent to clients as-is).
+func _decorate_potg(picks: Array) -> Array:
+	for e in picks:
+		var aid: int = e["id"]
+		var lk: Dictionary = looks.get(aid, {})
+		e["name"] = "CPU" if e["owner"] == "Bot" else e["owner"]
+		e["number"] = int(lk.get("number", (aid % 90) + 10))
+		e["look"] = lk.duplicate()
+	return picks
+
+# --- post-game: FINAL hold -> players of the game -> lobby ------------------
+
+func _queue_postgame() -> void:
+	if replay_viewer or postgame_done or postgame_t >= 0.0:
+		return
+	postgame_t = 0.0
+
+func _tick_postgame(delta: float) -> void:
+	if postgame_t < 0.0 or postgame != null:
+		return
+	postgame_t += delta
+	if postgame_t >= POSTGAME_HOLD:
+		start_postgame()
+
+## Show the players-of-the-game presentation (skipped when nobody recorded a stat).
+func start_postgame() -> void:
+	if postgame != null or postgame_done:
+		return
+	if replay_active and not replay_viewer:
+		stop_replay()
+	if potg.is_empty():
+		finish_postgame()
+		return
+	var layer := CanvasLayer.new()
+	layer.name = "Postgame"
+	layer.layer = 60     # over the match HUD, under the Esc menu (90)
+	postgame = PotgStage.new()
+	postgame.setup(potg, {"score": series.score.duplicate(), "winner": series.winner(),
+		"team_colors": TEAM_COLORS, "team_names": Potg.TEAM_NAMES})
+	postgame.finished.connect(finish_postgame)
+	layer.add_child(postgame)
+	add_child(layer)
+
+## Everything the lobby's game overview shows, as plain data.
+func match_overview() -> Dictionary:
+	var me := player_name if is_client() else owner_name(my_id)
+	var mine := summary_lines.filter(func(l): return str(l).begins_with(me + " "))
+	var my_team: int = world.get_athlete(my_id).team if world.get_athlete(my_id) else 0
+	return {"score": series.score.duplicate(), "winner": series.winner(), "my_team": my_team,
+		"team_names": Potg.TEAM_NAMES, "mode": match_mode, "size": match_size, "ranked": ranked_match,
+		"online": net != null, "me": me, "potg": potg, "teams": team_totals,
+		"my_lines": mine.map(func(l): return str(l).trim_prefix(me + " ")),
+		"xp": xp_line, "achievements": achievement_line, "rating": ranked_line, "ranks": my_ranks,
+		"replay": saved_replay, "when": Time.get_datetime_string_from_system(false, true)}
+
+## Presentation over: back to the lobby (menu launches) with the game overview.
+func finish_postgame() -> void:
+	if postgame_done:
+		return
+	postgame_done = true
+	var ov := match_overview()
+	print("POSTGAME done -> lobby overview: %s" % str(ov["score"]))
+	if postgame != null:
+		postgame.get_parent().queue_free()
+		postgame = null
+	var launch := get_node_or_null("/root/Launch")
+	if launch and launch.from_menu:
+		launch.go_to_menu("", ov)
 
 ## Ctrl held on release = lob (high arc; catch your own pass in Chaosball).
 var lob_override = null
@@ -745,7 +874,7 @@ func _on_snapshot(snap: Dictionary) -> void:
 	latest_snap_at = Time.get_ticks_msec() / 1000.0
 	var me = world.get_athlete(my_id)
 	if me:
-		predictor.reconcile(me, int(snap.get("ack", {}).get(my_id, 0)))
+		predictor.reconcile(me, int(snap.get("ack", {}).get(my_id, 0)), world)
 
 ## Client: draw others ~100 ms in the past, interpolated between snapshots.
 func _apply_interpolation() -> void:
@@ -781,13 +910,17 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 		looks = d["looks"]
 		_apply_looks()
 	if n == "awards" and d.get("xp") is Dictionary:
-		_apply_award(d["xp"])
+		_apply_award(d["xp"], d.get("ctx", {}) if d.get("ctx") is Dictionary else {})
 	if n == "touchdown":
 		var cid: int = d.get("carrier", -1)
 		if cid >= 0 and cid < views.size():
 			views[cid].celebrate(str(looks.get(cid, {}).get("celebration", "none")))
 	if n == "summary":
 		summary_lines = d.get("lines", []) if d.get("lines") is Array else []
+		potg = d.get("potg", []) if d.get("potg") is Array else []
+		team_totals = d.get("teams", []) if d.get("teams") is Array else []
+		if is_client():
+			_queue_postgame()
 	if n == "snap":
 		last_whistle = ""
 	if n in ["interception", "fumble", "recovery"]:
@@ -798,6 +931,10 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 	# Offline convenience: follow the ball to the receiver. Online: fixed athlete (Gridiron parity).
 	if net == null and n == "catch" and world.get_athlete(d["by"]).team == world.offense_team:
 		set_controlled(d["by"])
+	if n == "handoff" and d["by"] == controlled_id:
+		charging = false
+		if net == null:
+			set_controlled(d["to"])
 	# Offline: take control of whoever on your team just took the ball away.
 	if net == null and n in ["interception", "recovery"] and world.get_athlete(d["by"]).team == world.get_athlete(my_id).team:
 		set_controlled(d["by"])
@@ -815,6 +952,14 @@ func _marker(c: Color, n: String) -> MeshInstance3D:
 	mi.name = n
 	field_root.add_child(mi)
 	return mi
+
+## Defense pre-snap HUD: stance state for the local athlete.
+func presnap_defense_prompt(a) -> String:
+	if a == null:
+		return "PRE-SNAP"
+	if a.role == Athlete.Role.DL:
+		return "PRE-SNAP (hold your stance)"
+	return "PRE-SNAP (Space: break stance)" if a.set_lock else "PRE-SNAP: ROAMING"
 
 func next_play() -> void:
 	series.next_play()
@@ -869,11 +1014,30 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			do_action({"a": "try", "n": 2})
 		KEY_E:
 			do_action({"a": "tackle"})
+		KEY_G:
+			do_action({"a": "handoff"})
+		KEY_U:
+			if drill == null:
+				do_action({"a": "timeout"})
 		KEY_J:
 			_set_charging(true)
+		KEY_Y:
+			if world.phase == World.Phase.PRESNAP:
+				auto_call = not auto_call
+		KEY_L:
+			do_action({"a": "recall_call"})
+		KEY_X:
+			do_action({"a": "flip_play"})
 		KEY_Q:
-			var i := (Routes.PLAY_NAMES.find(world.play_name) + 1) % Routes.PLAY_NAMES.size()
-			do_action({"a": "play", "p": Routes.PLAY_NAMES[i]})
+			var me = world.get_athlete(my_id)
+			if me != null and me.team != world.offense_team and not world.defensive_call.is_empty():
+				var calls := World.DefensivePlaybook.CALLS.keys()
+				var next := (calls.find(world.defensive_call) + 1) % calls.size()
+				do_action({"a": "defense", "p": calls[next]})
+			else:
+				var plays := world.available_plays()
+				var i := (plays.find(world.play_name) + 1) % plays.size()
+				do_action({"a": "play", "p": plays[i]})
 		KEY_F:
 			if world.route_of.has(my_id):
 				var j := (Routes.ROUTE_NAMES.find(world.route_of[my_id]) + 1) % Routes.ROUTE_NAMES.size()
@@ -912,7 +1076,7 @@ func _physics_process(delta: float) -> void:
 		net.send_input(my_input["dir"], my_input["sprint"], seq)
 		var me = world.get_athlete(my_id)
 		if me and net.my_athlete >= 0:
-			me.step(my_input["dir"], my_input["sprint"], delta)
+			world.predict_step(me, my_input["dir"], my_input["sprint"], delta)
 			if world.ball.is_held_by(my_id):
 				world.ball.position = Vector3(me.position.x, me.position.y, T.BALL_CARRY_HEIGHT)
 		_apply_interpolation()
@@ -950,7 +1114,10 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 				_sync_looks()
 			else:
 				Protocol.apply_action(series, pa[1], act)
-	ai.presnap_tick(world, humans, delta, series.downs.down, series.downs.distance())
+	var snap_delay := T.AI_SNAP_DELAY
+	if drill == null and not world.is_chaos() and not auto_call and not humans.is_empty():
+		snap_delay = T.HUDDLE_SECONDS
+	ai.presnap_tick(world, humans, delta, series.downs.down, series.downs.distance(), snap_delay)
 	var inputs := ai.think(world, humans)
 	if drill != null:
 		drill.override_inputs(world, inputs)
@@ -1030,9 +1197,24 @@ const MY_ROUTE_COLOR := Color(0.35, 1.0, 0.55)
 func _draw_routes() -> void:
 	route_mesh.clear_surfaces()
 	var me = world.get_athlete(my_id)
-	if me == null or world.phase != World.Phase.PRESNAP or me.team != world.offense_team or world.route_of.is_empty():
+	if me == null or world.phase != World.Phase.PRESNAP:
+		return
+	if me.team != world.offense_team:
+		_draw_defense_routes(me.team)
+		return
+	var is_run := world.is_run_play()
+	if world.route_of.is_empty() and not is_run:
 		return
 	route_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	var blocks := {}
+	if is_run:
+		var back := world.find_role(me.team, Athlete.Role.RB)
+		var qb := world.find_role(me.team, Athlete.Role.QB)
+		if back and qb:
+			var mine := back.id == my_id
+			var color: Color = MY_ROUTE_COLOR if mine else ROUTE_COLORS[0]
+			_route_ribbon([back.position, qb.position] + world.run_path(), color, 0.48 if mine else 0.34)
+		blocks = world.run_block_assignments()
 	var k := 0
 	for id in world.route_of:
 		var a = world.get_athlete(id)
@@ -1041,6 +1223,36 @@ func _draw_routes() -> void:
 		var c: Color = MY_ROUTE_COLOR if mine else ROUTE_COLORS[k % ROUTE_COLORS.size()]
 		k += 1
 		_route_ribbon(pts, c, 0.42 if mine else 0.3)
+	for blocker in world.athletes:
+		if blocker.team != me.team or blocker.role not in [Athlete.Role.C, Athlete.Role.OL]:
+			continue
+		var defender = world.get_athlete(blocks.get(blocker.id, -1)) if is_run else world.protection_target(blocker)
+		if defender != null:
+			var mine: bool = blocker.id == my_id
+			_route_ribbon([blocker.position, defender.position], MY_ROUTE_COLOR if mine else Color(0.76, 0.82, 0.90), 0.42 if mine else 0.22)
+	route_mesh.surface_end()
+
+func _draw_defense_routes(team: int) -> void:
+	if world.defensive_call.is_empty():
+		return
+	route_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	var matchups: Dictionary = world.man_assignments()
+	for athlete in world.athletes:
+		if athlete.team != team:
+			continue
+		var assignment: Dictionary = world.defense_assignment(athlete)
+		var mine: bool = athlete.id == my_id
+		if assignment.kind == "man":
+			if matchups.has(athlete.id):
+				var receiver = world.get_athlete(matchups[athlete.id])
+				_route_ribbon([athlete.position, receiver.position], Color(1.0, 0.82, 0.38), 0.50 if mine else 0.26)
+			continue
+		var target: Vector2 = assignment.target
+		var color := Color(1.0, 0.30, 0.26)
+		if assignment.kind == "zone":
+			color = Color(0.50, 0.68, 1.0) if assignment.deep else Color(0.24, 0.94, 0.81)
+			_disc(target, 2.0 if mine else 1.5, Color(color, 0.35), 0.055, 0.65)
+		_route_ribbon([athlete.position, target], color, 0.50 if mine else 0.26)
 	route_mesh.surface_end()
 
 func _route_ribbon(pts: Array, c: Color, wdt: float) -> void:
@@ -1079,13 +1291,49 @@ func _tri(a: Vector2, b: Vector2, c2: Vector2, ca: Color, cb: Color, cc: Color, 
 		route_mesh.surface_set_color(pc[1])
 		route_mesh.surface_add_vertex(Vector3(pc[0].x, h, -pc[0].y))
 
-func _disc(p: Vector2, r: float, c: Color, h: float) -> void:
+func _disc(p: Vector2, r: float, c: Color, h: float, depth_scale: float = 1.0) -> void:
 	for s in 10:
 		var t0 := TAU * s / 10.0
 		var t1 := TAU * (s + 1) / 10.0
-		_tri(p, p + Vector2(cos(t0), sin(t0)) * r, p + Vector2(cos(t1), sin(t1)) * r, c, c, c, h)
+		_tri(p, p + Vector2(cos(t0), sin(t0) * depth_scale) * r, p + Vector2(cos(t1), sin(t1) * depth_scale) * r, c, c, c, h)
+
+func huddle_remaining() -> int:
+	if world.phase != World.Phase.PRESNAP or drill != null or world.is_chaos() or replay_active or auto_call:
+		return 0
+	return maxi(0, int(ceil(series.clock.play_clock - (Match.Clock.PLAY_CLOCK - T.HUDDLE_SECONDS))))
+
+func bound_key_name(action: String) -> String:
+	var launch := get_node_or_null("/root/Launch")
+	var bindings: Dictionary = launch.settings.bindings if launch else {}
+	return Controls.key_name(Controls.key_for(action, bindings)).to_upper()
+
+func handoff_hint() -> String:
+	if world.handoff_receiver(controlled_id) != null:
+		return "%s HANDOFF" % bound_key_name("handoff")
+	var holder := world.carrier()
+	if world.phase == World.Phase.LIVE and world.is_run_play() and holder and holder.id == controlled_id and holder.role == Athlete.Role.QB and holder.position.y <= world.los_y:
+		return "MEET THE BACK"
+	return ""
+
+func huddle_calls(team: int) -> String:
+	var cards := PackedStringArray()
+	if team == world.offense_team:
+		for name in world.available_plays():
+			cards.append("[%s]" % name if name == world.play_name else name)
+	else:
+		var ids := World.DefensivePlaybook.CALLS.keys()
+		var first := maxi(0, ids.find(world.defensive_call))
+		for i in 6:
+			var id = ids[(first + i) % ids.size()]
+			var name: String = World.DefensivePlaybook.CALLS[id].name
+			cards.append("[%s]" % name if id == world.defensive_call else name)
+	var rows := PackedStringArray()
+	for i in range(0, cards.size(), 3):
+		rows.append("   ·   ".join(cards.slice(i, i + 3)))
+	return "\n".join(rows)
 
 func _process(delta: float) -> void:
+	_tick_postgame(delta)
 	var target := player.global_position
 	# Blocking drill: higher, deeper camera so the QB behind you doesn't hide the rush.
 	var desired := target + (Vector3(0, 10, 13) if drill != null and drill.kind == "blocking" else Vector3(0, 6, 9))
@@ -1097,9 +1345,11 @@ func _process(delta: float) -> void:
 	side = "%s %s [TAB pos, T team]" % [roster.label(roster.slot_of_athlete(my_id)), side]
 	if world.offense_team == my_team:
 		side += " | PLAY: %s [Q]%s" % [world.play_name, (" | ROUTE: %s [F]" % world.route_of[my_id]) if world.route_of.has(my_id) else ""]
+	elif not world.defensive_call.is_empty():
+		side += " | CALL: %s [Q]" % World.DefensivePlaybook.CALLS[world.defensive_call].name
 	var phase_name: String = ["PRE-SNAP (Space to snap)", "LIVE", "DEAD"][world.phase]
 	if world.offense_team != my_team and world.phase == World.Phase.PRESNAP:
-		phase_name = "PRE-SNAP (Space: let them snap)"
+		phase_name = presnap_defense_prompt(world.get_athlete(my_id)) + (" | Q: change defensive call" if not world.defensive_call.is_empty() else "")
 	if world.phase == World.Phase.DEAD and last_whistle != "":
 		phase_name = "%s at %.1f" % [last_whistle, world.dead_ball_spot.y]
 	var situation: String = series.downs.label()
@@ -1142,6 +1392,8 @@ func _process(delta: float) -> void:
 			phase_name += "\n" + ranked_line
 		if xp_line != "":
 			phase_name += "\n" + xp_line
+		if achievement_line != "":
+			phase_name += "\n" + achievement_line
 	else:
 		phase_name = "HOME %d - AWAY %d | %s | %s | %s | %s" % [series.score[0], series.score[1], clock_txt, situation, side, phase_name]
 	var charge_txt := ("   THROW %d%%" % int(charge * 100)) if charging else ""

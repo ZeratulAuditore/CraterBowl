@@ -16,7 +16,7 @@ The screenshots show the remaster's every-snap loop: **play-call screen → brea
 1. **B03 play-call huddle + C08 defensive calls/zones**, built together, so both sides call plays and see their own assignments.
 2. **B09 kickoffs + C02 punts/FGs**, which share the kick meter.
 3. **C01 run game.**
-4. **C04 clock**: quarters, timeouts, running clock.
+4. **C04a–c clock**: running clock, timeouts, quarters.
 5. **C31 nameplates + scorebug checklist** (handed to A26/A27).
 6. **C32 co-op vs bots.**
 
@@ -26,7 +26,7 @@ After that, follow the list order below. B01/B02 (line play, press) come after t
 
 ## P0: core football a player notices in match one
 
-### [ ] C01 Run game: handoffs, run plays, RB carries
+### [x] C01 Run game: handoffs, run plays, RB carries (iter 033)
 - **Why:** Gridiron had animated handoffs with a re-handoff cooldown and 2 s of stamina immunity (O 1.0.3.52/53). Ours is pass-only, so RBs and OL have nothing to do on most plays. This is the single biggest feel gap.
 - **Accept:**
   - QB can hand the ball to an adjacent back with an action key. Possession transfers in the sim, and a second handoff is blocked by a cooldown.
@@ -57,19 +57,28 @@ After that, follow the list order below. B01/B02 (line play, press) come after t
 - **Addendum (Chaosball):** double jump, dash-down, and a dive-cancel (O 1.0.4.12).
 - **Guardrail:** Gridiron's "everyone jump-spams for the Hail Mary" meta. Jump catches need a stamina cost and a contested-catch rule (C07).
 
-### [ ] C04 Clock management: timeouts, one-minute warning, running clock, quarter length
-- **Why:** Gridiron has timeouts on a key, a one-minute warning, a mercy rule and configurable quarter length (O 1.0.3.18/20). Our clock stops between every play, so clock management doesn't exist, and late-game drama, one of pillar 1's stories, is missing.
+### [x] C04a Running clock, one-minute warning and team timeouts (iter 034)
+- **Why:** Gridiron used a one-minute warning and timeouts on a key (O 1.0.3.18/20). A running clock makes teams decide when to hurry or stop play.
 - **Accept:**
   - The clock keeps running between plays after an in-bounds tackle and stops on an incompletion, out of bounds, a score or a change of possession.
   - Each team gets 3 timeouts per half (2 in 3v3), callable by any player on the team in a dead-ball phase.
   - Under 1:00 in each half there is an automatic stoppage, and the clock stops after first downs.
-  - Mercy rule: the game ends when one team leads by 28 or more (host option).
-  - Quarter length is a lobby setting.
+  - Timeouts remaining are always visible on the scorebug (R-ss).
+
+### [~] C04b Four-quarter format and configurable periods (claimed: codex 2026-11-25)
+- **Why:** Gridiron supported configurable quarter lengths (O 1.0.3.18/20), and the remaster showed four short quarters (R-ss).
+- **Accept:**
+  - The host can select four quarters and their length in the lobby. The choice syncs to clients.
+  - Q1 and Q3 roll into the next quarter with possession, down, field position and timeouts intact.
+  - Halftime stays after Q2. The one-minute warning still occurs once per half, and the game can end after Q4.
+  - The scorebug shows the current quarter and its remaining time.
+
+### [ ] C04c Switching ends, mercy rule and clock actions
+- **Why:** Quarter transitions switch field ends. Gridiron also had a mercy rule (O 1.0.3.18/20).
+- **Accept:**
+  - Each team switches the goal it attacks every quarter. Preserve field position and on-field direction cues.
+  - The host can enable a mercy rule that ends the match when a team leads by 28 or more.
   - Spike and kneel actions (stretch).
-  - **Remaster (R-ss):** 4 short quarters (the clock showed 4th 1:19 and 1:11) and 3 timeout pips per team on the scorebug.
-    - Add a quarters option. Halftime stays after Q2, and teams switch direction each quarter.
-    - Timeouts remaining must always be visible.
-- **Touch:** `clock.gd`, `match.gd`, `lobby.gd` settings, HUD.
 
 ### [ ] C05 Competitive rules: eligibility, grounding, blocking zone, QB slowdown
 - **Why:** Gridiron's competitive ruleset (O 1.0.3.18/29, 1.0.4.29/47) targets exactly the "Hail Mary simulator" complaint. Its rules: blockers can't go more than 5 yd downfield until a pass or run, linemen with the shield up are ineligible, grounding is a penalty, and the QB slows progressively from 14 yd behind the LOS to a floor at 20 yd.
@@ -106,7 +115,12 @@ After that, follow the list order below. B01/B02 (line play, press) come after t
 - **Accept:** Each classic snap starts with the suggested defensive call. The defending team can select any catalog call during presnap, and the selection is synchronized to clients.
 - The huddle control, on-field assignments and bot behavior follow in C08c.
 
-### [~] C08c Defense and B03 huddle (claimed: codex 2026-11-25)
+### [x] C08c Defensive assignments, coverage, blitzes and play art
+
+### [x] C08d Pre-snap defensive roam + LOS barrier (plan: docs/iterations/032-presnap-defense-roam.md)
+- **Why:** In the reference, defenders spawn in stance and press Space to break it and roam pre-snap. DL stay set. A see-through animated hex wall at the LOS marks the limit. Ours: everyone (DL too) can already move pre-snap, they hit an invisible clamp, and Space on defense does nothing.
+- **Accept:** Defense lines up locked. Space breaks stance for LB/CB/S only. The neutral-zone clamp is shared by host and client prediction. The barrier is visible pre-snap with proximity reveal and contact ripples, and dissolves at the snap.
+- Splits the "non-DL defenders can move freely" bullet out of C08b, so it can ship independently of the playbook work (C08a).
 - **Why:** Gridiron draws every player's assignment on the field: routes, blocks, man or zone, and blitz lane (O 1.0.4.47). Defense has pre-snap free roam (except DL). We have man coverage only, no defensive calls, and play art only for offense. That violates pillar 2 ("everyone matters").
 - **Remaster screenshots (R-ss, 2026-11-25):**
   - Every defensive snap starts with a play call.

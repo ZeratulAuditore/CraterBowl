@@ -86,10 +86,20 @@ func _initialize() -> void:
 		[3330, func(): main.ai.defense_enabled = false; _setup_pick()],  # CB holds the spot (bots would play man)
 		[3331, func(): main.world.throw(main.world.find_role(0, main.Athlete.Role.QB).id, Vector2(50, 60), 0.9)],
 		[3470, func(): check(picked, "interception happened"); check(main.hud.text.find("INTERCEPTION") >= 0, "HUD interception banner"); main.ai.defense_enabled = true],
-		[4300, func(): _force_dead_if_live(); main.next_play(); check(main.world.offense_team == 1, "possession flipped after the pick (%s)" % main.series.last_outcome.get("outcome", "?"))],
+		[4170, func(): _force_dead_if_live(); main.next_play(); check(main.world.offense_team == 1, "possession flipped after the pick (%s)" % main.series.last_outcome.get("outcome", "?"))],
 		# A14: you're on defense vs a bot offense -> bots call a play and snap on their own
-		[4301, func(): check(main.world.get_athlete(main.my_id).team != main.world.offense_team, "human on defense"); check(main.world.phase == main.World.Phase.PRESNAP, "presnap")],
-		[4301 + int(60 * 2.5) + 10, func(): check(main.world.phase != main.World.Phase.PRESNAP, "bot offense snapped by itself")],
+		[4171, func(): check(main.world.get_athlete(main.my_id).team != main.world.offense_team, "human on defense"); check(main.world.phase == main.World.Phase.PRESNAP, "presnap")],
+		[4172, func():
+			var old: String = main.world.defensive_call
+			check(main.huddle_remaining() > 0 and main.huddle_calls(main.world.get_athlete(main.my_id).team).contains("Cover"), "defensive huddle opens with coverage calls")
+			_key(KEY_Q)
+			check(main.world.defensive_call != old, "Q selects a defensive call through the real key handler")
+			check(main.route_mesh.get_surface_count() == 1, "presnap defense assignment art is visible")
+			_key(KEY_Y)
+			check(main.huddle_remaining() == 0, "auto call dismisses the huddle")
+			_key(KEY_Y)
+			check(main.huddle_remaining() > 0, "manual calling restores the huddle")],
+		[4171 + int(60 * 5.0) + 10, func(): check(main.world.phase != main.World.Phase.PRESNAP, "bot offense snapped by itself")],
 		# A15: rebuild as 3v3 in place
 		[4500, func(): main.configure(3)],
 		[4502, func(): check(main.world.athletes.size() == 6 and main.athlete_root.get_child_count() == 6, "3v3: 6 athletes + views"); check(absf(main.field.width - 30.0) < 0.01, "3v3 field width 30"); check(main.hud.text.find("3v3") >= 0, "HUD shows 3v3")],
@@ -100,8 +110,11 @@ func _initialize() -> void:
 		[4603, func(): before_id = main.my_id; _key(KEY_TAB); check(main.my_id != before_id, "TAB key changes position")],
 		[4604, func(): var r0 = main.world.route_of.get(main.my_id, ""); _key(KEY_F); check(main.world.route_of.get(main.my_id, "") != r0 and r0 != "", "F key changes my route")],
 		[4605, func(): var t0: int = main.world.get_athlete(main.my_id).team; _key(KEY_T); check(main.world.get_athlete(main.my_id).team == 1 - t0, "T key swaps team")],
-		[4606, func(): _key(KEY_T); check(main.world.get_athlete(main.my_id).team == main.world.offense_team, "T again: back on offense")],
-		[4607, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE, "Space key snaps")],
+		# C08d: on defense pre-snap, real Space breaks stance (no snap) and the barrier shows
+		[4606, func(): var me = main.world.get_athlete(main.my_id); check(me.team != main.world.offense_team and main.world.phase == main.World.Phase.PRESNAP, "on defense presnap"); check(me.role == main.Athlete.Role.DL or me.set_lock, "defender starts in stance"); check(main.pres.barrier.visible, "LOS barrier visible presnap")],
+		[4607, func(): var me = main.world.get_athlete(main.my_id); if me.role != main.Athlete.Role.DL: check(main.hud.text.find("break stance") >= 0, "HUD: Space to break stance"); _key(KEY_SPACE); check(main.world.phase == main.World.Phase.PRESNAP, "defense Space doesn't snap"); check(me.role == main.Athlete.Role.DL or not me.set_lock, "Space broke stance")],
+		[4608, func(): _key(KEY_T); check(main.world.get_athlete(main.my_id).team == main.world.offense_team, "T again: back on offense")],
+		[4609, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE, "Space key snaps")],
 		# A17: practice drills through the real game
 		[4700, func(): main.start_practice("passing"); check(main.drill != null and main.world.athletes.size() == 4, "passing drill: 4 athletes")],
 		[4702, func(): check(main.hud.text.find("PRACTICE: Passing") >= 0, "HUD shows drill"); _key(KEY_SPACE)],
@@ -132,6 +145,10 @@ func _initialize() -> void:
 		[6802, func(): check(main.series.is_final(), "final"); check(main.hud.text.find("You QB: 1/1") >= 0, "HUD summary shows your QB line")],
 		# A22: match recorded to the leaderboard file; HUD shows your rank
 		[6803, func(): var lb = main.Leaderboard.new(); lb.load_file(main.leaderboard_path); check(lb.rank_of("You", "QB") == 1, "leaderboard file has You|QB at #1"); check(main.hud.text.find("YOUR RANKS: QB #1") >= 0, "HUD shows your rank"); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.leaderboard_path))],
+		# Post-game: players of the game picked at final -> presentation beats -> overview data
+		[6804, func(): check(main.potg.size() >= 2 and main.potg.size() <= 4, "2-4 players of the game (%d)" % main.potg.size()); check(main.potg[0]["title"] == "PLAYER OF THE GAME" and main.potg.any(func(e): return e["name"] == "You"), "your QB line made the cut"); check(main.postgame_t >= 0.0 and main.postgame == null, "presentation queued after the FINAL hold"); main.start_postgame()],
+		[6806, func(): var st = main.postgame; check(st != null and st.views.size() == main.potg.size() and st.step == -1, "presentation intro with one athlete per pick"); st.advance(); check(st.step == 0 and st.cards[0].visible, "first spotlight card")],
+		[6810, func(): var st = main.postgame; st.skip(); check(st.is_done() and main.postgame_done and main.postgame == null, "skip ends the presentation"); var ov = main.match_overview(); check(ov["potg"].size() == main.potg.size() and ov["teams"].size() == 2 and ov["my_lines"].size() >= 1, "overview carries picks, team stats, your line %s" % str(ov["my_lines"]))],
 		# A23: ranked match vs a human rival -> rating change saved + on HUD
 		[6900, func(): main.configure(7); _setup_ranked_rival()],
 		[6902, func(): main.series.score = [7, 0]; main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.world.phase = main.World.Phase.DEAD; main.series.last_result = {"type": "incomplete"}; main.next_play()],
@@ -155,17 +172,68 @@ func _initialize() -> void:
 		[7502, func(): check(main.saved_replay != "" and FileAccess.file_exists(main.saved_replay), "replay saved at final (%s)" % main.saved_replay)],
 		[7503, func(): check(main.open_replay(main.saved_replay) and main.replay_viewer and main.replay.plays.size() >= 1, "viewer opens the saved replay"); _key(KEY_BRACKETRIGHT); check(main.replay.speed == 2.0, "] speeds up")],
 		[7504, func(): _key(KEY_V); check(not main.replay_active, "V exits viewer"); for f in DirAccess.get_files_at(ProjectSettings.globalize_path("user://test_flow_replays")): DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_flow_replays/" + f))],
+		# D04: achievements unlocked by a real TD + win, saved to the (temp) profile
+		[7600, func(): main.profile.achievements = []; main.profile.games = 0; main.configure(7); main.ai.defense_enabled = false],
+		[7601, func(): _key(KEY_SPACE)],
+		[7630, func(): main.world.carrier().position = Vector2(26, 101.0)],
+		[7632, func(): main.next_play(); main.world.snap(); main.series.last_result = {"type": "touchdown", "team": 0}; main.world.phase = main.World.Phase.DEAD; main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.next_play()],
+		[7634, func(): check(main.series.is_final(), "final"); check(main.profile.achievements.has("first_td") and main.profile.achievements.has("first_win"), "First Touchdown + First Win unlocked (%s)" % str(main.profile.achievements)); check(main.hud.text.find("ACHIEVEMENTS: ") >= 0, "HUD lists achievements"); var saved = main.Cosmetics.new(); saved.load_file(main.profile_path); check(saved.achievements.has("first_win"), "achievements saved"); main.ai.defense_enabled = true; DirAccess.remove_absolute(ProjectSettings.globalize_path(main.profile_path))],
+		# C01: call a run, snap, exchange through G, then steer the RB.
+		[7710, func():
+			main.configure(7)
+			main.ai.defense_enabled = false
+			for i in 4: _key(KEY_Q)
+			check(main.world.play_name == "Inside Zone", "Q selects a run play")
+			_key(KEY_Q)
+			_key(KEY_X)
+			check(main.world.play_name == "Outside Sweep" and main.world.run_flipped, "Q selects the sweep and X flips it")],
+		[7712, func():
+			check(main.huddle_calls(0).contains("[Outside Sweep]") and main.route_mesh.get_surface_count() > 0, "huddle and turf show the selected run")
+			_key(KEY_SPACE)],
+		[7764, func():
+			check(main.handoff_hint() == "G HANDOFF", "handoff prompt appears in reach")
+			_key(KEY_G)
+			var back = main.world.find_role(0, main.Athlete.Role.RB)
+			check(main.world.carrier() == back and main.controlled_id == back.id, "G hands off and hands offline control to the back")
+			main.input_override = Vector2.DOWN],
+		[7766, func():
+			check(main.pres.overlay.me_name.text.contains("YOU  RB/"), "HUD identifies the new controlled role")],
+		[7830, func():
+			check(main.world.carrier().position.y > main.world.los_y and main.world.phase == main.World.Phase.LIVE, "human RB runs across the LOS and stays live")
+			var back = main.world.carrier()
+			back.position.x = -0.5
+			main.input_override = Vector2.ZERO],
+		[7832, func():
+			check(main.world.phase == main.World.Phase.DEAD and main.stats.total("car") == 1 and main.stats.total("rush_yds") > 0.0, "whistle records the RB's rushing attempt and gain")],
+		# C04a: U from dead ball, then the one-minute warning at the next whistle.
+		[7850, func():
+			main.configure(3)
+			main.ai.defense_enabled = false
+			main.series.clock.remaining = 60.1
+			_key(KEY_U)
+			check(main.series.clock.timeouts == [1, 2], "U spends a timeout in 3v3")
+			check(main.pres.overlay.banner.text == "TIMEOUT", "timeout banner appears")
+			_key(KEY_SPACE)],
+		[7870, func():
+			check(main.world.phase == main.World.Phase.LIVE and main.series.clock.remaining < 60.0, "play stays live below 1:00")
+			check(not main.pres.overlay.banner.visible, "timeout banner clears on the snap")
+			check(main.pres.overlay.timeout_pips[0].is_visible_in_tree() and main.pres.overlay.timeout_pips[0].text == "●○", "live scorebug shows remaining timeouts")
+			_key(KEY_U)
+			check(main.series.clock.timeouts == [1, 2], "U cannot call timeout during the play")
+			main.world.carrier().position.x = -0.5],
+		[7874, func():
+			check(main.world.phase == main.World.Phase.DEAD and main.pres.overlay.banner.text == "ONE-MINUTE WARNING", "warning appears after the whistle")],
 		# Training ground: hub portals, blocking station, Backspace home, practice-field targets
-		[7600, func(): main.training_path = "user://test_flow_training.json"; DirAccess.remove_absolute(ProjectSettings.globalize_path(main.training_path)); main.start_practice("hub")],
-		[7602, func(): check(main.drill.kind == "hub" and main.world.phase == main.World.Phase.LIVE, "training ground: free roam with the ball"); check(main.field_root.get_node_or_null("TrainingArt") != null and main.field_root.get_node("TrainingArt").get_children().filter(func(n): return n.name.begins_with("Portal_")).size() == 3, "three portals built"); check(main.pres.overlay.card_title.text == "PICK A STATION", "overlay coaching card (%s)" % main.pres.overlay.card_title.text); check(main.pres.overlay.mode_l.text == "TRAINING GROUND", "overlay title")],
-		[7603, func(): var p: Vector2 = main.Drills.portal_positions(main.field)[0]; main.world.get_athlete(main.my_id).position = p - Vector2(0, main.Drills.PORTAL_R + 1.5); main.input_override = Vector2(0, 1)],
-		[7700, func(): main.input_override = null; check(main.drill.kind == "blocking", "walked into the BLOCKING portal (%s)" % main.drill.kind); check(main.world.get_athlete(main.my_id).role == main.Athlete.Role.C, "you're the center")],
-		[7701, func(): check(main.pres.overlay.status_l.text.begins_with("SNAP IN"), "auto-snap countdown shown (%s)" % main.pres.overlay.status_l.text)],
-		[8000, func(): check(main.drill.reps >= 1, "blocking rep played out (%s)" % main.drill.last_result); _key(KEY_BACKSPACE); check(main.drill.kind == "hub", "real Backspace returns to the training ground")],
-		[8001, func(): main.start_practice("field")],
-		[8002, func(): var t: Vector2 = main.Drills.target_list(main.field)[0]["pos"]; main.world.get_athlete(main.my_id).position = t - Vector2(0, 10); main.aim_point = t; main._set_charging(true)],
-		[8030, func(): main._set_charging(false); check(main.drill.throws == 1, "practice-field throw with the real throw path")],
-		[8200, func(): check(main.drill.hits == 1 and main.drill.points >= 1, "hit the short target (%s)" % main.drill.last_result); check(main.world.ball.is_held_by(main.my_id), "ball back in your hands"); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.training_path))],
+		[8600, func(): main.training_path = "user://test_flow_training.json"; DirAccess.remove_absolute(ProjectSettings.globalize_path(main.training_path)); main.start_practice("hub")],
+		[8602, func(): check(main.drill.kind == "hub" and main.world.phase == main.World.Phase.LIVE, "training ground: free roam with the ball"); check(main.field_root.get_node_or_null("TrainingArt") != null and main.field_root.get_node("TrainingArt").get_children().filter(func(n): return n.name.begins_with("Portal_")).size() == 3, "three portals built"); check(main.pres.overlay.card_title.text == "PICK A STATION", "overlay coaching card (%s)" % main.pres.overlay.card_title.text); check(main.pres.overlay.mode_l.text == "TRAINING GROUND", "overlay title")],
+		[8603, func(): var p: Vector2 = main.Drills.portal_positions(main.field)[0]; main.world.get_athlete(main.my_id).position = p - Vector2(0, main.Drills.PORTAL_R + 1.5); main.input_override = Vector2(0, 1)],
+		[8700, func(): main.input_override = null; check(main.drill.kind == "blocking", "walked into the BLOCKING portal (%s)" % main.drill.kind); check(main.world.get_athlete(main.my_id).role == main.Athlete.Role.C, "you're the center")],
+		[8701, func(): check(main.pres.overlay.status_l.text.begins_with("SNAP IN"), "auto-snap countdown shown (%s)" % main.pres.overlay.status_l.text)],
+		[9000, func(): check(main.drill.reps >= 1, "blocking rep played out (%s)" % main.drill.last_result); _key(KEY_BACKSPACE); check(main.drill.kind == "hub", "real Backspace returns to the training ground")],
+		[9001, func(): main.start_practice("field")],
+		[9002, func(): var t: Vector2 = main.Drills.target_list(main.field)[0]["pos"]; main.world.get_athlete(main.my_id).position = t - Vector2(0, 10); main.aim_point = t; main._set_charging(true)],
+		[9030, func(): main._set_charging(false); check(main.drill.throws == 1, "practice-field throw with the real throw path")],
+		[9200, func(): check(main.drill.hits == 1 and main.drill.points >= 1, "hit the short target (%s)" % main.drill.last_result); check(main.world.ball.is_held_by(main.my_id), "ball back in your hands"); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.training_path))],
 	]
 
 ## First receiver not controlled by the human (humans don't auto-run routes).
@@ -218,6 +286,7 @@ func _isolate_user_files() -> void:
 	main.profile_path = "user://test_flow_profile.json"
 	main.leaderboard_path = "user://test_flow_leaderboard.json"
 	main.ranked_path = "user://test_flow_ranked.json"
+	main.replay_dir = "user://test_flow_replays"   # every final saves a replay; never into the real replays/
 	for p in [main.profile_path, main.leaderboard_path, main.ranked_path]:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
 	main.profile.load_file(main.profile_path)
@@ -250,7 +319,11 @@ func _lead_to_wr() -> void:
 	var t_extra := 50.0 / 60.0  # WR keeps running while QB charges
 	main.aim_point = main.Passing.lead_target(from, wr.position + wr.velocity * t_extra, wr.velocity, p)
 
+var _sorted := false
 func _physics_process(_dt: float) -> bool:
+	if not _sorted and not steps.is_empty():
+		steps.sort_custom(func(a, b): return a[0] < b[0])   # out-of-order steps once silently never ran
+		_sorted = true
 	if steps.is_empty():  # _initialize failed: never hang
 		print("GAME FLOW FAIL (setup error)")
 		quit(1)

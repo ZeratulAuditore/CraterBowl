@@ -18,12 +18,26 @@ var aid_before_swap := -1
 var aid_before_pick := -1
 var swapped_to_team0 := false
 var pick_rejected := false
+var equipped_number := ""
 var first_team := -1
 var saw_lobby := false
 var lobby_size := 0
 var lobby_code := ""
 var lead_samples := 0
+var was_locked := false     # C08d: joiner (defense) started in stance per host snapshot
+var broke_stance := false   # host snapshot shows the lock cleared after our Space
+var crossed_line := false   # predicted defender ever past the neutral zone
 var defense_call_seen := false
+var defense_recall_seen := false
+var requested_qb_slot := false
+var sent_timeout := false
+var got_timeout_event := false
+var timeout_confirmed := false
+var called_run := false
+var snapped_run := false
+var sent_handoff := false
+var handoff_to := -1
+var remote_handoff_confirmed := false
 
 func check(cond: bool, msg: String) -> void:
 	print(("  NET OK   " if cond else "  NET FAIL ") + msg)
@@ -54,6 +68,10 @@ func _on_welcome(id: int) -> void:
 func _on_event(n: String, _d: Dictionary) -> void:
 	if n == "snap":
 		got_snap_event = true
+	if n == "timeout" and _d.get("team") == 1 and _d.get("remaining") == 2:
+		got_timeout_event = true
+	if n == "handoff" and _d.get("by") == aid:
+		handoff_to = int(_d["to"])
 
 func _initialize() -> void:
 	main = load("res://scenes/main.tscn").instantiate()
@@ -71,7 +89,15 @@ func _physics_process(_dt: float) -> bool:
 		if start_x == INF:
 			start_x = x
 			main.do_action({"a": "defense", "p": "edge_blitz"})
-			main.input_override = Vector2(1, 0)  # strafe right (legal presnap for defense)
+			var me = main.world.get_athlete(aid)
+			was_locked = me.set_lock or me.role == main.Athlete.Role.DL
+			main.do_action({"a": "snap"})          # defense Space: break stance over the wire
+			main.input_override = Vector2(1, 0)  # strafe right (legal presnap once roaming)
+		if not broke_stance and main.world.phase == 0 and not main.world.get_athlete(aid).set_lock:
+			broke_stance = true
+		var a = main.world.get_athlete(aid)
+		if main.world.phase == 0 and a.team != main.world.offense_team and a.position.y < main.world.los_y + 0.5 - 0.001:
+			crossed_line = true
 
 		max_dx = maxf(max_dx, x - start_x)
 	# With prediction, the locally shown position leads the last raw server state while moving.
@@ -82,9 +108,11 @@ func _physics_process(_dt: float) -> bool:
 	if saw_live and bad_snap_sent_at < 0 and main.world.phase == 0:
 		main.input_override = Vector2.ZERO
 		main.do_action({"a": "snap"})
+		main.do_action({"a": "recall_call"})
 		bad_snap_sent_at = f
 	if bad_snap_sent_at > 0 and f == bad_snap_sent_at + 30:
 		bad_snap_rejected = main.world.phase == 0
+		defense_recall_seen = main.world.defensive_call == "edge_blitz"
 		aid_before_swap = aid
 		main.do_action({"a": "team"})
 	if bad_snap_sent_at > 0 and f == bad_snap_sent_at + 60:
@@ -93,20 +121,64 @@ func _physics_process(_dt: float) -> bool:
 		main.do_action({"a": "pick", "slot": 0})  # host's QB/LB slot: must be rejected
 	if bad_snap_sent_at > 0 and f == bad_snap_sent_at + 90:
 		pick_rejected = aid == aid_before_pick
-	if f == 1100 or (bad_snap_sent_at > 0 and f == bad_snap_sent_at + 91):
+		equipped_number = main.views[aid].number_text
+		main.do_action({"a": "team"})
+	if bad_snap_sent_at > 0 and f > bad_snap_sent_at + 90:
+		_test_remote_handoff()
+	if f == 1500 or remote_handoff_confirmed:
 		check(saw_lobby and lobby_size == 5 and lobby_code.length() == 11, "joined by code into the private lobby (5v5, code %s)" % lobby_code)
 		check(aid >= 0, "readied up -> match started -> welcomed with athlete %d" % aid)
 		check(first_team == 1, "joiner initially placed on the opponent team")
 		check(main.match_size == 5 and main.world.athletes.size() == 10, "client adopted host's 5v5 (%d athletes)" % main.world.athletes.size())
 		check(snaps > 20, "receiving snapshots (%d)" % snaps)
 		check(max_dx > 2.0, "own input moved own athlete on server (dx %.1f)" % max_dx)
+		check(was_locked, "joiner on defense starts in stance")
+		check(broke_stance, "defense Space broke stance via the host (snapshot lock cleared)")
+		check(not crossed_line, "predicted defender never past the neutral zone")
 		check(lead_samples > 10, "own athlete predicted ahead of server state (%d frames)" % lead_samples)
 		check(saw_live and got_snap_event, "host auto-snap reached client (snapshot LIVE + reliable event)")
+		check(defense_recall_seen, "remote defender recalled the previous snap's call")
 		check(defense_call_seen, "defensive selection reached host and returned in a snapshot")
 		check(bad_snap_rejected, "defense snap rejected by server")
 		check(swapped_to_team0, "team swap request -> server reassigned to team 0")
-		check(main.views[aid].number_text == "88", "my equipped #88 round-tripped through the host (%s)" % main.views[aid].number_text)
+		check(equipped_number == "88", "my equipped #88 round-tripped through the host (%s)" % equipped_number)
 		check(pick_rejected, "picking the host's occupied slot rejected")
+		check(timeout_confirmed and got_timeout_event, "remote U decrements only its team's timeouts and broadcasts the event")
+		check(remote_handoff_confirmed, "client QB hands off through G and sees the host's RB possession")
+		check(remote_handoff_confirmed and main.controlled_id == aid, "online QB keeps the same athlete after the handoff")
 		print("NET FLOW " + ("PASS" if ok else "FAIL"))
 		quit(0 if ok else 1)
 	return false
+
+func _test_remote_handoff() -> void:
+	var w = main.world
+	var me = w.get_athlete(aid)
+	if me == null or me.team != 1:
+		return
+	if not requested_qb_slot:
+		main.do_action({"a": "pick", "slot": main.match_size})
+		requested_qb_slot = true
+	if w.offense_team != 1 or me.role != main.Athlete.Role.QB:
+		return
+	if not sent_timeout and w.phase == w.Phase.PRESNAP:
+		_key(KEY_U)
+		sent_timeout = true
+	if sent_timeout and main.series.clock.timeouts == [3, 2]:
+		timeout_confirmed = true
+	if timeout_confirmed and not called_run and w.phase == w.Phase.PRESNAP:
+		main.do_action({"a": "play", "p": "Inside Zone"})
+		called_run = true
+	if not snapped_run and w.phase == w.Phase.PRESNAP and w.play_name == "Inside Zone":
+		_key(KEY_SPACE)
+		snapped_run = true
+	if snapped_run and not sent_handoff and w.handoff_receiver(aid) != null:
+		_key(KEY_G)
+		sent_handoff = true
+	var back = w.find_role(1, main.Athlete.Role.RB)
+	remote_handoff_confirmed = sent_handoff and back != null and back.id == handoff_to and w.ball.is_held_by(back.id)
+
+func _key(code: int) -> void:
+	var event := InputEventKey.new()
+	event.keycode = code
+	event.pressed = true
+	main._unhandled_key_input(event)
