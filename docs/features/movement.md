@@ -58,9 +58,11 @@ Passing, handoff and play-call keys are in [offense.md](offense.md).
 - Bots dive when within `AI_DIVE_RANGE` (2.0 yd) of the carrier.
 
 ## Design decisions
-- Committed dive (005) over contact tackles (no skill) or a tackle meter (breaks flow). Whiffing costs a second.
-- Exhaustion lockout makes sprint a decision (001).
-- Instant velocity replaced the accel/decel model from iteration 001 in the live-controls rework; `DECEL` now only
+- The sim works in yards on a 2D plane: x across the field (0 to 53.33), y down it, goal lines at 0 and 100,
+  10 yd end zones. One render unit is one yard (sim y maps to render -z).
+- Committed dive over contact tackles (no skill) or a tackle meter (breaks flow). Whiffing costs a second.
+- Exhaustion lockout makes sprint a decision, not a held button.
+- Instant velocity replaced the original accel/decel model in the live-controls rework; `DECEL` now only
   shapes the post-dive slide.
 - Charges come from distance run, not time, so players can't bank moves standing in the huddle.
 - Spin gives tackle and block immunity; dash is faster but gives neither. That is the trade-off between the two.
@@ -73,13 +75,6 @@ Passing, handoff and play-call keys are in [offense.md](offense.md).
 - `src/game/main.gd` — `read_input` (camera-relative), key handling. `src/game/overlay.gd` — stamina bar, charge circles.
 - Tests: `tests/test_player_motion.gd`, `tests/test_live_controls.gd`, `tests/test_tackling.gd`,
   `tests/test_turnovers.gd`, `tests/game_flow.gd` (C and F consume charges), `tests/menu_flow.gd` (rebinding, gamepad).
-
-## History
-- 001 [Field + player](../iterations/001-field-and-player.md)
-- 005 [Tackling](../iterations/005-tackling.md)
-- 014 [Interceptions + fumbles](../iterations/014-turnovers.md)
-- Commit `ec09b1e` "Rework live football controls and possession" (no iteration doc): dash, spin, charges, shield,
-  instant velocity, camera-relative movement.
 
 ## Open issues
 - #5 C03 Movement moveset: jump, dive, dash, spin, stiff-arm

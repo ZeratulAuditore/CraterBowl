@@ -70,16 +70,21 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
 - Inside Zone hits an interior gap; Outside Sweep goes wide. Bots flip the sweep automatically.
 
 ## Design decisions
-- Aim point plus solved arc (003) over homing passes or golf-style angle/power. The arc preview makes it learnable.
-- Charged power (hold to charge, release to throw, iteration 003) was removed in the live-controls rework: throws now fire
+- The snap is a short visible flight, not a teleport, so its timing is readable.
+- Aim point plus solved arc over homing passes (no skill) or golf-style angle/power (too fiddly). The arc preview
+  makes it learnable.
+- Charged power (hold to charge, release to throw) was removed in the live-controls rework: throws now fire
   on press at fixed power. `THROW_INHERIT` (30% of QB velocity) exists but player and bot throws pass
   `inherit_motion = false`, so throwing on the run no longer drifts the ball.
-- Reach-volume catching (004) over physics collision: deterministic and server friendly. A catch button is #9.
+- Reach-volume catching over physics collision: deterministic and server friendly. A catch button is #9.
+- The contest margin makes body position matter: a defender doesn't need to be closer, only close enough.
 - Pass not catchable for 2.5 yd and the 0.6 yd interception radius both came from bot sims where rushers batted
-  every throw at release (015).
-- Linear receiver lead threw curls and outs to empty grass; bots lead along the route path (015).
-- Proximity handoff key (033) over an automatic exchange or a timing meter.
-- Iteration 013/032 key bindings (Q cycles plays, F cycles routes, L/X/Y for recall/flip/default) were replaced by the
+  every throw at release.
+- Linear receiver lead threw curls and outs to empty grass; bots lead along the route path.
+- Route art is shown to your own team only, so the QB can read a human receiver's route override without voice chat.
+- Proximity handoff key over an automatic exchange (takes the timing choice away from a human QB) or a timing meter
+  (a second timing task on a quick snap).
+- Older key bindings (Q cycles plays, F cycles routes, L/X/Y for recall/flip/default) were replaced by the
   clickable picker; F is now spin.
 
 ## Code and tests
@@ -91,18 +96,6 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
 - `src/net/protocol.gd` — host-validated `play`, `route`, `flip_play`, `recall_call`, `throw`, `handoff` actions.
 - Tests: `tests/test_passing.gd`, `tests/test_catching.gd`, `tests/test_routes.gd`, `tests/test_run_game.gd`,
   `tests/test_turnovers.gd` (interceptions), `tests/test_bots.gd`, `tests/game_flow.gd` (real J/Q/G/Space keys).
-
-## History
-- 002 [Ball + snap](../iterations/002-ball-and-snap.md)
-- 003 [Precision physics passing](../iterations/003-precision-passing.md)
-- 004 [Catching](../iterations/004-catching.md)
-- 013 [Routes + play calling](../iterations/013-routes-playcalling.md)
-- 014 [Interceptions + fumbles](../iterations/014-turnovers.md)
-- 015 [Bots](../iterations/015-bots.md)
-- 032 [Defensive assignments and play-call huddle](../iterations/032-defensive-huddle.md) (offense recall/flip)
-- 033 [Run game](../iterations/033-run-game.md)
-- Commit `ec09b1e` "Rework live football controls and possession" (no iteration doc): fixed-power throws, picker
-  buttons, control stays on your athlete.
 
 ## Open issues
 - #9 C07 Catch rules: toe-taps, batted balls, catch button, dive/jump catches

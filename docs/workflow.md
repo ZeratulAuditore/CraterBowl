@@ -28,7 +28,7 @@ gh issue list --label P0      --search "-label:status:in-progress -label:status:
 
 # Claim (label + comment naming session and branch/worktree)
 gh issue edit 12 --add-label status:in-progress
-gh issue comment 12 --body "Claim: <session/agent>, branch \`<branch>\` (worktree \`~/Coding/football-game-<topic>\`), iter NNN."
+gh issue comment 12 --body "Claim: <session/agent>, branch \`<branch>\` (worktree \`~/Coding/football-game-<topic>\`)."
 
 # Progress worth keeping (scope change, finding, decision, blocker)
 gh issue comment 12 --body "Narrowed scope: ... because ..."
@@ -37,7 +37,7 @@ gh issue comment 12 --body "Narrowed scope: ... because ..."
 gh issue create --title "<what's wrong / what to add>" --label "type:bug,P1,area:online" --body "<where you saw it, repro or evidence, why it matters, suggested fix>. Found while working on #12."
 
 # Ship → open a PR that closes the issue on merge (the owner reviews and merges; never merge it yourself)
-gh pr create --title "iter NNN: <title> (#12)" --body "Closes #12. <what/why>. Tests: <check.sh counts>. Docs: <files>. Follow-ups: #61, #62."
+gh pr create --title "<title> (#12)" --body "Closes #12. <what/why>. Tests: <check.sh counts>. Docs: <files>. Follow-ups: #61, #62."
 gh issue comment 12 --body "PR #<M> open for review."
 
 # Partial ship → keep it open, narrow it
@@ -47,7 +47,7 @@ gh issue edit 12 --remove-label status:in-progress && gh issue comment 12 --body
 - **Split big issues.** Open child issues and reference the parent (`Part of #12`). Narrow the parent's scope in a comment.
 - **Duplicates:** close with `gh issue close N --reason "not planned" --comment "Duplicate of #M"`.
 - **Owner decisions:** quote the question in the issue and add `question` or `status:needs-decision`. Proceed on the documented default if there is one. Never decide something irreversible for the owner.
-- **Commits and iteration log:** cite the issue in commit messages (`iter 035: C04c switching ends (#6)`) and in the `ITERATIONS.md` entry.
+- **Commits and PRs:** cite the issue in commit messages and PR titles (`Switch ends every quarter (#6)`). There is no separate iteration log; the PR description is the record.
 - **Public repo:** issues are world-readable. Never put secrets, tokens, personal emails or private paths beyond `~/Coding/...` in them.
 
 ## Issue body format
@@ -71,8 +71,8 @@ Bugs instead use **Repro / Expected / Actual / Evidence** (test output, screensh
 | An issue | Something to do, a bug, an idea, a question, a status, a claim, a decision request, or a finding you won't act on now |
 | `docs/features/<area>.md` | How a feature behaves for players today: rules, controls, numbers, decisions and what didn't work. Update it in the same commit as the behavior change. |
 | `docs/design/<topic>.md` | How something is built: architecture, protocol, data flow, invariants. Write one when a change needs a design that outlives the issue, such as a new subsystem or protocol. |
-| `docs/iterations/NNN-*.md` | The design pass for one loop iteration: options, pick, acceptance criteria. Link the issue at the top. |
-| `ITERATIONS.md` | A one-entry log per iteration, citing the issue |
+| The issue (design comment) | The design pass for a piece of work: options, pick, acceptance criteria. The pick and its why then land in the feature doc. |
+| The PR description | What shipped, test evidence, follow-up issues |
 | `docs/research/` | Outside research: the gap analysis vs Gridiron/genre, plus dated review logs |
 
 Feature docs end with an **Open issues** list. When you open or close an issue in an area, update that list in the same commit if you're touching the doc anyway. Otherwise it's refreshed when the doc is next edited. GitHub is authoritative for status, and the doc list is just a convenience.
