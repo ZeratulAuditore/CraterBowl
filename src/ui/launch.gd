@@ -23,7 +23,6 @@ var last_status := ""             # message shown on the menu after returning (e
 var from_menu := false            # the current match was started from the menu (post-game returns to it)
 var last_match := {}              # post-game overview handed to the lobby (main.gd _finish_postgame)
 var _overlay: CanvasLayer
-var _hint: Label
 var _xlate := {}             # pressed key -> default key (rebinding)
 var _pad_held := {}          # synthesized key -> held (gamepad)
 var _stick := Vector2.ZERO
@@ -109,6 +108,7 @@ func go_to_menu(status: String = "", overview: Dictionary = {}) -> void:
 	options = {}
 	_close_overlay()
 	_close_game_network()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	get_tree().paused = false
 	get_tree().change_scene_to_file.call_deferred(MENU_SCENE)
 
@@ -133,8 +133,6 @@ func _close_game_network() -> void:
 func _on_node_added(n: Node) -> void:
 	# Add the small "ESC MENU" hint whenever a game scene becomes current (not in tests).
 	if n.scene_file_path == GAME_SCENE and n.get_parent() == get_tree().root:
-		if DisplayServer.get_name() != "headless":
-			_add_hint.call_deferred(n)
 		if options.get("public", false):
 			_advertise.call_deferred(n)
 
@@ -146,21 +144,6 @@ func _advertise(game: Node) -> void:
 	game.add_child(a)
 	var who := settings.player_name if settings.player_name != "" else "Someone"
 	print("ADVERTISE via %s: %s" % [settings.matchmaker, error_string(a.setup(game, settings.matchmaker, "%s's match" % who))])
-
-func _add_hint(game: Node) -> void:
-	if not is_instance_valid(game):
-		return
-	var layer := CanvasLayer.new()
-	layer.layer = 50
-	_hint = Label.new()
-	_hint.text = "ESC  MENU"
-	_hint.add_theme_font_override("font", UITheme.font(600))
-	_hint.add_theme_font_size_override("font_size", 14)
-	_hint.add_theme_color_override("font_color", Color(UITheme.CREAM, 0.55))
-	_hint.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 16)
-	_hint.position.x -= 90
-	layer.add_child(_hint)
-	game.add_child(layer)
 
 func _input(e: InputEvent) -> void:
 	if e.device == Controls.SYNTH_DEVICE or not in_game():
@@ -212,8 +195,12 @@ static func synth_key(key: int, pressed: bool, echo: bool = false) -> void:
 	Input.parse_input_event(k)
 
 ## In-match menu. The match keeps running (online play can't pause); offline we pause.
+func menu_open() -> bool:
+	return is_instance_valid(_overlay)
+
 func open_overlay() -> void:
 	var game := get_tree().current_scene
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_overlay = CanvasLayer.new()
 	_overlay.layer = 90
 	_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
@@ -225,21 +212,24 @@ func open_overlay() -> void:
 	dim.color = Color(UITheme.SPACE, 0.6)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_child(dim)
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(center)
 	var panel := PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_CENTER)
+	center.add_child(panel)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)
 	box.custom_minimum_size = Vector2(320, 0)
 	box.add_child(UITheme.heading("Paused" if _offline(game) else "Menu", 30, UITheme.CYAN))
 	var resume := _btn(box, "Resume", _close_overlay)
-	_btn(box, "Controls", func(): _show_controls(box))
+	var controls_button := _btn(box, "Controls", func(): _show_controls(box))
+	controls_button.name = "ControlsButton"
 	_btn(box, "Leave match", func(): go_to_menu())
 	_btn(box, "Quit to desktop", func(): get_tree().quit())
 	panel.add_child(box)
-	root.add_child(panel)
 	_overlay.add_child(root)
 	game.add_child(_overlay)
-	panel.position = (root.get_viewport_rect().size - panel.get_combined_minimum_size()) / 2.0
 	resume.grab_focus.call_deferred()
 	if _offline(game):
 		get_tree().paused = true
@@ -248,10 +238,34 @@ func _offline(game) -> bool:
 	return game != null and game.get("net") == null and game.get("mm_client") == null
 
 func _show_controls(box: VBoxContainer) -> void:
-	var l := Label.new()
-	l.text = preload("res://src/ui/controls.gd").help_text(settings.bindings)
-	l.add_theme_font_size_override("font_size", 15)
-	box.add_child(l)
+	var existing := box.get_node_or_null("ControlsHelp")
+	if existing != null:
+		existing.visible = not existing.visible
+		return
+	var help := VBoxContainer.new()
+	help.name = "ControlsHelp"
+	help.add_theme_constant_override("separation", 8)
+	box.add_child(help)
+	var bindings := GridContainer.new()
+	bindings.name = "ControlsBindings"
+	bindings.columns = 4
+	bindings.add_theme_constant_override("h_separation", 16)
+	help.add_child(bindings)
+	for action in Controls.ACTIONS:
+		var title := Label.new()
+		title.text = action[1]
+		title.add_theme_font_size_override("font_size", 15)
+		bindings.add_child(title)
+		var key := Label.new()
+		key.text = Controls.key_name(Controls.key_for(action[0], settings.bindings))
+		key.add_theme_font_size_override("font_size", 15)
+		key.add_theme_color_override("font_color", UITheme.CYAN)
+		bindings.add_child(key)
+	var notes := Label.new()
+	notes.name = "ControlsNotes"
+	notes.text = "\n".join(Controls.OTHER_CONTROLS)
+	notes.add_theme_font_size_override("font_size", 15)
+	help.add_child(notes)
 
 func _close_overlay() -> void:
 	if _overlay and is_instance_valid(_overlay):

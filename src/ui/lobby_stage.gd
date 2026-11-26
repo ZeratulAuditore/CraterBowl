@@ -4,6 +4,7 @@ extends Control
 ## teammates either side and empty "invite" pads on the wings. 3D renders into
 ## a SubViewport; names and invite buttons are 2D, pinned to the pads each frame.
 
+const Athlete := preload("res://src/sim/athlete.gd")
 const PlayerView := preload("res://src/game/player.gd")
 const C := preload("res://src/ui/ui_theme.gd")
 
@@ -17,19 +18,6 @@ const PANEL_SHIFT := 1.45   # camera h_offset when a side panel covers the right
 
 signal invite_pressed
 
-## Minimal stand-in for a sim athlete: everything player.gd reads.
-class StubAthlete:
-	var id := 0
-	var team := 1
-	var role := 0
-	var position := Vector2.ZERO
-	var velocity := Vector2.ZERO
-	var facing := Vector2(0, -1)
-	var recover_t := 0.0
-	var engaged_with := -1
-	func speed() -> float: return 0.0
-	func is_diving() -> bool: return false
-	func is_grounded() -> bool: return false
 
 var viewport: SubViewport
 var camera: Camera3D
@@ -183,7 +171,7 @@ func _build_stage(vp: SubViewport) -> void:
 		_pad(root, at, 0.95 if big else 0.62, big)
 		match s[3]:
 			"you", "bot":
-				var a := StubAthlete.new()
+				var a := Athlete.new()
 				a.id = 3 + i * 5
 				a.role = s[2]
 				a.position = Vector2(at.x, -at.z)

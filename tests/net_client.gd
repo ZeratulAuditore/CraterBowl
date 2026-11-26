@@ -16,7 +16,7 @@ var bad_snap_rejected := false
 var last_server_x := INF
 var aid_before_swap := -1
 var aid_before_pick := -1
-var swapped_to_team0 := false
+var team_swap_rejected := false
 var pick_rejected := false
 var equipped_number := ""
 var first_team := -1
@@ -116,7 +116,7 @@ func _physics_process(_dt: float) -> bool:
 		aid_before_swap = aid
 		main.do_action({"a": "team"})
 	if bad_snap_sent_at > 0 and f == bad_snap_sent_at + 60:
-		swapped_to_team0 = aid != aid_before_swap and main.world.get_athlete(aid).team == 0
+		team_swap_rejected = aid == aid_before_swap and main.world.get_athlete(aid).team == first_team
 		aid_before_pick = aid
 		main.do_action({"a": "pick", "slot": 0})  # host's QB/LB slot: must be rejected
 	if bad_snap_sent_at > 0 and f == bad_snap_sent_at + 90:
@@ -140,7 +140,7 @@ func _physics_process(_dt: float) -> bool:
 		check(defense_recall_seen, "remote defender recalled the previous snap's call")
 		check(defense_call_seen, "defensive selection reached host and returned in a snapshot")
 		check(bad_snap_rejected, "defense snap rejected by server")
-		check(swapped_to_team0, "team swap request -> server reassigned to team 0")
+		check(team_swap_rejected, "server rejected in-match team swap")
 		check(equipped_number == "88", "my equipped #88 round-tripped through the host (%s)" % equipped_number)
 		check(pick_rejected, "picking the host's occupied slot rejected")
 		check(timeout_confirmed and got_timeout_event, "remote U decrements only its team's timeouts and broadcasts the event")

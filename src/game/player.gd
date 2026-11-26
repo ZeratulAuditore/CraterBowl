@@ -7,6 +7,7 @@ extends Node3D
 ## Animation is chosen from how the node actually moves (works for live sim,
 ## network interpolation and replays alike) plus a few sim flags.
 
+const T := preload("res://src/sim/tuning.gd")
 const Cos := preload("res://src/sim/cosmetics.gd")
 const Mats := preload("res://src/game/art/materials.gd")
 const CharacterArt := preload("res://src/game/art/character_art.gd")
@@ -30,7 +31,7 @@ var athlete  # sim athlete
 var color := Color(0.9, 0.75, 0.2)
 var pants_color := Color(0.15, 0.15, 0.2)
 var world = null           # optional: sim world (stances)
-var throw_pose := 0.0      # 0..1, set by presentation while the controlled QB charges a throw
+var block_shield: MeshInstance3D
 
 # Public cosmetics
 var body: Node3D           # model root; celebrations spin/flip it
@@ -110,6 +111,13 @@ func _ready() -> void:
 	number_back = _number_label(chest, -0.205)
 	set_opponent(is_opponent)
 	add_child(_blob_shadow())
+	var shield_mesh := SphereMesh.new()
+	var shield_mat := Mats.emissive(Color(0.3, 0.8, 1.0, 0.35), 0.9)
+	shield_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	block_shield = _part(self, shield_mesh, shield_mat, Vector3(0, 0.95, -0.66))
+	block_shield.scale = Vector3(1.4, 1.65, 0.24)
+	block_shield.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	block_shield.hide()
 	apply_look(Cos.DEFAULT_LOOK.merged({"number": (athlete.id % 90) + 10}, true))
 	_last_pos = Vector3(athlete.position.x, 0, -athlete.position.y)
 	_play("Idle", 0.0)
@@ -227,8 +235,11 @@ func _role_name() -> String:
 
 ## Mirror the sim position/facing. Animation runs in _process.
 func sync() -> void:
+	block_shield.visible = athlete.blocking
 	var yaw := rotation.y
-	if athlete.speed() > 0.1:
+	if athlete.blocking:
+		yaw = atan2(-athlete.facing.x, athlete.facing.y)
+	elif athlete.speed() > 0.1:
 		yaw = atan2(-athlete.velocity.x, athlete.velocity.y)
 	elif athlete.facing.length() > 0.1 and world != null and int(world.phase) == 0:
 		yaw = atan2(-athlete.facing.x, athlete.facing.y)
@@ -259,7 +270,7 @@ func _process(delta: float) -> void:
 	_vel = _vel.lerp(v, clampf(delta * 12.0, 0.0, 1.0))
 	var spd := Vector2(_vel.x, _vel.z).length()
 	var down: bool = athlete.is_diving() or athlete.is_grounded()
-	if spd > 0.4 and not down:
+	if spd > 0.4 and not down and not athlete.blocking:
 		rotation.y = lerp_angle(rotation.y, atan2(-_vel.x, -_vel.z), clampf(delta * 14.0, 0.0, 1.0))
 	_hit_t = maxf(0.0, _hit_t - delta)
 	_release_t = maxf(0.0, _release_t - delta)
@@ -268,6 +279,8 @@ func _process(delta: float) -> void:
 	# Celebration flourishes on top of the dance.
 	body.rotation = Vector3.ZERO
 	body.position = Vector3.ZERO
+	if athlete.is_spinning():
+		body.rotation.y = TAU * (1.0 - athlete.move_t / T.SPIN_TIME)
 	if celebrate_t > 0.0:
 		var t := 1.5 - celebrate_t
 		match celebrate_kind:
@@ -296,10 +309,8 @@ func _choose_anim(spd: float, down: bool) -> void:
 		return
 	if _release_t > 0.0:
 		return
-	if throw_pose > 0.0:
-		_play("u2/OverhandThrow", 0.12, 0.0)
-		if anim and anim.has_animation("u2/OverhandThrow"):
-			anim.seek(anim.get_animation("u2/OverhandThrow").length * lerpf(0.18, 0.36, throw_pose), true)
+	if athlete.blocking:
+		_play("u2/Idle_Shield")
 		return
 	if athlete.engaged_with >= 0:
 		_play("Push", BLEND, 1.3)

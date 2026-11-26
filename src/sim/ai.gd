@@ -30,7 +30,7 @@ func presnap_tick(world, human_ids: Array, dt: float, down: int = 1, distance: f
 		if h and h.team == world.offense_team:
 			humans_on_offense = true
 	var qb = world.find_role(world.offense_team, Athlete.Role.QB)
-	if not _presnap_called and qb and not human_ids.has(qb.id):
+	if not _presnap_called and qb and not humans_on_offense:
 		world.call_play(choose_play(down, distance, _calls, world.has_run_back()))
 		if world.play_name == "Outside Sweep":
 			# Sweep across the formation so the back can keep their exchange momentum.
@@ -132,7 +132,7 @@ func think(world, human_ids: Array) -> Dictionary:
 				continue
 			# Play the receiver's hands, not the ball's landing spot.
 			var r = world.get_athlete(_man[a.id])
-			var to_r: Vector2 = r.position + r.velocity * 0.15 - a.position
+			var to_r: Vector2 = r.position - r.velocity * T.AI_COVER_REACTION - a.position
 			# Receiver knows where the ball is going; defender reacts (no sprint burst).
 			out[a.id] = {"dir": to_r.normalized() if to_r.length() > 0.3 else Vector2.ZERO, "sprint": false}
 			continue
@@ -323,6 +323,7 @@ func _qb_decide(world, qb) -> void:
 		return
 	var best = null
 	var best_sep := -INF
+	var best_read := -INF
 	for r in world.athletes:
 		if r.team != world.offense_team or r.id == qb.id or not world.is_eligible_receiver(r):
 			continue
@@ -332,7 +333,9 @@ func _qb_decide(world, qb) -> void:
 		for d in world.athletes:
 			if d.team != world.offense_team:
 				sep = minf(sep, d.position.distance_to(r.position))
-		if sep > best_sep:
+		var read: float = sep + (r.position.y - world.los_y) * T.AI_QB_DEPTH_WEIGHT
+		if read > best_read:
+			best_read = read
 			best_sep = sep
 			best = r
 	if best == null:
@@ -341,9 +344,9 @@ func _qb_decide(world, qb) -> void:
 	if best_sep < T.AI_QB_MIN_SEPARATION and pressure > T.AI_QB_PRESSURE and world.play_time < T.AI_QB_MAX_HOLD:
 		return
 	var from := Vector3(qb.position.x, qb.position.y, T.RELEASE_HEIGHT)
-	var tgt := _route_lead(world, from, best, 0.85)
+	var tgt := _route_lead(world, from, best, T.AI_QB_PASS_POWER)
 	tgt.x = clampf(tgt.x, 1.5, world.field.width - 1.5)   # never lead a receiver out of bounds
-	world.throw(qb.id, tgt, 0.85)
+	world.throw(qb.id, tgt, T.AI_QB_PASS_POWER, false, false)
 
 ## Where receiver r will be after t seconds if he keeps running his route at run speed.
 func predict_on_route(world, r, t: float) -> Vector2:

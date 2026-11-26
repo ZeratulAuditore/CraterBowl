@@ -57,8 +57,6 @@ var arc_dots: Array = []
 var _ball_prev := Vector3.ZERO
 var _ball_cur := Vector3.ZERO
 var _route_key := 0          # last drawn route-art state; rebuild only when it changes
-var charging := false
-var charge := 0.0
 var aim_point := Vector2(26, 45)
 var ai := AI.new()
 var last_whistle := ""
@@ -114,8 +112,13 @@ var interp := Interp.new()
 var latest_snap_tick := 0
 var latest_snap_at := 0.0
 var camera: Camera3D
+var cam_yaw := 0.0
+var camera_follow := Vector3.ZERO
+var camera_orbit := 0.0
+var aim_distance := 22.0
+var scoreboard_held := false
+var play_picker_open := true
 var hud: Label
-var auto_call := false
 var pres: Presentation   # visuals-only layer (ball model, rings, FX, overlay)
 
 static func to_world(p: Vector2, h: float = 0.0) -> Vector3:
@@ -185,6 +188,9 @@ func _ready() -> void:
 ## (Re)build the whole match for a size: field, roster, sim, views. Used at start,
 ## and on clients when the host's size differs.
 func configure(size: int, practice: String = "", mode: String = "classic") -> void:
+	play_picker_open = true
+	scoreboard_held = false
+	camera_orbit = 0.0
 	match_mode = "chaosball" if mode == "chaosball" else "classic"
 	match_size = 3 if match_mode == "chaosball" else MatchConfig.normalize(size)
 	drill = null
@@ -276,6 +282,7 @@ func _spawn_teams() -> void:
 		views.append(v)
 	controlled_id = my_id
 	player = views[controlled_id]
+	camera_follow = Vector3(player.athlete.position.x, 0, -player.athlete.position.y)
 
 func _build_ball_view() -> void:
 	ball_view = Presentation.make_ball()
@@ -310,45 +317,30 @@ func _build_aim_visuals() -> void:
 		add_child(d)
 		arc_dots.append(d)
 
-## Mouse ray onto the turf plane -> field coordinates.
+## Map the camera heading and mouse-controlled range to a point on the turf.
 func _update_aim() -> void:
 	if camera == null or not is_inside_tree() or DisplayServer.get_name() == "headless":
 		return
-	var mp := get_viewport().get_mouse_position()
-	var origin := camera.project_ray_origin(mp)
-	var dir := camera.project_ray_normal(mp)
-	if absf(dir.y) < 0.0001:
-		return
-	var t := -origin.y / dir.y
-	if t > 0.0:
-		var hit := origin + dir * t
-		aim_point = Vector2(hit.x, -hit.z)
+	var forward := Vector2.DOWN.rotated(cam_yaw)
+	aim_point = player.athlete.position + forward * aim_distance
 
 func _update_arc() -> void:
 	var qb = world.get_athlete(controlled_id)
-	var show := charging and world.ball.is_held_by(controlled_id)
+	var show := can_pass()
+	reticle.visible = show
 	reticle.position = Vector3(aim_point.x, 0.05, -aim_point.y)
 	if not show:
 		for d in arc_dots:
 			d.visible = false
 		return
 	var from := Vector3(qb.position.x, qb.position.y, T.RELEASE_HEIGHT)
-	var v := Passing.solve_velocity(from, aim_point, charge, world.gravity(), lob_held())
-	v += Vector3(qb.velocity.x, qb.velocity.y, 0) * T.THROW_INHERIT
+	var v := Passing.solve_velocity(from, aim_point, T.PLAYER_PASS_POWER, world.gravity(), lob_held())
 	var tf := Passing.time_to_height(v, from.z, 0.0, world.gravity())
 	for i in ARC_DOTS:
 		var t := tf * float(i + 1) / ARC_DOTS
 		var p := from + v * t + Vector3(0, 0, -0.5 * world.gravity() * t * t)
 		arc_dots[i].position = Vector3(p.x, p.z, -p.y)
 		arc_dots[i].visible = true
-
-func _set_charging(on: bool) -> void:
-	if on and world.ball.is_held_by(controlled_id) and not charging:
-		charging = true
-		charge = 0.0
-	elif not on and charging:
-		charging = false
-		do_action({"a": "throw", "t": aim_point, "p": charge, "lob": lob_held()})
 
 ## Display name of whoever controls athlete `aid` right now ("Bot" for AI).
 func owner_name(aid: int) -> String:
@@ -583,13 +575,6 @@ func do_action(action: Dictionary) -> bool:
 	if is_client():
 		net.send_action(action)
 		return true
-	if action.get("a", "") in ["cycle", "team", "pick"]:
-		var aid := roster_action(LOCAL_PLAYER, action)
-		if aid >= 0:
-			my_id = aid
-			set_controlled(aid)
-			_sync_looks()
-		return aid >= 0
 	return Protocol.apply_action(series, controlled_id, action)
 
 func is_client() -> bool:
@@ -828,25 +813,13 @@ func _on_assigned(aid: int) -> void:
 	# Our look goes to the host; we only show it once the host echoes it back.
 	net.send_action({"a": "look", "look": profile.equipped})
 
-## Roster changes (position/team). Authoritative on server/offline; only outside live play.
-## Returns the player's (possibly new) athlete id, or -1 if rejected.
-func roster_action(player: int, action: Dictionary) -> int:
-	if world.phase == World.Phase.LIVE:
-		return -1
-	match action.get("a", ""):
-		"cycle":
-			return roster.cycle_position(player)
-		"team":
-			return roster.swap_team(player)
-		"pick":
-			var slot = action.get("slot", -1)
-			if slot is int and roster.claim(player, slot):
-				return roster.athlete_of(player)
-	return -1
-
 ## Client: authoritative state in, then re-predict own athlete on top of it.
 func _on_snapshot(snap: Dictionary) -> void:
+	var old_phase := world.phase
 	Protocol.apply_snapshot(series, snap)
+	if old_phase != world.phase and world.phase == World.Phase.PRESNAP:
+		play_picker_open = true
+		camera_orbit = 0.0
 	interp.push(int(snap["t"]), Interp.xy_from_snapshot(snap), Interp.ball_from_snapshot(snap))
 	latest_snap_tick = int(snap["t"])
 	latest_snap_at = Time.get_ticks_msec() / 1000.0
@@ -869,10 +842,17 @@ func _apply_interpolation() -> void:
 		world.ball.position = smp["ball"]
 
 func _unhandled_input(e: InputEvent) -> void:
-	if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
-		_set_charging(e.pressed)
-	elif e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_RIGHT and e.pressed:
-		do_action({"a": "tackle"})
+	var launch := get_node_or_null("/root/Launch")
+	if in_lobby() or replay_active or (launch != null and launch.menu_open()):
+		return
+	if e is InputEventMouseMotion and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+			or Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE)):
+		camera_orbit = wrapf(camera_orbit - e.relative.x * 0.004, -PI, PI)
+		cam_yaw = _camera_target_yaw()
+		aim_distance = clampf(aim_distance - e.relative.y * 0.22, 2.0, 65.0)
+		_update_aim()
+	elif e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT and e.pressed:
+		throw_pass()
 
 
 func _on_world_event(n: String, d: Dictionary) -> void:
@@ -906,17 +886,6 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 		banner_t = 2.0
 	if is_server():
 		net.broadcast_event(n, d)
-	# Offline convenience: follow the ball to the receiver. Online: fixed athlete (Gridiron parity).
-	if net == null and n == "catch" and world.get_athlete(d["by"]).team == world.offense_team:
-		set_controlled(d["by"])
-	if n == "handoff" and d["by"] == controlled_id:
-		charging = false
-		if net == null:
-			set_controlled(d["to"])
-	# Offline: take control of whoever on your team just took the ball away.
-	if net == null and n in ["interception", "recovery"] and world.get_athlete(d["by"]).team == world.get_athlete(my_id).team:
-		set_controlled(d["by"])
-
 func _marker(c: Color, n: String) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var q := QuadMesh.new()
@@ -937,12 +906,14 @@ func presnap_defense_prompt(a) -> String:
 		return "PRE-SNAP"
 	if a.role == Athlete.Role.DL:
 		return "PRE-SNAP (hold your stance)"
-	return "PRE-SNAP (Space: break stance)" if a.set_lock else "PRE-SNAP: ROAMING"
+	return "PRE-SNAP: SET" if a.set_lock else "PRE-SNAP: ROAMING"
 
 func next_play() -> void:
 	series.next_play()
 	dead_t = 0.0
 	last_whistle = ""
+	play_picker_open = true
+	camera_orbit = 0.0
 	set_controlled(my_id)
 
 func set_controlled(id: int) -> void:
@@ -962,13 +933,50 @@ func read_input() -> Vector2:
 	if Input.is_key_pressed(KEY_S): v.y -= 1
 	if Input.is_key_pressed(KEY_D): v.x += 1
 	if Input.is_key_pressed(KEY_A): v.x -= 1
-	return v
+	# Keyboard/stick input is screen-relative: W is "up the screen", so turn it
+	# with the camera (on defense the camera faces the other way down the field).
+	return v.rotated(cam_yaw)
+
+## Yaw of the follow camera around the player (sim/3D Y axis). 0 = behind the
+## offense looking downfield (sim +y / 3D -Z); PI = on defense, looking back at
+## the offense so the ball is in front of you.
+func _camera_target_yaw() -> float:
+	if world == null or my_id < 0 or player == null:
+		return 0.0
+	return camera_orbit + (PI if player.athlete.team != world.offense_team else 0.0)
+
+func _update_camera(delta: float) -> void:
+	cam_yaw = lerp_angle(cam_yaw, _camera_target_yaw(), clampf(delta * 4.0, 0.0, 1.0))
+	if absf(angle_difference(cam_yaw, _camera_target_yaw())) < 0.001:
+		cam_yaw = _camera_target_yaw()
+	var rot := Basis(Vector3.UP, cam_yaw)
+	var target := player.global_position
+	if camera_follow.distance_to(target) > 12.0:
+		camera_follow = target
+	camera_follow = camera_follow.lerp(target, 1.0 - exp(-10.0 * delta))
+	camera.global_position = camera_follow + rot * Vector3(0, 6, 9)
+	camera.look_at(target + rot * Vector3(0, 0, -aim_distance))
+
+func can_pass() -> bool:
+	return world.can_throw(my_id)
+
+func throw_pass() -> void:
+	if can_pass():
+		do_action({"a": "throw", "t": aim_point, "lob": lob_held()})
 
 func _input(e: InputEvent) -> void:
-	if e is InputEventKey and not e.pressed and e.keycode == KEY_J:
-		_set_charging(false)
+	if e is InputEventKey and e.keycode == KEY_TAB and not in_lobby():
+		scoreboard_held = e.pressed
+		get_viewport().set_input_as_handled()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		scoreboard_held = false
 
 func _unhandled_key_input(e: InputEvent) -> void:
+	var launch := get_node_or_null("/root/Launch")
+	if launch != null and launch.menu_open():
+		return
 	if not (e is InputEventKey and e.pressed and not e.echo):
 		return
 	if in_lobby():
@@ -1003,40 +1011,24 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			if drill == null:
 				do_action({"a": "timeout"})
 		KEY_J:
-			_set_charging(true)
-		KEY_Y:
-			if world.phase == World.Phase.PRESNAP:
-				auto_call = not auto_call
-		KEY_L:
-			do_action({"a": "recall_call"})
-		KEY_X:
-			do_action({"a": "flip_play"})
+			throw_pass()
 		KEY_Q:
-			var me = world.get_athlete(my_id)
-			if me != null and me.team != world.offense_team and not world.defensive_call.is_empty():
-				var calls := World.DefensivePlaybook.CALLS.keys()
-				var next := (calls.find(world.defensive_call) + 1) % calls.size()
-				do_action({"a": "defense", "p": calls[next]})
-			else:
-				var plays := world.available_plays()
-				var i := (plays.find(world.play_name) + 1) % plays.size()
-				do_action({"a": "play", "p": plays[i]})
-		KEY_F:
-			if world.route_of.has(my_id):
-				var j := (Routes.ROUTE_NAMES.find(world.route_of[my_id]) + 1) % Routes.ROUTE_NAMES.size()
-				do_action({"a": "route", "r": Routes.ROUTE_NAMES[j]})
-		KEY_TAB:
-			do_action({"a": "cycle"})
-		KEY_T:
-			do_action({"a": "team"})
+			if world.phase == World.Phase.PRESNAP:
+				play_picker_open = not play_picker_open
+		KEY_F, KEY_C:
+			do_action({"a": "spin" if e.keycode == KEY_F else "dash", "dir": read_input()})
 		KEY_R:
 			if world.phase == World.Phase.DEAD and not is_client():
 				next_play()
 
 func _physics_process(delta: float) -> void:
-	if charging:
-		charge = minf(1.0, charge + delta / T.THROW_CHARGE_TIME)
-	var my_input := {"dir": read_input(), "sprint": sprint_override if sprint_override != null else Input.is_key_pressed(KEY_SHIFT)}
+	var launch := get_node_or_null("/root/Launch")
+	var menu_open: bool = launch != null and launch.menu_open()
+	var my_input := {
+		"dir": Vector2.ZERO if menu_open else read_input(),
+		"sprint": not menu_open and (sprint_override if sprint_override != null else Input.is_key_pressed(KEY_SHIFT)),
+		"block": not menu_open and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT),
+	}
 	if in_lobby():
 		if is_server():
 			_step_lobby()
@@ -1052,11 +1044,11 @@ func _physics_process(delta: float) -> void:
 		return
 	if is_client():
 		# Predict own athlete now; server stays authoritative and reconciles via acks.
-		var seq := predictor.record(my_input["dir"], my_input["sprint"], delta)
-		net.send_input(my_input["dir"], my_input["sprint"], seq)
+		var seq := predictor.record(my_input["dir"], my_input["sprint"], delta, my_input["block"])
+		net.send_input(my_input["dir"], my_input["sprint"], seq, my_input["block"])
 		var me = world.get_athlete(my_id)
 		if me and net.my_athlete >= 0:
-			world.predict_step(me, my_input["dir"], my_input["sprint"], delta)
+			world.predict_step(me, my_input["dir"], my_input["sprint"], delta, my_input["block"])
 			if world.ball.is_held_by(my_id):
 				world.ball.position = Vector3(me.position.x, me.position.y, T.BALL_CARRY_HEIGHT)
 		_apply_interpolation()
@@ -1081,18 +1073,13 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 	if is_server():
 		for pa in net.take_actions():
 			var act = pa[2]
-			if act is Dictionary and act.get("a", "") in ["cycle", "team", "pick"]:
-				var aid := roster_action(pa[0], act)
-				if aid >= 0:
-					net.set_assignment(pa[0], aid)
-					_sync_looks()
-			elif act is Dictionary and act.get("a", "") == "look":
+			if act is Dictionary and act.get("a", "") == "look":
 				peer_looks[pa[0]] = Cosmetics.sanitize_look(act.get("look", {}))
 				_sync_looks()
 			else:
 				Protocol.apply_action(series, pa[1], act)
 	var snap_delay := T.AI_SNAP_DELAY
-	if drill == null and not world.is_chaos() and not auto_call and not humans.is_empty():
+	if drill == null and not world.is_chaos() and not humans.is_empty():
 		snap_delay = T.HUDDLE_SECONDS
 	ai.presnap_tick(world, humans, delta, series.downs.down, series.downs.distance(), snap_delay)
 	var inputs := ai.think(world, humans)
@@ -1307,65 +1294,32 @@ func _disc(p: Vector2, r: float, c: Color, h: float, depth_scale: float = 1.0) -
 		var t1 := TAU * (s + 1) / 10.0
 		_tri(p, p + Vector2(cos(t0), sin(t0) * depth_scale) * r, p + Vector2(cos(t1), sin(t1) * depth_scale) * r, c, c, c, h)
 
-func huddle_remaining() -> int:
-	if world.phase != World.Phase.PRESNAP or drill != null or world.is_chaos() or replay_active or auto_call:
-		return 0
-	return maxi(0, int(ceil(series.clock.play_clock - (Match.Clock.PLAY_CLOCK - T.HUDDLE_SECONDS))))
-
-func bound_key_name(action: String) -> String:
-	var launch := get_node_or_null("/root/Launch")
-	var bindings: Dictionary = launch.settings.bindings if launch else {}
-	return Controls.key_name(Controls.key_for(action, bindings)).to_upper()
-
-func handoff_hint() -> String:
-	if world.handoff_receiver(controlled_id) != null:
-		return "%s HANDOFF" % bound_key_name("handoff")
-	var holder := world.carrier()
-	if world.phase == World.Phase.LIVE and world.is_run_play() and holder and holder.id == controlled_id and holder.role == Athlete.Role.QB and holder.position.y <= world.los_y:
-		return "MEET THE BACK"
-	return ""
-
-func huddle_calls(team: int) -> String:
-	var cards := PackedStringArray()
-	if team == world.offense_team:
-		for name in world.available_plays():
-			cards.append("[%s]" % name if name == world.play_name else name)
-	else:
-		var ids := World.DefensivePlaybook.CALLS.keys()
-		var first := maxi(0, ids.find(world.defensive_call))
-		for i in 6:
-			var id = ids[(first + i) % ids.size()]
-			var name: String = World.DefensivePlaybook.CALLS[id].name
-			cards.append("[%s]" % name if id == world.defensive_call else name)
-	var rows := PackedStringArray()
-	for i in range(0, cards.size(), 3):
-		rows.append("   ·   ".join(cards.slice(i, i + 3)))
-	return "\n".join(rows)
-
 func _process(delta: float) -> void:
 	_render_frame()
 	_tick_postgame(delta)
-	var target := player.global_position
-	var desired := target + Vector3(0, 6, 9)
-	# Exponential smoothing: identical feel at 30, 60 or 144 fps (a delta*k lerp is not).
-	camera.global_position = camera.global_position.lerp(desired, 1.0 - exp(-6.0 * delta))
-	camera.look_at(target + Vector3(0, 1, -4))
+	var launch := get_node_or_null("/root/Launch")
+	var menu_open: bool = launch != null and launch.menu_open()
+	if DisplayServer.get_name() != "headless":
+		var capture: bool = world.phase == World.Phase.LIVE and not menu_open and not in_lobby() and not replay_active
+		var mode := Input.MOUSE_MODE_CAPTURED if capture else Input.MOUSE_MODE_VISIBLE
+		if Input.mouse_mode != mode:
+			Input.mouse_mode = mode
+	if menu_open:
+		scoreboard_held = false
+	_update_camera(delta)
 	var m = player.athlete
-	var my_team: int = world.get_athlete(my_id).team
-	var side := "OFFENSE" if world.offense_team == my_team else "DEFENSE (E/RMB to tackle)"
-	side = "%s %s [TAB pos, T team]" % [roster.label(roster.slot_of_athlete(my_id)), side]
-	if world.offense_team == my_team:
-		side += " | PLAY: %s [Q]%s" % [world.play_name, (" | ROUTE: %s [F]" % world.route_of[my_id]) if world.route_of.has(my_id) else ""]
-	elif not world.defensive_call.is_empty():
-		side += " | CALL: %s [Q]" % World.DefensivePlaybook.CALLS[world.defensive_call].name
-	var phase_name: String = ["PRE-SNAP (Space to snap)", "LIVE", "DEAD"][world.phase]
+	var my_team: int = m.team
+	var side := "OFFENSE | PLAY: %s" % world.play_name if world.offense_team == my_team else "DEFENSE"
+	if world.offense_team != my_team and not world.defensive_call.is_empty():
+		side += " | CALL: %s" % World.DefensivePlaybook.CALLS[world.defensive_call].name
+	var phase_name: String = ["PRE-SNAP", "LIVE", "DEAD"][world.phase]
 	if world.offense_team != my_team and world.phase == World.Phase.PRESNAP:
-		phase_name = presnap_defense_prompt(world.get_athlete(my_id)) + (" | Q: change defensive call" if not world.defensive_call.is_empty() else "")
+		phase_name = presnap_defense_prompt(world.get_athlete(my_id))
 	if world.phase == World.Phase.DEAD and last_whistle != "":
 		phase_name = "%s at %.1f" % [last_whistle, world.dead_ball_spot.y]
 	var situation: String = series.downs.label()
 	if series.state == Match.State.TRY:
-		situation = "TRY for %d (1: from the 3 / 2: from the 10)" % series.try_points
+		situation = "TRY for %d" % series.try_points
 	banner_t = maxf(0.0, banner_t - delta)
 	if banner_t > 0.0:
 		phase_name = banner + "  " + phase_name
@@ -1403,8 +1357,7 @@ func _process(delta: float) -> void:
 			phase_name += "\n" + achievement_line
 	else:
 		phase_name = "HOME %d - AWAY %d | %s | %s | %s | %s" % [series.score[0], series.score[1], clock_txt, situation, side, phase_name]
-	var charge_txt := ("   THROW %d%%" % int(charge * 100)) if charging else ""
-	hud.text = charge_txt + "\n" + "%s   Yard: %.1f  Speed: %.1f yd/s  Stamina: %d%%%s" % [
+	hud.text = "%s   Yard: %.1f  Speed: %.1f yd/s  Stamina: %d%%%s" % [
 		phase_name, m.position.y, m.speed(), int(m.stamina * 100), "  (WINDED)" if m.sprint_locked else ""]
 
 func _build_environment() -> void:

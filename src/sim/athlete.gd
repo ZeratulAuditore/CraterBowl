@@ -16,6 +16,10 @@ var def_x := 0.0
 var engaged_with := -1   # id of blocker (on defender) or defender (on blocker)
 var engage_t := 0.0
 var immune_t := 0.0
+var blocking := false
+var move_charge := 2.0
+var move_t := 0.0
+var spin_move := false
 var set_lock := false    # pre-snap: held in stance until break_stance (defense)
 
 func _init(p_id: int = 0, p_team: int = 0, p_role: Role = Role.WR, start: Vector2 = Vector2.ZERO, f = null) -> void:
@@ -49,9 +53,24 @@ func face(dir: Vector2) -> void:
 	if dir.length_squared() > 0.0001:
 		facing = dir.normalized()
 
-func start_dive() -> bool:
-	if not can_act():
+func start_move(spin: bool, direction: Vector2) -> bool:
+	if move_charge < 1.0 or move_t > 0.0 or not can_act():
 		return false
+	if not direction.is_zero_approx():
+		facing = direction.normalized()
+	move_charge -= 1.0
+	move_t = T.SPIN_TIME if spin else T.DASH_TIME
+	spin_move = spin
+	blocking = false
+	return true
+
+func is_spinning() -> bool:
+	return move_t > 0.0 and spin_move
+
+func start_dive() -> bool:
+	if not can_act() or move_t > 0.0:
+		return false
+	blocking = false
 	dive_t = T.DIVE_TIME
 	return true
 
@@ -61,9 +80,12 @@ func reset_state() -> void:
 	engaged_with = -1
 	engage_t = 0.0
 	immune_t = 0.0
+	blocking = false
+	move_t = 0.0
 	velocity = Vector2.ZERO
 
-func step(input: Vector2, wants_sprint: bool, dt: float) -> void:
+func step(input: Vector2, wants_sprint: bool, dt: float, wants_block := false) -> void:
+	blocking = wants_block and can_act() and move_t <= 0.0
 	if dive_t > 0.0:
 		dive_t -= dt
 		velocity = facing * T.DIVE_SPEED
@@ -77,4 +99,10 @@ func step(input: Vector2, wants_sprint: bool, dt: float) -> void:
 		velocity = velocity.move_toward(Vector2.ZERO, T.DECEL * 2.0 * dt)
 		position = field.clamp_playable(position + velocity * dt)
 		return
-	super.step(input, wants_sprint, dt)
+	if move_t > 0.0:
+		velocity = facing * (T.SPIN_SPEED if spin_move else T.DASH_SPEED)
+		position = field.clamp_playable(position + velocity * dt)
+		move_t = maxf(0.0, move_t - dt)
+		last_sprinting = false
+		return
+	super.step(input, wants_sprint, dt, blocking)
