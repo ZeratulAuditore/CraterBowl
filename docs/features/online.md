@@ -33,7 +33,7 @@ Bots fill every empty slot. Everything runs peer-hosted: there are no dedicated 
 
 ### Team and position online
 - Humans are seated automatically: each joins the team with fewer humans and takes the first free slot in priority order (QB/LB, WR/CB, WR/CB, RB/S, C/DL, OL/DL, OL/S).
-- Queue matches seat players on the matchmaker's team split, matched by name.
+- Queue matches seat players on the matchmaker's team split, matched by a random per-queue seat token, so two players with the same name each get their own seat on their drafted team (#59). Older clients without a token are matched by name.
 - Online players keep their host-assigned athlete during the match. Pre-match role preferences and QB voting are tracked in #18.
 
 ### Queues (`src/net/matchmaker.gd`)
@@ -114,5 +114,4 @@ Bots fill every empty slot. Everything runs peer-hosted: there are no dedicated 
 - #56 Client doesn't detect losing the host
 - #57 UPnP port mapping is never removed after hosting
 - #58 Dead matchmaker code: whoami/you path and snake_teams
-- #59 Competitive team seating is keyed by display name
 - #75 Stadium screen shows a running-match clock in the private lobby

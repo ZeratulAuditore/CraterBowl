@@ -31,7 +31,7 @@ see when hosting, joining, queueing) lives in `docs/features/` (online play). La
   would lose the reason. A well-behaved client hangs up as soon as `refused` arrives.
 - `set_assignment(id, aid)` records `peer_athlete[id]` and sends `welcome`. `main.gd:_start_from_lobby`
   seats every lobby player (competitive: `roster.auto_assign_team` by the matchmaker's team split,
-  keyed by display name; else `auto_assign`).
+  keyed by the player's seat token, display name only as a fallback; else `auto_assign`; #59).
 - `_on_peer_disconnected`: removes from lobby, frees the athlete (`release_fn`), drops its input. The
   slot goes back to a bot. There is no rejoin (#17).
 
@@ -41,7 +41,7 @@ see when hosting, joining, queueing) lives in `docs/features/` (online play). La
 |---|---|---|---|---|
 | `in` | C→S | unreliable-ordered, ch 1, every tick | `dir`, `spr`, `seq`, `block` | sender has an athlete; `P.sanitize_input`; `seq` must not go backwards |
 | `act` | C→S | reliable, ch 0 | `act` (action dict) | sender has an athlete; `P.is_action(act)` (Dictionary with a String `a`, else dropped); queued as `[peer, aid, act]`, fields validated when applied |
-| `lact` | C→S | reliable, ch 0 | `act` = `{"a":"ready"}` / `{"a":"name","n":…}` | sender is in `lobby.players`; `act` is a Dictionary |
+| `lact` | C→S | reliable, ch 0 | `act` = `{"a":"ready"}` / `{"a":"name","n":…}` / `{"a":"seat","s":…}` (queue matches, #59) | sender is in `lobby.players`; `act` is a Dictionary |
 | `refused` | S→C | reliable, ch 0 | `why` (reason text) | from peer 1; cut to 120 chars. Client stores `refused_reason`, emits `refused`, closes its peer and ignores later packets |
 | `welcome` | S→C | reliable, ch 0 | `aid`, `size`, `mode` | from peer 1; `size` ∈ {3,5,7} else 7; `mode` chaosball else classic |
 | `snap` | S→all | unreliable-ordered, ch 1, 30 Hz | see Snapshots | from peer 1; tick `t` > last seen |
@@ -136,8 +136,8 @@ The quarter fields extend the clock array after its four original entries. If th
    `players.size()` is refused and sets `lobby.notice` (shown in the host lobby HUD) rather than kicking
    anyone; an accepted change clears it. Chosen over disconnecting extras because it never throws a
    player out and the host can see why.
-2. Client: `_join_game` decodes the code, connects; on the first `lobby` state it sends `name` and, for
-   queue joins (`auto_ready`), `ready`. Clients mirror via `lobby.from_dict`.
+2. Client: `_join_game` decodes the code, connects; on the first `lobby` state it sends `name`, its `seat` token (queue joins),
+   and, for queue joins (`auto_ready`), `ready`. Clients mirror via `lobby.from_dict`.
 3. `main.gd:_step_lobby` (host, each tick): apply `lact`s, broadcast on change, and when
    `lobby.all_ready()` (≥ max(2, `expected`) players, all ready) → `_start_from_lobby`: `configure`, set
    period format and duration, seat everyone, `welcome` each peer. A client whose `welcome` size/mode differs re-runs `configure`.
@@ -150,9 +150,9 @@ messages are reliable on channel 0.
 
 | `k` | Direction | Payload / effect |
 |---|---|---|
-| `enq` | C→MM | `mode` (casual/competitive), `size`, `rating`, `name`, `party`, `party_size`, `game` → `mm.enqueue` |
+| `enq` | C→MM | `mode` (casual/competitive), `size`, `rating`, `name`, `party`, `party_size`, `game`, `seat` → `mm.enqueue` |
 | `queued` | MM→C | `ok`, `n` (queue length) |
-| `match` | MM→C | `role:"host"` + `mode`, `size`, `expected`, `teams` (name → team), `game`; or `role:"join"` + `code` |
+| `match` | MM→C | `role:"host"` + `mode`, `size`, `expected`, `seats` (seat token → team), `teams` (name → team, legacy), `game`; or `role:"join"` + `code` |
 | `hosting` | C→MM | `code` from the elected host → MM sends `match/join` to the others |
 | `list` / `lobbies` | C↔MM | server browser: `registry.listing()` + `queued` count |
 | `register` / `registered`, `unregister` | C↔MM | public lobby advertising |
@@ -162,6 +162,15 @@ messages are reliable on channel 0.
   size). Parties are one unit once all `party_size` members queued and must fit one team. Competitive
   filters by rating window `min(100 + 25·waited, 600)`. A match forms when full, or after `CASUAL_WAIT`
   8 s / `COMP_WAIT` 15 s with ≥ 2 players. Host = oldest unit's first member. Teams: `unit_teams`.
+- **Seat tokens (#59).** Display names aren't unique, so queue seating is keyed by a per-queue token:
+  `main.gd:_queue_up` makes 8 random bytes (`seat_token`, hex) and sends it as `enq.seat`. The host's
+  `match` order carries `seats` (token → team). A joiner sends its token as the `seat` lobby action next
+  to `name`; the host keeps it in `peer_seats` (not in the broadcast lobby state) and seats each player
+  with `Matchmaker.drafted_team(token, name, seats, teams)`. Backward compatible both ways: an older
+  host ignores `seats` and the `seat` action and still reads `teams`; an older client sends no token and
+  is matched by name. `teams` leaves out any name two queued players share, so an old host
+  auto-balances them instead of stacking both on one team. Test: `MODE=dupname ./scripts/mm_test.sh`
+  (two competitive clients both named Ann) and `test_matchmaker.gd`.
 - Disconnect from the MM dequeues, drops pending host relays and the registry entry.
 - Server browser: `lobby_advertiser.gd` (attached by `Launch._advertise` when `options.public`)
   re-registers `{code, name, size, mode, players, in_game}` every 5 s; `lobby_registry.gd` expires
@@ -206,6 +215,5 @@ messages are reliable on channel 0.
 - #56 Client doesn't detect losing the host
 - #57 UPnP port mapping is never removed after hosting
 - #58 Dead matchmaker code: whoami/you path and snake_teams
-- #59 Competitive team seating is keyed by display name
 - #60 Client trusts host snapshots and awards
 - #61 Tick rate (60 Hz) hard-coded in several places

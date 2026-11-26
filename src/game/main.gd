@@ -31,6 +31,7 @@ const ReplayOverlay := preload("res://src/game/replay_overlay.gd")
 const Achievements := preload("res://src/sim/achievements.gd")
 const MMServer := preload("res://src/net/mm_server.gd")
 const MMClient := preload("res://src/net/mm_client.gd")
+const Matchmaker := preload("res://src/net/matchmaker.gd")
 const InviteCode := preload("res://src/net/invite_code.gd")
 const T := preload("res://src/sim/tuning.gd")
 const Presentation := preload("res://src/game/presentation.gd")
@@ -96,7 +97,10 @@ var summary_lines: Array = []   # end-of-match summary (server computes; clients
 var leaderboard_path := Leaderboard.DEFAULT_PATH
 var ranked_path := Ranked.DEFAULT_PATH
 var ranked_match := false       # competitive queue or --ranked: ratings change at FINAL
-var pending_teams := {}         # name -> team (matchmaker's rating-balanced split)
+var pending_teams := {}         # name -> team (matchmaker's split; fallback for seat-less clients)
+var pending_seats := {}         # seat token -> team (matchmaker's rating-balanced split, #59)
+var seat_token := ""            # our random per-queue id; the host seats us by it, not by name
+var peer_seats := {}            # host: peer id -> seat token the joiner sent
 var ranked_line := ""
 var player_name := "You"
 var profile := Cosmetics.new()
@@ -854,6 +858,8 @@ func _join_game(target: String, port: int, opts: Dictionary) -> void:
 			readied[0] = true
 			if player_name != "You":
 				net.send_lobby_action({"a": "name", "n": player_name})
+			if seat_token != "":
+				net.send_lobby_action({"a": "seat", "s": seat_token})
 			if auto_ready:
 				net.send_lobby_action({"a": "ready"}))
 	net.snapshot_received.connect(_on_snapshot)
@@ -875,11 +881,13 @@ func _queue_up(args: Dictionary) -> void:
 		mm_port = int(addr.get_slice(":", 1))
 		addr = addr.get_slice(":", 0)
 	var mode := str(args["queue"])
+	seat_token = Crypto.new().generate_random_bytes(8).hex_encode()   # independent of any seed()
 	var advertise := str(args.get("advertise", _local_ipv4()))
 	mm_client.host_match.connect(func(m):
 		_end_warmup(args)
 		ranked_match = m.get("mode", "") == "competitive"
 		pending_teams = m.get("teams", {}) if m.get("teams") is Dictionary else {}
+		pending_seats = m.get("seats", {}) if m.get("seats") is Dictionary else {}
 		var port := int(args.get("host-port", 25000 + randi() % 5000))
 		var code := _host_game(port, {"start_when_ready": true, "expected": int(m.get("expected", 2)),
 			"size": int(m.get("size", 7)), "advertise": advertise, "game": str(m.get("game", "classic"))})
@@ -895,7 +903,7 @@ func _queue_up(args: Dictionary) -> void:
 	var err := mm_client.queue_up(addr, mm_port, mode, MatchConfig.normalize(args.get("size", 7)),
 		float(args.get("rating", rk.rating(player_name))), player_name,
 		str(args.get("party", "")).get_slice(":", 0), int(str(args.get("party", "x:1")).get_slice(":", 1)) if str(args.get("party", "")).find(":") > 0 else 1,
-		"chaosball" if str(args.get("mode", "")) == "chaosball" else "classic")
+		"chaosball" if str(args.get("mode", "")) == "chaosball" else "classic", seat_token)
 	print("QUEUE %s via %s:%d: %s" % [mode, addr, mm_port, error_string(err)])
 	queue_started_ms = Time.get_ticks_msec()
 	# Waiting lobby: warm up on the training ground until the match is found.
@@ -977,6 +985,7 @@ func _step_lobby() -> void:
 		match la[1].get("a", ""):
 			"ready": changed = lobby.toggle_ready(la[0]) or changed
 			"name": changed = lobby.set_name(la[0], str(la[1].get("n", ""))) or changed
+			"seat": peer_seats[la[0]] = str(la[1].get("s", "")).left(32)
 	if changed:
 		net.broadcast_lobby(lobby.to_dict())
 	if lobby.all_ready():
@@ -993,16 +1002,17 @@ func _start_from_lobby() -> void:
 		series.clock.play_clock = debug_playclock
 	net.match_size = match_size
 	net.match_mode = match_mode
-	# Competitive: seat everyone on the matchmaker's rating-balanced team (by name).
-	var host_name: String = lobby.players[LOCAL_PLAYER]["name"]
-	if pending_teams.has(host_name) and world.get_athlete(my_id).team != int(pending_teams[host_name]):
+	# Queue match: seat everyone on the matchmaker's team, by seat token (name only for
+	# older clients that sent none). Two players can share a display name (#59).
+	var host_team := Matchmaker.drafted_team(seat_token, lobby.players[LOCAL_PLAYER]["name"], pending_seats, pending_teams)
+	if host_team >= 0 and world.get_athlete(my_id).team != host_team:
 		my_id = roster.swap_team(LOCAL_PLAYER)
 		set_controlled(my_id)
 	for id in lobby.players:
 		if id == LOCAL_PLAYER:
 			continue
-		var nm: String = lobby.players[id]["name"]
-		var aid := roster.auto_assign_team(id, int(pending_teams[nm])) if pending_teams.has(nm) else roster.auto_assign(id)
+		var t := Matchmaker.drafted_team(str(peer_seats.get(id, "")), lobby.players[id]["name"], pending_seats, pending_teams)
+		var aid := roster.auto_assign_team(id, t) if t >= 0 else roster.auto_assign(id)
 		if aid >= 0:
 			net.set_assignment(id, aid)
 	net.broadcast_lobby(lobby.to_dict())
@@ -1012,7 +1022,7 @@ func _start_from_lobby() -> void:
 		if s["owner"] >= 0:
 			seats.append("%s->%d" % [owner_name(s["athlete_id"]), s["team"]])
 	print("NET match started: %s" % lobby.summary())
-	print("NET seats: %s (ranked=%s, teams=%s)" % [", ".join(seats), ranked_match, str(pending_teams)])
+	print("NET seats: %s (ranked=%s, teams=%s, seats=%d)" % [", ".join(seats), ranked_match, str(pending_teams), pending_seats.size()])
 
 ## Client: server (re)assigned our athlete (join, position change, team swap).
 func _on_assigned(aid: int) -> void:
