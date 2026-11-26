@@ -9,6 +9,7 @@ Agents start from `AGENTS.md`. This file says which doc owns what, so each fact 
 | `optimization/LOG.md` | Dated before/after measurements, newest first | you make (or try) any perf change: numbers or it didn't happen |
 | `iterations/NNN-slug.md` | One loop iteration's design: goal, options, pick, acceptance criteria | you start an iteration (LOOP.md step 3) |
 | `PARITY.md` | Gridiron parity audit (`G##` rows with test evidence) | a parity feature lands or a gap is found |
+| `features/presentation.md` | Match HUD and scorebug | match presentation changes |
 | `gaps/` | Living gap analysis and the Phase C TODO list (`C##`) | per `gaps/REEVALUATE.md` |
 
 Repo-root files: `LOOP.md` (the iteration procedure), `PLAN.md` (vision and pillars),

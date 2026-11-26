@@ -246,3 +246,8 @@
 - Test changes: the scoring/clock/size tests now expect live kickoffs and the PAT from the 15; game_flow opens on the toss then resets to a scrimmage for the legacy steps (`opening_kickoff`); net_test host runs `--no-kickoff` (its defense/offense checks assume a scrimmage opener).
 - Tests: 260 unit after the merge (30 new in test_kicking.gd incl. a full bot match with kicks); flow adds toss (2 key), metered kickoff + arc + return, K punt, K K field goal +3. Screenshots checked: toss prompt, kickoff coverage, return.
 - Follow-ups filed: kicking stats, stepped meter/tee art, fair catch + bot 2-pt.
+
+## 036: Compact scorebug (2026-11-25)
+
+- [#13](https://github.com/bpenwell/CraterBowl/issues/13) groups the mode, ball spot and mini field with the existing score, possession, clocks, timeouts and down state.
+- The rendered integration test checks these details and captures scrimmage, kickoff and conversion states.

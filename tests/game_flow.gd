@@ -256,6 +256,9 @@ func _initialize() -> void:
 			check(main.world.phase == main.World.Phase.LIVE and main.series.clock.remaining < 60.0, "play stays live below 1:00")
 			check(not main.pres.overlay.banner.visible, "timeout banner clears on the snap")
 			check(main.pres.overlay.timeout_pips[0].is_visible_in_tree() and main.pres.overlay.timeout_pips[0].text == "●○", "live scorebug shows remaining timeouts")
+			var overlay = main.pres.overlay
+			check(overlay.field_strip.is_visible_in_tree() and overlay.play_clock_l.text == "",
+				"the field strip remains live and the play clock clears on snap")
 			_key(KEY_U)
 			check(main.series.clock.timeouts == [1, 2], "U cannot call timeout during the play")
 			main.world.carrier().position.x = -0.5],
