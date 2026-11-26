@@ -983,6 +983,7 @@ func _queue_up(args: Dictionary) -> void:
 		_show_connection_failure.call_deferred(MATCHMAKER_UNREACHABLE_STATUS)
 		return
 	mm_client.failed.connect(_show_connection_failure.bind(MATCHMAKER_UNREACHABLE_STATUS), CONNECT_DEFERRED)
+	mm_client.refused.connect(_show_connection_failure, CONNECT_DEFERRED)   # #165: version mismatch -> menu says why
 	queue_started_ms = Time.get_ticks_msec()
 	# Waiting lobby: warm up on the training ground until the match is found.
 	if not args.has("no-warmup"):
@@ -1868,7 +1869,7 @@ func _process(delta: float) -> void:
 		return
 	if in_lobby():
 		if is_client() and net.refused_reason != "":
-			hud.text = "COULDN'T JOIN THE MATCH\n%s\n\nAsk the host for a bigger match, or try again later." % net.refused_reason
+			hud.text = "COULDN'T JOIN THE MATCH\n%s%s" % [net.refused_reason, "" if net.version_refused else "\n\nAsk the host for a bigger match, or try again later."]
 			return
 		var host_keys := "\nHost: [3/5/7] size   [M] mode   [H] quarter length" if is_server() else ""
 		var lobby_text := "PRIVATE MATCH LOBBY   Invite code: %s\n%s\n[Enter] ready. Starts when everyone is ready.%s" % [lobby.code, lobby.summary(), host_keys]
