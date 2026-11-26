@@ -1,6 +1,9 @@
 extends SceneTree
 ## Two-process net test (client side). Run with: -- --join=127.0.0.1 --port=N
 ## against a host started with: -- --host --port=N --playclock=4
+## --host-loss (#56): join, print "NET HOSTLOSS ARMED" once in the match, then expect the
+## host to be killed (net_test.sh does it) and assert we land on the menu with
+## "Host disconnected".
 
 var main
 var f := 0
@@ -39,6 +42,8 @@ var snapped_run := false
 var sent_handoff := false
 var handoff_to := -1
 var remote_handoff_confirmed := false
+var host_loss := false      # #56 mode
+var armed_at := -1
 
 func check(cond: bool, msg: String) -> void:
 	print(("  NET OK   " if cond else "  NET FAIL ") + msg)
@@ -79,11 +84,16 @@ func _on_event(n: String, _d: Dictionary) -> void:
 		handoff_to = int(_d["to"])
 
 func _initialize() -> void:
+	host_loss = OS.get_cmdline_user_args().has("--host-loss")
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
+	if host_loss:
+		current_scene = main   # like a real launch, so Launch.go_to_menu swaps it out
 
 func _physics_process(_dt: float) -> bool:
 	f += 1
+	if host_loss:
+		return _host_loss_step()
 	if f == 2:
 		main.net.lobby_received.connect(_on_lobby)
 		main.net.welcomed.connect(_on_welcome)
@@ -178,6 +188,28 @@ func _test_remote_handoff() -> void:
 		sent_handoff = true
 	var back = w.find_role(1, main.Athlete.Role.RB)
 	remote_handoff_confirmed = sent_handoff and back != null and back.id == handoff_to and w.ball.is_held_by(back.id)
+
+## #56: in the match, then the host dies -> back on the menu saying why.
+func _host_loss_step() -> bool:
+	if f == 2:
+		main.net.welcomed.connect(_on_welcome)
+		main.net.snapshot_received.connect(_on_snap)
+	if armed_at < 0 and aid >= 0 and snaps > 5:
+		armed_at = f
+		print("NET HOSTLOSS ARMED")
+		for a in OS.get_cmdline_user_args():   # stdout is buffered: tell net_test.sh via a file
+			if a.begins_with("--armed-file="):
+				FileAccess.open(a.get_slice("=", 1), FileAccess.WRITE).store_string("armed\n")
+	var scene = current_scene
+	var on_menu: bool = scene != null and scene.scene_file_path == "res://scenes/menu.tscn" and scene.get("status_label") != null
+	if on_menu or f == 3000:
+		check(armed_at > 0, "in the match (athlete %d, %d snapshots) before the host died" % [aid, snaps])
+		check(on_menu, "client left the frozen match for the menu after losing the host (%.1fs after arming)" % ((f - armed_at) / 60.0))
+		var status: String = scene.status_label.text if on_menu else ""
+		check(status == "Host disconnected", "menu status says why: '%s'" % status)
+		print("NET HOSTLOSS " + ("PASS" if ok else "FAIL"))
+		quit(0 if ok else 1)
+	return false
 
 func _key(code: int) -> void:
 	var event := InputEventKey.new()
