@@ -301,7 +301,7 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	_start_series()
 	world.event.connect(_on_world_event)
 	stats = Stats.new()
-	stats.attach(world, owner_name, series)
+	stats.attach(world, owner_name, series, _player_on_athlete)
 	replay = Replay.new()
 	replay.attach(world)
 	replay.meta = {"size": match_size, "mode": match_mode}
@@ -534,10 +534,13 @@ func _start_series() -> void:
 			winner_humans = true
 	series.start_match(s, winner_humans)
 
+func _player_on_athlete(aid: int) -> int:
+	var slot := roster.slot_of_athlete(aid)
+	return roster.slots[slot]["owner"] if slot >= 0 else (LOCAL_PLAYER if aid == my_id else -1)
+
 ## Display name of whoever controls athlete `aid` right now ("Bot" for AI).
 func owner_name(aid: int) -> String:
-	var slot := roster.slot_of_athlete(aid)
-	var owner: int = roster.slots[slot]["owner"] if slot >= 0 else (LOCAL_PLAYER if aid == my_id else -1)
+	var owner := _player_on_athlete(aid)
 	if owner < 0:
 		return "Bot"
 	if lobby.players.has(owner):
@@ -622,51 +625,39 @@ func _ranked_text(r: Dictionary) -> String:
 		return ""
 	return "RATING %s (%+d)" % [str(labels[my_id]), int(round(float(deltas[my_id])))]
 
-## XP per human (by name) from this match's stats + result.
-func _match_awards() -> Dictionary:
-	var lines := {}
-	var team_of := {}
-	for s in roster.slots:
-		if s["owner"] >= 0:
-			team_of[owner_name(s["athlete_id"])] = s["team"]
-	if roster.slots.is_empty():
-		team_of[owner_name(my_id)] = world.get_athlete(my_id).team
-	for k in stats.lines:
-		var nm: String = k.get_slice("|", 0)
-		if nm == "Bot":
-			continue
-		if not lines.has(nm):
-			lines[nm] = {}
-		for f in stats.lines[k]:
-			lines[nm][f] = lines[nm].get(f, 0.0) + float(stats.lines[k][f])
+## XP and achievement context per human, addressed to their athlete at final.
+func _match_awards(ratings: Dictionary) -> Dictionary:
 	var xp := {}
-	for nm in team_of:
-		xp[nm] = Cosmetics.award_xp(lines.get(nm, {}), series.winner() == team_of[nm])
-	return xp
+	var ctx := {}
+	var recipients := roster.humans() if not roster.slots.is_empty() else [my_id]
+	var winner: int = series.winner()
+	for aid in recipients:
+		var team: int = world.get_athlete(aid).team
+		var line: Dictionary = stats.award_stats.get(_player_on_athlete(aid), {})
+		var won := winner == team
+		xp[aid] = Cosmetics.award_xp(line, won)
+		ctx[aid] = {"line": line, "won": won, "deficit": series.max_deficit[team],
+			"rating": ratings.get(aid, 0.0), "mode": match_mode}
+	return {"xp": xp, "ctx": ctx}
 
-## Per-human achievement context (merged stats, result, deficit overcome, rating).
-func _match_contexts(ratings: Dictionary) -> Dictionary:
-	var out := {}
-	var team_of := {}
-	for s in roster.slots:
-		if s["owner"] >= 0:
-			team_of[owner_name(s["athlete_id"])] = s["team"]
-	if roster.slots.is_empty():
-		team_of[owner_name(my_id)] = world.get_athlete(my_id).team
-	for nm in team_of:
-		var line := {}
-		for k in stats.lines:
-			if k.get_slice("|", 0) == nm:
-				for f in stats.lines[k]:
-					line[f] = maxf(line.get(f, 0.0), float(stats.lines[k][f])) if f in Stats.MAX_FIELDS else line.get(f, 0.0) + float(stats.lines[k][f])
-		var t: int = team_of[nm]
-		out[nm] = {"line": line, "won": series.winner() == t, "deficit": series.max_deficit[t],
-			"rating": ratings.get(nm, 0.0), "mode": match_mode}
-	return out
+## Older clients read the award by name. Include aliases only for unique names.
+func _broadcast_match_awards(awards: Dictionary) -> void:
+	var athlete_by_name := {}
+	for aid in awards["xp"]:
+		var display_name := owner_name(aid)
+		athlete_by_name[display_name] = -1 if athlete_by_name.has(display_name) else aid
+	for display_name in athlete_by_name:
+		var aid: int = athlete_by_name[display_name]
+		if aid >= 0:
+			awards["xp"][display_name] = awards["xp"][aid]
+			awards["ctx"][display_name] = awards["ctx"][aid]
+	net.broadcast_event("awards", awards)
 
 ## Every machine credits only its own player's local profile (XP + achievements).
 func _apply_award(xp: Dictionary, ctx: Dictionary = {}) -> void:
-	var me := owner_name(my_id) if not is_client() else player_name
+	var me: Variant = my_id
+	if not xp.has(me):
+		me = player_name if is_client() else owner_name(my_id)
 	var amount = xp.get(me)
 	if not (amount is int and amount >= 0 and amount <= Cosmetics.MAX_MATCH_XP):
 		return
@@ -705,17 +696,15 @@ func _on_match_event(n: String, data: Dictionary) -> void:
 				var rk := Ranked.new()
 				rk.load_file(ranked_path)
 				profile.season_rewards = rk.rewards.get(ranked_key(LOCAL_PLAYER, my_id), [])
-				for aid in r["ratings"]:
-					ratings[owner_name(aid)] = r["ratings"][aid]   # achievement contexts are still by name
+				ratings = r["ratings"]
 				ranked_line = _ranked_text(r)
 				print("RANKED: %s" % str(r))
 				if is_server():
 					net.broadcast_event("ranked", r)
-			var awards := _match_awards()
-			var ctx := _match_contexts(ratings)
-			_apply_award(awards, ctx)
+			var awards := _match_awards(ratings)
+			_apply_award(awards["xp"], awards["ctx"])
 			if is_server():
-				net.broadcast_event("awards", {"xp": awards, "ctx": ctx})
+				_broadcast_match_awards(awards)
 		summary_lines = stats.summary_lines()
 		print("MATCH SUMMARY:\n  " + "\n  ".join(summary_lines))
 		if replay_auto and not replay_viewer:   # the final whistle beats a highlight (V replays it in the reel)

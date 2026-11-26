@@ -12,8 +12,10 @@ const MAX_FIELDS := ["max_td_pts", "fg_long"]
 
 var world
 var owner_fn: Callable     # athlete_id -> owner name ("Bot" for AI)
+var player_fn: Callable    # athlete_id -> current player id (-1 for AI)
 var lines := {}            # "owner|POS" -> {field: value}
 var athletes := {}         # athlete_id -> {"team", "pos", "owner", field: value} (players of the game)
+var award_stats := {}      # player id -> {field: value}, across positions
 var _los := 0.0
 var _passer := -1
 var _receiver := -1
@@ -29,10 +31,11 @@ var _kick_kind := ""
 var _kicker := -1
 var match_ref = null       # optional Match: tells a PAT try from a field goal
 
-func attach(w, owner: Callable, m = null) -> void:
+func attach(w, owner: Callable, m = null, player: Callable = Callable()) -> void:
 	world = w
 	owner_fn = owner
 	match_ref = m
+	player_fn = player
 	w.event.connect(_on_event)
 
 func _key(aid: int) -> String:
@@ -48,11 +51,18 @@ func _add(aid: int, field: String, v: float = 1.0) -> void:
 		lines[k] = {}
 		for f in FIELDS:
 			lines[k][f] = 0.0
-	if field in MAX_FIELDS:
-		lines[k][field] = maxf(lines[k][field], v)
-	else:
-		lines[k][field] += v
+	_add_field(lines[k], field, v)
 	_add_athlete(aid, field, v)
+	if player_fn.is_valid():
+		var player: int = player_fn.call(aid)
+		if player >= 0:
+			if not award_stats.has(player):
+				award_stats[player] = {}
+			_add_field(award_stats[player], field, v)
+
+static func _add_field(line: Dictionary, field: String, value: float) -> void:
+	var previous: float = line.get(field, 0.0)
+	line[field] = maxf(previous, value) if field in MAX_FIELDS else previous + value
 
 ## Same stat, keyed by the athlete itself. The owner is the last human who
 ## controlled it (a bot that a human took over is credited to the human).
@@ -65,10 +75,7 @@ func _add_athlete(aid: int, field: String, v: float) -> void:
 	var owner: String = owner_fn.call(aid) if owner_fn.is_valid() else "Bot"
 	if owner != "Bot":
 		athletes[aid]["owner"] = owner
-	if field in MAX_FIELDS:
-		athletes[aid][field] = maxf(athletes[aid][field], v)
-	else:
-		athletes[aid][field] += v
+	_add_field(athletes[aid], field, v)
 
 func _on_event(n: String, d: Dictionary) -> void:
 	match n:
