@@ -504,6 +504,7 @@ func is_stance_locked(a: Athlete) -> bool:
 func step_athlete(a: Athlete, dir: Vector2, sprint: bool, dt: float, block := false) -> void:
 	if is_stance_locked(a):
 		a.face(dir)
+		a.emote_cd = maxf(0.0, a.emote_cd - dt)   # taunts still recharge while set (#240)
 	else:
 		var start := a.position
 		var moving_special := a.move_t > 0.0

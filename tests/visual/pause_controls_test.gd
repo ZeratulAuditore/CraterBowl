@@ -28,13 +28,13 @@ func _run() -> void:
 	var kids := grid.get_children()
 	for i in range(0, kids.size() - 1, 2):
 		shown[kids[i].text] = kids[i + 1].text
-	var want := {"Dash (when charged)": "R", "Team timeout": "T", "Taunt (wheel picks)": "C",
+	var want := {"Dash (when charged)": "R", "Team timeout": "T", "Taunt wheel (hold, drag, release)": "C",
 		"Next play": "Enter", "Spin left (pre-snap: play picker)": "Q", "Spin right": "E",
 		"Dive / tackle (pre-snap: cycle route)": "F", "Handoff": "G", "Move up": "W"}
 	for label in want:
 		check(shown.get(label, "") == want[label], "%s shows %s (%s)" % [label, want[label], shown.get(label, "missing")])
 	var notes: Label = launch._overlay.find_child("ControlsNotes", true, false)
-	check(notes.text.find("C performs") >= 0, "taunt note names C")
+	check(notes.text.find("hold C") >= 0, "taunt note names C")
 	check(grid.get_global_rect().end.y <= root.get_visible_rect().size.y, "whole list fits on screen")
 	await capture("pause-controls-gridiron")
 	finish()

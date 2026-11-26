@@ -3,8 +3,8 @@
 Feature-level doc: how this works for players **today** on `main`. Open work: GitHub issues labelled `area:progression` (listed below).
 
 ## Summary
-Every finished match (not practice) produces a stat line per player and position. That line feeds a local career leaderboard, XP and levels, achievements, and, for competitive-queue matches, a team Elo rating with tiers and quarterly seasons.
-Everything is stored in JSON files on each player's own machine. Ratings are keyed by a random per-install id; the leaderboard, XP and achievement contexts are still keyed by display name. There is no account and no server-side record.
+Finished matches feed local career leaderboards, XP, levels and achievements. Competitive-queue matches also count toward team Elo ratings with tiers and quarterly seasons.
+Progress is stored in JSON files on each player's own machine. Ratings use a random per-install ID, career tables use display names, and match awards follow each player's own participation.
 
 ## How it plays
 
@@ -19,7 +19,7 @@ Everything is stored in JSON files on each player's own machine. Ratings are key
 | Home news card | `RANKED SEASON <year> · Q<n>` |
 
 ### Stats (`src/sim/stats.gd`)
-- Lines are keyed `name|POSITION`, so switching positions splits your stats. Bots are recorded as `Bot` and excluded from leaderboards and XP.
+- Career lines are keyed `name|POSITION`. When a player fills multiple positions, each position gets its own career line. Bots are recorded as `Bot` and excluded from leaderboards and XP.
 - Fields: passing att/comp/yds/TD/INT thrown, receptions/yds/TD, carries/rush yds/TD, tackles, sacks, INTs, PBUs, forced and recovered fumbles, INT return yards, fumble return yards, points, block engagements, defensive TDs, best Chaosball TD value, and kicking (#67): field goals made/attempted and long, PATs made/attempted (XP), punts and gross punt yards, kick returns and yards, punt returns and yards.
 - A sack is a QB tackled behind the LOS before he throws. A defensive TD is a touchdown scored by a carrier from the team on defense.
 - Scrimmage yards are measured from the snap LOS. Takeaway return yards (#100) run from the takeaway spot (the interception's catch point, or where the recovering player stood) to the dead-ball spot, measured toward the returner's scoring end zone, so a returner driven back gets negative yards. A return touchdown is credited to the goal line, not to where he stopped in the end zone. A return ends at a fumble or a throw (Chaosball swings), and a re-recovery by the other team starts its own return. Own-team recoveries aren't takeaways and get no return yards. Kick and punt returns (#67) use the same return rules from the spot the returner fields the ball (`kr`/`kr_yds` on kickoffs, `pr`/`pr_yds` on punts); a ball fielded in the end zone is a touchback, not a return.
@@ -51,7 +51,7 @@ Everything is stored in JSON files on each player's own machine. Ratings are key
 ### XP and levels (`src/sim/cosmetics.gd`)
 - Per match: 100 + 50 for a win + 25 per TD + 1 per 10 yards (pass + rec + rush) + 10/tackle + 30/INT + 20/sack, plus achievement bonus XP.
 - 500 XP per level; you start at level 0. Offline vs-bots matches count; practice and training don't.
-- The host sends everyone's XP. Each machine credits only its own player's profile.
+- The host sends XP and achievement context for each occupied seat. Two players with the same display name earn awards based on their own plays and team result (#156).
 
 ### Cosmetics (Locker room)
 | Slot | Unlocks (level) |
@@ -94,6 +94,7 @@ User data dir `crater-bowl` (see [out-of-game.md](out-of-game.md)). Tests pass t
 - **Pure rules, JSON stores.** Stats, scoring, Elo, XP and achievements are pure `src/sim` code with unit tests. Persistence is a plain file per concern.
 - **Local files over an online service.** A service needs accounts and anti-cheat; for a friend group the host is the league office.
 - **Host is the authority for the match result.** Clients trust the host's XP and achievement context. That's fine among friends but not tamper-proof, and names aren't authenticated (#28).
+- **Match awards follow the player in the seat (#156).** Stats for awards are credited to the player who controls the athlete when the play event occurs. A player who takes over a seat starts with their own totals. At the final whistle, the host uses each player's seated athlete ID to deliver the award.
 - **Ratings keyed by install id, kept on the host (#102).** Display names aren't unique, so the host keys each rating by a 16-hex-char id the player's install mints once (`main.gd:install_id()`, saved in `profile.json` with the first ranked result). The host keeps peers' ids in a private map and never broadcasts them: the `ranked` event is keyed by athlete id, so nobody can read another player's id and claim their rating. It isn't authentication. A tampered client can still send any id it likes (#28).
 - **No pay-to-win:** cosmetics are view-only and checked by a determinism test (identical worlds regardless of looks).
 - **Original achievement set** (12 milestones), not copied from any other game.
@@ -104,9 +105,9 @@ User data dir `crater-bowl` (see [out-of-game.md](out-of-game.md)). Tests pass t
 ## Code and tests
 - `src/sim/stats.gd`: stat lines; `src/sim/potg.gd`: players of the game and team totals.
 - `src/sim/leaderboard.gd`, `src/sim/ranked.gd`, `src/sim/cosmetics.gd`, `src/sim/achievements.gd`.
-- `src/game/main.gd` (`_on_match_event` "final", `_record_leaderboard`, `_record_ranked`, `_match_awards`, `_match_contexts`, `_apply_award`).
+- `src/game/main.gd` (`_on_match_event` "final", `_record_leaderboard`, `_record_ranked`, `_match_awards`, `_apply_award`).
 - `src/ui/main_menu.gd` (`_screen_locker`, `_screen_leaders`, profile chip), `src/ui/game_overview.gd`.
-- Tests: `tests/test_stats.gd`, `tests/test_leaderboard.gd`, `tests/test_ranked.gd`, `tests/test_cosmetics.gd`, `tests/test_achievements.gd`, `tests/test_potg.gd`, `tests/game_flow.gd` (final records files, HUD rank/rating/XP lines), `tests/net_client.gd` (look round-trips via host), `scripts/mm_test.sh` `MODE=competitive`.
+- Tests: `tests/test_stats.gd`, `tests/test_leaderboard.gd`, `tests/test_ranked.gd`, `tests/test_cosmetics.gd`, `tests/test_achievements.gd`, `tests/test_potg.gd`, `tests/game_flow.gd` (final records files, HUD rank/rating/XP lines), `tests/net_client.gd` (looks and same-name awards), `scripts/mm_test.sh` `MODE=competitive`.
 
 ## Open issues
 - #8 C06 Spotting: forward progress, return yards, fumble variety
@@ -115,4 +116,6 @@ User data dir `crater-bowl` (see [out-of-game.md](out-of-game.md)). Tests pass t
 - #30 C24 Match history and profile
 - #37 B05 Friend-group seasons + persistent stats
 - #41 C26 Archetypes (one passive each)
+- #200 Personal overview stats for players with the same display name
+- #202 Credit for a throw that ends after its athlete changes owners
 - #172 Kick and punt return touchdowns are credited as defensive TDs

@@ -15,6 +15,8 @@ const NetSession := preload("res://src/net/net_session.gd")
 const World := preload("res://src/sim/world.gd")
 const Roster := preload("res://src/sim/roster.gd")
 const Match := preload("res://src/sim/match.gd")
+## Via the constant map so before_after.sh can run this on a base without TOSS_REVEAL.
+var REVEAL: float = Match.get_script_constant_map().get("TOSS_REVEAL", 3.0)
 const HINTS := ["PRESS", "KEY", "SPACE", "ENTER", "ESC", "CLICK", "[1]", "[2]", " 1 ", " 2 ", "(1", "(2"]
 
 var game
@@ -110,7 +112,7 @@ func _run() -> void:
 	# --- Bots won: you watch them choose.
 	await _new_game(1)
 	ct = _ct()
-	await _at(Match.TOSS_REVEAL + 1.0)
+	await _at(REVEAL + 1.0)
 	if ct != null:
 		check(ct.title.text == "NEBULA WINS THE TOSS", "title: %s" % ct.title.text)
 		check(ct.waiting_box.visible and ct.waiting.text == "NEBULA IS CHOOSING…" and not ct.card_row.visible, "the other side waits, no cards")
@@ -143,11 +145,11 @@ func _run() -> void:
 	check(game.is_client() and game.series.toss_winner == 1, "client mirrors the host's toss")
 	check(ct != null, "the client plays the toss cutscene too")
 	if ct != null:
-		await _at(Match.TOSS_REVEAL + 1.0)
+		await _at(REVEAL + 1.0)
 		check(ct.title.text == "NEBULA WINS THE TOSS" and ct.waiting.text == "NEBULA IS CHOOSING…", "client: %s / %s" % [ct.title.text, ct.waiting.text])
 		host.choose_toss(1, "kick")
 		game.net._on_packet(1, var_to_bytes(Protocol.encode_snapshot(host, 11)))
-		await _at(Match.TOSS_REVEAL + 1.2)
+		await _at(REVEAL + 1.2)
 		check(ct.receiver == 0 and ct.sub.text == "NEBULA WILL KICK", "client shows the host's pick (%s)" % ct.sub.text)
 	await capture("coin-toss-online-client")
 	finish()
