@@ -20,9 +20,11 @@ var frozen_y := 0.0
 var auto_replay_default := false
 var wr_id := -1
 var kick_events: Array = []
+var fc_ret = null   # #189 fair-catch step's returner
 var fp_lb = null          # C06a forward progress: the defender driving the carrier back
 var fp_contact_y := INF
 var fp_driven_y := 0.0
+var bot_snap_clock := INF   # #136: play clock when the bot offense snapped (frames 4171-4481)
 
 func check(cond: bool, msg: String) -> void:
 	print(("  FLOW OK   " if cond else "  FLOW FAIL ") + msg)
@@ -133,7 +135,14 @@ func _initialize() -> void:
 			check(-main.camera.global_transform.basis.z.z > 0.5, "defense camera looks back up the field toward the ball")
 			check(main.screen_to_field(Vector2(0, 1)).y < -0.9, "W moves a defender toward the ball (up the screen)")
 			check(main.screen_to_field(Vector2(1, 0)).x < -0.9, "D moves a defender screen-right")],
-		[4171 + int(60 * 5.0) + 10, func(): check(main.world.phase != main.World.Phase.PRESNAP, "bot offense snapped by itself")],
+		# #136: the scorebug counts down the bots' huddle and they snap when it reads 0, not at :15.
+		[4300, func():
+			var shown: int = main.series.play_clock_shown()
+			check(shown >= 0 and shown <= int(main.T.HUDDLE_SECONDS) and main.pres.overlay.play_clock_l.text == "PLAY :%02d" % shown,
+				"bot huddle on the scorebug (%s)" % main.pres.overlay.play_clock_l.text)],
+		[4171 + int(60 * 5.0) + 10, func():
+			check(main.world.phase != main.World.Phase.PRESNAP, "bot offense snapped by itself")
+			check(bot_snap_clock <= 0.0, "bot snap waited for the shown play clock (%.2f s left)" % bot_snap_clock)],
 		# A15: rebuild as 3v3 in place
 		[4500, func(): main.configure(3)],
 		[4502, func(): check(main.world.athletes.size() == 6 and main.athlete_root.get_child_count() == 6, "3v3: 6 athletes + views"); check(absf(main.field.width - 30.0) < 0.01, "3v3 field width 30"); check(main.hud.text.find("3v3") >= 0, "HUD shows 3v3")],
@@ -306,12 +315,14 @@ func _initialize() -> void:
 			var dir: Vector2 = main.aim_dir()
 			var qb = main.world.get_athlete(main.controlled_id)
 			check(main.screen_to_field(Vector2(0, 1)).dot(main.aim_dir()) > 0.99, "W moves along the passer's view (cam yaw %.2f, aim yaw %.2f)" % [main.cam_yaw, main.aim_yaw])
+			check(main.charging and main.camera.fov < main.CAMERA_FOV - 5.0 and main.camera.fov > main.AIM_ZOOM_FOV, "holding J aim-zooms the camera (fov %.1f, charge %.2f)" % [main.camera.fov, main.charge])
 			_key_up(KEY_J)
 			var v: Vector3 = main.world.ball.velocity - Vector3(qb.velocity.x, qb.velocity.y, 0) * main.T.THROW_INHERIT
 			check(main.world.forward_pass_thrown, "J release throws (POV)")
 			check(Vector2(v.x, v.y).normalized().dot(dir) > 0.999, "ball flies where the QB looked")
 			check(absf(rad_to_deg(atan2(v.z, Vector2(v.x, v.y).length())) - ang) < 0.5, "view pitch = launch angle (%.1f)" % ang)
 			check(not main.pov_active(), "POV ends once the ball is thrown")],
+		[12490, func(): check(absf(main.camera.fov - main.CAMERA_FOV) < 0.5, "FOV eases back after the throw (%.2f)" % main.camera.fov)],
 		[12500, func(): main.configure(7); main.ai.defense_enabled = false],
 		[12501, func(): _key(KEY_SPACE)],
 		[12540, func(): check(main.world.ball.is_held_by(main.controlled_id), "QB has the ball"); _key(KEY_E); check(main.world.get_athlete(main.controlled_id).is_spinning() and main.world.get_athlete(main.controlled_id).spin_dir == 1, "E spins right")],
@@ -367,6 +378,32 @@ func _initialize() -> void:
 		[11940, func(): main.aim_point = Vector2(main.field.width / 2.0, main.field.posts_y())],
 		[11941, func(): _key(KEY_J)],
 		[12200, func(): check(main.last_whistle == "FIELD GOAL GOOD", "field goal good (%s)" % main.last_whistle); main.next_play(); check(main.series.score[0] == 3, "+3"); check(main.series.state == main.Match.State.KICKOFF, "then a kickoff"); main.ai.defense_enabled = true],
+		# #189 fair catch through the real Snap key: you're the punt returner, Space while the punt is
+		# in the air signals, the catch ends the play at the spot. Frames 13600-13900 (after the last step).
+		[13600, func():
+			_force_dead_if_live()
+			var mine: int = main.world.get_athlete(main.my_id).team
+			main.series.start(1 - mine, 30.0); main.series.downs.down = 4
+			check(main.series.call_kick("punt"), "bot offense lines up to punt")
+			fc_ret = main.world.returner(); main.set_controlled(fc_ret.id)
+			check(fc_ret.team == mine, "you are the punt returner")],
+		[13601, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.PRESNAP and main.world.fair_catch_id == -1, "Space on the return team before the snap does not signal"); main.world.snap()],
+		[13650, func():
+			var ov = main.pres.overlay
+			check(main.world.kick_in_air(), "bot punter kicked it (%s)" % main.world.kick_play)
+			check(ov.fair_catch_prompt(main.world, main.controlled_id) == "PRESS SPACE FOR A FAIR CATCH", "returner prompt while the punt is in the air")
+			fc_ret.position = main.ai._landing_point(main.world)
+			_key(KEY_SPACE)
+			check(main.world.fair_catch_id == fc_ret.id, "Space signals a fair catch")
+			check(ov.fair_catch_prompt(main.world, main.controlled_id).begins_with("FAIR CATCH SIGNALED"), "prompt confirms the signal")],
+		[13900, func():
+			check(main.world.phase == main.World.Phase.DEAD and main.last_whistle == "FAIR CATCH", "play dead on the fair catch (%s)" % main.last_whistle)
+			check(main.pres.overlay.whistle_summary(main.last_whistle, main.world) == "FAIR CATCH", "dead-ball line says FAIR CATCH")
+			var spot: float = main.world.dead_ball_spot.y
+			main.next_play()
+			check(main.series.last_outcome.get("outcome", "") == "fair_catch" and main.world.offense_team == fc_ret.team, "return team's ball after the fair catch")
+			check(absf(main.world.los_y - (100.0 - spot)) < 0.01, "spotted at the catch (%.1f)" % main.world.los_y)
+			main.set_controlled(main.my_id)],
 		# C04b: change quarters on the normal dead-ball advance.
 		[12210, func():
 			main.opening_kickoff = false
@@ -503,6 +540,7 @@ func _connect_listeners() -> void:
 				main.ai.defense_enabled = true)
 	main.world.event.connect(func(n, d): if n == "tackle" and caught_by >= 0: tackled = true)
 	main.world.event.connect(func(n, _d): if n == "interception": picked = true)
+	main.world.event.connect(func(n, _d): if n == "snap" and frame > 4171 and frame <= 4481: bot_snap_clock = main.series.clock.play_clock)
 
 func _setup_ranked_rival() -> void:
 	main.ranked_match = true

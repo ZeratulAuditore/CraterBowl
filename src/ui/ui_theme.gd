@@ -10,17 +10,51 @@ const CREAM := Color("#FFF4E0")
 const CYAN := Color("#5CE1FF")
 const ORANGE := Color("#FF6A1F")
 const GOLD := Color("#F2BF26")
-const FONT_PATH := "res://assets/fonts/Oswald.ttf"
+## Type system (#125): three roles, all SIL OFL (licenses next to the files in assets/fonts).
+##   display: Graduate, collegiate block lettering. Wordmark, PLAY, names, jersey numbers.
+##   ui:      Teko, broadcast scorebug style. Nav, buttons, headings, HUD. The default.
+##   body:    Barlow Semi Condensed. Paragraphs, descriptions, help text.
+## Teko and Barlow are rescaled by tools/brand/scale_fonts.py so their capitals match the
+## Oswald sizes every layout was tuned for.
+const DISPLAY_PATH := "res://assets/fonts/Graduate-Regular.ttf"
+const FONT_PATH := "res://assets/fonts/Teko-UI.ttf"
+const BODY_PATH := "res://assets/fonts/BarlowSemiCondensed-Medium-UI.ttf"
+const BODY_BOLD_PATH := "res://assets/fonts/BarlowSemiCondensed-SemiBold-UI.ttf"
+const SLANT := Transform2D(Vector2(1, 0), Vector2(-0.18, 1), Vector2.ZERO)
 
+## UI role (Teko, variable 300-700). Most code calls this.
 static func font(weight: int = 600) -> Font:
 	var base = load(FONT_PATH)
 	if base == null:
 		return ThemeDB.fallback_font
 	var v := FontVariation.new()
 	v.base_font = base
-	v.variation_opentype = {"wght": weight}
+	v.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): clampi(weight, 300, 700)}
 	v.spacing_glyph = 1
 	return v
+
+static func ui_font(weight: int = 600) -> Font:
+	return font(weight)
+
+## Display role (Graduate, single weight). slant = the sporty italic used on PLAY and names;
+## bold thickens the strokes for big call-to-action text (Graduate has no bold cut).
+static func display_font(slant: bool = false, bold: float = 0.0) -> Font:
+	var base = load(DISPLAY_PATH)
+	if base == null:
+		return font(700)
+	var v := FontVariation.new()
+	v.base_font = base
+	if slant:
+		v.variation_transform = SLANT
+	v.variation_embolden = bold
+	return v
+
+## Body role (Barlow Semi Condensed): Medium below 600, SemiBold from 600.
+static func body_font(weight: int = 500) -> Font:
+	var base = load(BODY_BOLD_PATH if weight >= 600 else BODY_PATH)
+	if base == null:
+		return font(400)
+	return base
 
 static func box(bg: Color, border: Color, width: int = 2, radius: int = 6) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
@@ -69,7 +103,8 @@ static func build() -> Theme:
 	t.set_stylebox("selected", "ItemList", box(CYAN, CYAN, 0, 3))
 	t.set_stylebox("selected_focus", "ItemList", box(CYAN, CYAN, 0, 3))
 	t.set_color("default_color", "RichTextLabel", CREAM)
-	t.set_font("normal_font", "RichTextLabel", font(400))
+	t.set_font("normal_font", "RichTextLabel", body_font())
+	t.set_font("bold_font", "RichTextLabel", body_font(600))
 	t.set_font("mono_font", "RichTextLabel", ThemeDB.fallback_font)
 	t.set_stylebox("slider", "HSlider", box(Color(SPACE, 0.9), Color(CYAN, 0.3), 1, 3))
 	t.set_stylebox("grabber_area", "HSlider", box(Color(CYAN, 0.6), CYAN, 0, 3))
