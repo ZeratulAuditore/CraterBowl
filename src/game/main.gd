@@ -853,6 +853,10 @@ func _join_game(target: String, port: int, opts: Dictionary) -> void:
 		port = d["port"]
 	var err := net.join(target, port)
 	print("NET join %s:%d: %s" % [target, port, error_string(err)])
+	if err != OK:
+		_show_connection_failure.call_deferred(HOST_UNREACHABLE_STATUS)
+		return
+	net.connection_failed.connect(_show_connection_failure.bind(HOST_UNREACHABLE_STATUS), CONNECT_DEFERRED)
 	auto_next = false
 	net.welcomed.connect(_on_assigned)
 	var auto_ready: bool = opts.get("auto_ready", false)
@@ -872,6 +876,16 @@ func _join_game(target: String, port: int, opts: Dictionary) -> void:
 	net.host_lost.connect(_on_host_lost)
 
 const HOST_LOST_STATUS := "Host disconnected"
+const HOST_UNREACHABLE_STATUS := "Couldn't reach the host"
+const MATCHMAKER_UNREACHABLE_STATUS := "Couldn't reach the matchmaker"
+
+func _show_connection_failure(status: String) -> void:
+	if not is_inside_tree() or get_tree().current_scene != self:
+		return
+	var launch := get_node_or_null("/root/Launch")
+	if launch != null:
+		launch.go_to_menu(status)
+
 ## #56: the host quit or dropped. Back to the menu saying why; a finished match keeps
 ## its game overview (the host leaving after the final whistle is normal).
 func _on_host_lost() -> void:
@@ -921,6 +935,10 @@ func _queue_up(args: Dictionary) -> void:
 		str(args.get("party", "")).get_slice(":", 0), int(str(args.get("party", "x:1")).get_slice(":", 1)) if str(args.get("party", "")).find(":") > 0 else 1,
 		"chaosball" if str(args.get("mode", "")) == "chaosball" else "classic", seat_token)
 	print("QUEUE %s via %s:%d: %s" % [mode, addr, mm_port, error_string(err)])
+	if err != OK:
+		_show_connection_failure.call_deferred(MATCHMAKER_UNREACHABLE_STATUS)
+		return
+	mm_client.failed.connect(_show_connection_failure.bind(MATCHMAKER_UNREACHABLE_STATUS), CONNECT_DEFERRED)
 	queue_started_ms = Time.get_ticks_msec()
 	# Waiting lobby: warm up on the training ground until the match is found.
 	if not args.has("no-warmup"):
