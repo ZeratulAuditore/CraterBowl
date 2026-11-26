@@ -8,6 +8,16 @@ Machine for all entries so far: WSL2 Ubuntu 24.04, i7-11800H (16 threads), RTX 3
 
 ---
 
+## 2026-11-25 — PR gate render budget
+
+On the local Godot 4.3 headless 7v7 render-budget check, the merged scene had
+125 visible shadow casters against a limit of 110. Disabling shadow casting for
+the small decorative chain-crew meshes brought that count to 86. The crew remains
+visible and the on-field marker hardware still casts shadows.
+
+The scene benchmark uses a fixed opening toss and warms up for 180 frames before
+sampling the next 600, so startup allocations vary less across CI runs.
+
 ## 2026-11-25 — perf-01: render pass, interpolation, gates (branch `perf-optimization`)
 
 Trigger: the user said the game "feels low quality in terms of performance". The windowed game

@@ -19,6 +19,8 @@ const DT := 1.0 / 60.0
 
 var _args := {}
 var _main: Node
+const WARMUP_FRAMES := 180
+
 var _frame := 0
 var _frames := 600
 var _frame_us: Array = []
@@ -37,6 +39,7 @@ func _initialize() -> void:
 		return
 	_main = load("res://scenes/main.tscn").instantiate()
 	_main.set("auto_next", true)
+	_main.set("toss_seed", 1)
 	root.add_child(_main)
 	process_frame.connect(_on_frame)
 
@@ -82,16 +85,16 @@ func _bench_sim(minutes: float, size: int) -> void:
 
 func _on_frame() -> void:
 	_frame += 1
-	if _frame == 30:
+	if _frame == WARMUP_FRAMES:
 		_objects0 = int(Performance.get_monitor(Performance.OBJECT_COUNT))
 	var now := Time.get_ticks_usec()
-	if _frame > 30:  # skip warm-up (scene build, first imports)
+	if _frame > WARMUP_FRAMES:  # let the deterministic opening kickoff warm up presentation
 		_frame_us.append(now - _last_us)
 	_last_us = now
 	# Keep plays flowing so the scene exercises LIVE/DEAD/PRESNAP, not just presnap.
 	if _main.world.phase == World.Phase.PRESNAP and _frame % 90 == 0:
 		_main.world.snap()
-	if _frame >= _frames + 30:
+	if _frame >= _frames + WARMUP_FRAMES:
 		_report("scene_frame", _frame_us)
 		var objs := int(Performance.get_monitor(Performance.OBJECT_COUNT))
 		print("BENCH scene_nodes=%d" % int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))

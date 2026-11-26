@@ -204,6 +204,7 @@ func _crew_part(parent: Node3D, at: Vector3, dimensions: Vector3, material: Mate
 	mesh.rings = 6
 	part.mesh = mesh
 	part.material_override = material
+	part.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	part.scale = dimensions
 	part.position = at
 	parent.add_child(part)
