@@ -18,3 +18,5 @@ __pycache__/
 *.pyc
 .parity-shots/
 .parity-shots.log
+.net-host3.log
+.net-version.log

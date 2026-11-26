@@ -58,7 +58,11 @@ static func build(box: Container, ov: Dictionary) -> VBoxContainer:
 	var teams: Array = ov.get("teams", [])
 	if teams.size() == 2:
 		root.add_child(_section("Team stats"))
-		root.add_child(_box_score(names, teams))
+		var inset := MarginContainer.new()
+		# Right-aligned values need space before the vertical scrollbar.
+		inset.add_theme_constant_override("margin_right", 12)
+		inset.add_child(_box_score(names, teams))
+		root.add_child(inset)
 
 	root.add_child(_section("Your game"))
 	var mine: Array = ov.get("my_lines", [])

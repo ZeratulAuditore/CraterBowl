@@ -159,6 +159,9 @@ The game must feel smooth: frame-time **p99** over mean FPS. Rules (details and 
 - Changed how to test? Update `docs/TESTING.md`. Changed perf, budgets or rules? Update `docs/optimization/README.md`,
   and add dated numbers to `docs/optimization/LOG.md`. Changed player-facing behavior? Update `docs/features/<area>.md`. New subsystem or
   protocol? Write or update `docs/design/<topic>.md`. Found a bug or idea you're not fixing now? Open a GitHub issue (Work tracking rule 2).
+- **Changed the wire format or sim rules a client depends on? Bump `Protocol.VERSION`** (`src/net/protocol.gd`) in
+  the same PR, and say so in the PR body. Mismatched builds are refused online instead of desyncing. What
+  counts, and why: `docs/design/netcode.md` "When to bump `Protocol.VERSION`" (#165).
 - One home per fact: link, don't copy. Numbers carry date, machine and mode. Write down what
   **didn't** work; the next agent needs that most.
 - If you change a rule here, update the doc it links to as well (and vice versa).
