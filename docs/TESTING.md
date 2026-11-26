@@ -85,6 +85,19 @@ artifact for all captures and logs. Use GitHub attachments when available. For t
 repository, a dedicated `pr-evidence/<number>` branch with commit-pinned raw image URLs also works.
 Verify the images display in the PR.
 
+**Captures are regression baselines.** CI will diff every capture against the same capture rendered
+from main (`docs/design/regression-baselines.md`, #121), so:
+
+- Set exact state, and settle camera easing and animations before `capture()`. A capture must not
+  depend on wall-clock time or on how many frames have run. On 2026-11-25 (WSL, llvmpipe), 20 of 23
+  captures differed on more than 0.1 % of pixels between two identical runs, mostly from the camera
+  still easing (#124).
+- Capture names are the comparison keys. Don't rename or delete one to hide a diff.
+- Every player-visible state a PR adds or changes gets a capture. A bug fix for something visible
+  adds the capture that would have shown it.
+- On macOS or Windows (no Xvfb), push a draft PR and read the captures from the run's
+  `visual-test-evidence` artifact: `gh run download <run-id> -n visual-test-evidence`.
+
 ## Screenshots: `scripts/shot.sh`
 
 ```bash
