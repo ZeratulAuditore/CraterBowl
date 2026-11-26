@@ -394,8 +394,8 @@ func _draw_crosshair() -> void:
 		crosshair.draw_rect(bar.grow(2.0), shade)
 		crosshair.draw_rect(Rect2(bar.position, Vector2(bar.size.x * charge, bar.size.y)), col.lerp(Color(1.0, 0.45, 0.15), charge))
 	var lbl := "LOFT %d°" % int(round(launch_angle()))
-	crosshair.draw_string_outline(ThemeDB.fallback_font, c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, shade)
-	crosshair.draw_string(ThemeDB.fallback_font, c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, col)
+	crosshair.draw_string_outline(ArtMats.ui_font(600), c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, shade)
+	crosshair.draw_string(ArtMats.ui_font(600), c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, col)
 
 ## True while the human is the passer: QB before the forward pass (Chaosball: any holder).
 func pov_active() -> bool:
