@@ -41,11 +41,11 @@ func _tick(m, seconds: float, inputs := {}) -> void:
 func test_game_clock_runs_only_live() -> void:
 	var m := _match()
 	_tick(m, 2.0)  # presnap
-	assert_near(m.clock.remaining, Clock.HALF_LENGTH, 0.001, "no game clock presnap")
+	assert_near(m.clock.remaining, Clock.QUARTER_LENGTH, 0.001, "no game clock presnap")
 	assert_true(m.clock.play_clock < Clock.PLAY_CLOCK, "play clock runs presnap")
 	m.world.snap()
 	_tick(m, 1.0)
-	assert_near(m.clock.remaining, Clock.HALF_LENGTH - 1.0, 0.05, "game clock live")
+	assert_near(m.clock.remaining, Clock.QUARTER_LENGTH - 1.0, 0.05, "game clock live")
 
 func test_play_clock_auto_snaps() -> void:
 	var m := _match()
@@ -64,6 +64,7 @@ func test_play_clock_resets_each_play() -> void:
 
 func test_untimed_down_and_halftime() -> void:
 	var m := _match()
+	m.clock.quarter = 2
 	m.clock.remaining = 0.5
 	m.world.snap()
 	_tick(m, 1.0)
@@ -74,7 +75,8 @@ func test_untimed_down_and_halftime() -> void:
 	var out := m.next_play()
 	assert_eq(out["outcome"], "halftime")
 	assert_eq(m.clock.half, 2)
-	assert_near(m.clock.remaining, Clock.HALF_LENGTH)
+	assert_eq(m.clock.label(), "Q3 2:30", "halftime opens Q3")
+	assert_near(m.clock.remaining, Clock.QUARTER_LENGTH)
 	# Opening receiver was team 0, so team 0 kicks off to team 1 from its 35.
 	assert_eq(m.state, m.State.KICKOFF, "2nd half opens with a kickoff")
 	assert_eq(out["receiving"], 1, "other team receives 2nd half")
@@ -83,7 +85,7 @@ func test_untimed_down_and_halftime() -> void:
 
 func test_final_and_winner() -> void:
 	var m := _match()
-	m.clock.half = 2
+	m.clock.quarter = 4
 	m.clock.remaining = 0.0
 	m.score = [14, 7]
 	m.last_result = {"type": "incomplete"}
@@ -96,7 +98,7 @@ func test_final_and_winner() -> void:
 
 func test_try_after_last_second_td() -> void:
 	var m := _match(95.0)
-	m.clock.half = 2
+	m.clock.quarter = 4
 	m.clock.remaining = 0.0
 	m.last_result = {"type": "touchdown"}
 	var out := m.next_play()
@@ -161,6 +163,7 @@ func test_possession_change_midplay_stops_clock_even_if_offense_recovers() -> vo
 
 func test_warning_waits_for_whistle_and_resets_at_halftime() -> void:
 	var m := _match()
+	m.clock.quarter = 2
 	_snap_with_holder(m)
 	m.clock.remaining = 60.1
 	_tick(m, 0.25)
@@ -180,6 +183,7 @@ func test_warning_waits_for_whistle_and_resets_at_halftime() -> void:
 	m.next_play()
 	assert_eq(m.clock.half, 2)
 	_touchback(m)   # 2nd half opens with a kickoff (B09)
+	m.clock.quarter = 4   # the warning comes in the half's last quarter
 	_snap_with_holder(m)
 	m.clock.remaining = 60.1
 	_tick(m, 0.25)
@@ -189,6 +193,7 @@ func test_warning_waits_for_whistle_and_resets_at_halftime() -> void:
 
 func test_running_presnap_stops_at_warning_and_can_expire_after_warning() -> void:
 	var m := _match()
+	m.clock.quarter = 2
 	_snap_with_holder(m)
 	m.clock.remaining = 60.1
 	_end_tackle(m, 28.0)
@@ -230,6 +235,7 @@ func test_timeouts_stop_clock_use_actor_team_and_reset_at_half() -> void:
 	assert_true(not m.call_timeout(1), "spent timeouts cannot be reused")
 	assert_true(not m.call_timeout(-1), "invalid team rejected")
 	assert_eq(mevents.count("timeout"), 3)
+	m.clock.quarter = 2
 	m.clock.remaining = 0.0
 	m.next_play()
 	assert_eq(m.clock.timeouts, [3, 3])
@@ -339,3 +345,53 @@ func test_quarter_clock_snapshot_and_warning_only_in_q2_and_q4() -> void:
 	assert_eq(copy.clock.quarter, 4)
 	assert_near(copy.clock.quarter_length, 120.0)
 	assert_eq(copy.clock.label(), m.clock.label())
+
+## #130: every match plays quarters and no clock text says H1/H2.
+func test_default_match_plays_four_quarters_of_ten_minutes_total() -> void:
+	var m := _match()
+	assert_eq(m.clock.label(), "Q1 2:30", "a fresh match opens in Q1")
+	assert_near(Clock.QUARTER_LENGTH * 4.0, 600.0, 0.001, "same 10 minutes as the old two 5-min halves")
+	var seen := []
+	for i in 4:
+		seen.append(m.clock.label().get_slice(" ", 0))
+		m.clock.remaining = 0.0
+		m.last_result = {"type": "incomplete"}
+		var out := m.next_play()
+		if i == 1:
+			assert_eq(out["outcome"], "halftime", "halftime only after Q2")
+			_touchback(m)
+		elif i < 3:
+			assert_eq(out["outcome"], "quarter", "Q%d ends into the next quarter" % (i + 1))
+	assert_eq(seen, ["Q1", "Q2", "Q3", "Q4"])
+	assert_true(m.is_final(), "final after Q4")
+
+func test_label_never_shows_halves() -> void:
+	var c := Clock.new()
+	for length in [0.0, -1.0, 60.0, 150.0, 180.0]:
+		c.quarter_length = length   # 0 was the halves format before #130
+		c.reset()
+		for half in [1, 2]:
+			c.half = half              # a pre-#130 snapshot sets the half
+			for remaining in [300.0, 150.0, 61.0, 0.0]:
+				c.remaining = remaining
+				var label := c.label()
+				assert_true(label.begins_with("Q") and not label.begins_with("H"), "label %s (length %.0f, half %d)" % [label, length, half])
+	assert_near(c.quarter_length, 180.0, 0.001)
+	c.quarter_length = 0.0
+	assert_near(c.quarter_length, Clock.QUARTER_LENGTH, 0.001, "legacy zero length falls back to the default quarter")
+	c.half = 2
+	assert_eq([c.quarter, c.half], [3, 2], "setting half 2 starts Q3")
+	c.half = 1
+	assert_eq([c.quarter, c.half], [1, 1], "setting half 1 starts Q1")
+
+## #130: the bots' end-of-half prevent defense keys off the half, not every quarter.
+func test_prevent_defense_only_at_the_end_of_q2_and_q4() -> void:
+	for quarter in [1, 2, 3, 4]:
+		var m := _match()
+		m.clock.quarter = quarter
+		m.clock.remaining = 40.0
+		m.downs.down = 3
+		m.downs.first_down_y = m.downs.los + 20.0
+		m._setup_formation()
+		var want := "deep_zone" if quarter % 2 == 0 else "cover_2"
+		assert_eq(m.world.defensive_call, want, "3rd & 20, 0:40 left in Q%d" % quarter)

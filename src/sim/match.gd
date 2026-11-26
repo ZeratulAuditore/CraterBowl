@@ -113,7 +113,7 @@ func _setup_formation() -> void:
 	if state == State.TRY and try_points == 1:
 		world.call_kick("fg")
 	world.call_defense(World.DefensivePlaybook.suggest(downs.down, downs.distance(),
-		goal() - downs.los, clock.remaining))
+		goal() - downs.los, clock.half_remaining()))
 
 func _on_world_event(n: String, d: Dictionary) -> void:
 	match n:
@@ -248,7 +248,7 @@ func tick(dt: float) -> void:
 		match_event.emit("auto_snap", {})
 
 ## C04c (#89): teams switch the goal they attack every period (each quarter, or at
-## halftime in the halves format). End 0 is the HELIOS-painted end, which team 0
+## halftime). End 0 is the HELIOS-painted end, which team 0
 ## defends in the first period. Derived from the synced clock, so clients agree.
 func ends_switched() -> bool:
 	return clock.period() % 2 == 1
