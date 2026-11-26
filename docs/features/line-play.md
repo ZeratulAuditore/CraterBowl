@@ -27,7 +27,8 @@ holding right mouse (a "shield"). Rushers beat blocks by waiting out the hold or
 ### Human blocking (shield)
 - Hold **right mouse** while your team has the ball and you aren't the carrier. You move at `BLOCK_SPEED`
   (2.8 yd/s), can't sprint, and keep your facing (so you can backpedal while squared up).
-- Without the shield a human never starts a block. Releasing it drops the block, and so does drifting more than
+- Without the shield a human never starts a block. "Human" means the athlete's input carries the explicit
+  `World.HUMAN` flag that `main.gd` sets for the local player and every joined peer (#62); bots auto-engage. Releasing it drops the block, and so does drifting more than
   about 1.12 yd (`ENGAGE_DIST` + 0.12) from the defender.
 - No gamepad binding for the shield yet.
 
@@ -60,9 +61,10 @@ holding right mouse (a "shield"). Rushers beat blocks by waiting out the hold or
   `protection_target`, `run_block_assignments`, `evade`.
 - `src/sim/player_motion.gd` — shield speed and frozen facing. `src/sim/athlete.gd` — `blocking`, engagement fields.
 - `src/sim/ai.gd` — `_protect`, `_approach_block`, `_pursue`, `_qb_pocket`.
-- `src/game/main.gd` — right-mouse shield input, protection/run-block art.
+- `src/game/main.gd` — right-mouse shield input, `World.HUMAN` flag on local and peer inputs, protection/run-block art.
 - Tests: `tests/test_blocking.gd`, `tests/test_live_controls.gd` (shield, spin shed), `tests/test_run_game.gd`
-  (run-block targets), `tests/test_training.gd` (blocking station).
+  (run-block targets), `tests/test_training.gd` (blocking station), `tests/visual/peer_human_block_test.gd`
+  (host flags a joined peer's lineman as human).
 
 ## History
 - 006 [Blocking](../iterations/006-blocking.md)
