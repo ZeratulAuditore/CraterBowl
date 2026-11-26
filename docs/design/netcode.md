@@ -55,7 +55,9 @@ The host re-broadcasts every world event from `main.gd:_on_world_event`, plus ma
   `flip_play`, `handoff`, `timeout` (no args); `dash`/`spin` (finite `dir`, clamped); `throw` (finite
   target `t`, finite power `p` clamped 0–1, `lob` bool); `try` (`n` ∈ {1,2}); `play` (name in
   `Routes.PLAYBOOK`/`RUN_PLAYS`); `defense` (in `DefensivePlaybook.CALLS`); `route` (in `Routes.ROUTES`).
-  Anything else returns `{}` and is dropped.
+  The kicking actions are `kick` (finite target `t` and power `p` clamped to 0–1),
+  `kick_call` (`k` is `""`, `"punt"` or `"fg"`), and `toss` (`c` is `"receive"` or `"kick"`).
+  Other actions return `{}`, including legacy `team` and `pick` requests.
 - `protocol.gd:apply_action` then checks side and phase (e.g. `play`/`flip_play`/`try` offense only,
   `defense` defense only, `play`/`route` PRESNAP only) and delegates to `World`/`Match`. Client throws
   always use `T.PLAYER_PASS_POWER`; the client's `p` is sanitized but not used.
@@ -63,6 +65,9 @@ The host re-broadcasts every world event from `main.gd:_on_world_event`, plus ma
   `Cosmetics.sanitize_look` before rebroadcasting `looks`.
 - Lobby: names stripped and cut to 16 chars (`lobby.gd:set_name`); settings change only via
   `set_setting(by == host_id, phase LOBBY)` with whitelisted values, called from the host's own keys.
+- `Roster.claim` rejects occupied slots before releasing the requester's current slot. Unit tests check
+  both the protocol rejection and the roster rule. The network flow checks that the legacy requests
+  leave the connected client's assignment intact.
 - Not validated: message rate. `actions` and `lobby_actions` are unbounded queues drained once per tick.
 
 ## Snapshots (`protocol.gd:encode_snapshot` / `apply_snapshot`)
@@ -154,9 +159,8 @@ messages are reliable on channel 0.
   `main.gd:_local_ipv4()` (LAN; works on LAN or with a manual forward).
 - `port_mapper.gd:open_port` (on a `Thread` via `open_port_async`, from `main_menu.gd:_with_port` for host
   and queue): UPnP discover 2 s, map UDP `port→port` for 4 h, query the external IP, reject non-public
-  (CGNAT, private) addresses. Failure text lands in `Launch.last_status`, which the menu shows only after
-  returning (#47). `close_port` exists but nothing calls it; the lease simply expires. No relay or NAT
-  punch-through (#32).
+  (CGNAT, private) addresses. The launch options carry any failure notice into the host lobby (#47).
+  `close_port` is unused, so the lease expires on its own. Relay support is tracked in #32.
 
 ## Trust model and known limits
 
@@ -175,12 +179,10 @@ messages are reliable on channel 0.
 - #32 B07 NAT relay for CGNAT/strict routers + hosted public matchmaker
 - #21 C15 Find a game without port-forwarding: dedicated server + browser
 - #48 Decide: host the public matchmaker (VPS/AWS + DNS)?
-- #47 UPnP failure notice appears after the match instead of in the lobby
 - #31 Team voice chat (team-only, host-relayed)
 - #18 C12 Position assignment: QB vote, role preferences
 - #20 C14 Spectators
 - #26 C20 Rematch and keep-the-lobby
-- #52 net_client.gd team-swap / slot-pick rejection checks can never fail
 - #53 Host keeps only the newest client input per tick
 - #54 Lobby accepts more peers than the match has slots
 - #55 No rate limits on client actions or matchmaker messages
