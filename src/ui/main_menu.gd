@@ -63,6 +63,7 @@ var ranked_path := Ranked.DEFAULT_PATH
 var replay_dir := "user://replays"
 var pick_size := 5
 var pick_mode := "classic"
+var _size_buttons: Array[Button] = []   # current screen's Size row (#83: locked to 3v3 under Chaosball)
 var _capture_action := ""     # controls screen: waiting for a key for this action
 var _capture_button: Button
 var browser: Node
@@ -965,14 +966,36 @@ func _size_picker(include_label: bool) -> void:
 	content.add_child(h)
 	_text("Team size" if include_label else "Size", h).custom_minimum_size = Vector2(120, 0)
 	var group := ButtonGroup.new()
+	_size_buttons.clear()
 	for s in SIZES:
 		var b := Button.new()
 		b.text = "%dv%d" % [s, s]
 		b.toggle_mode = true
 		b.button_group = group
-		b.button_pressed = s == pick_size
+		b.set_meta("size", s)
 		b.pressed.connect(func(): pick_size = s)
 		h.add_child(b)
+		_size_buttons.append(b)
+	_sync_size_picker()
+
+## Chaosball is always 3v3: show 3v3 and lock the row. pick_size is left alone, so
+## switching back to Classic restores the earlier pick (#83).
+func _sync_size_picker() -> void:
+	var chaos := pick_mode == "chaosball"
+	for b in _size_buttons:
+		if not is_instance_valid(b):
+			continue
+		var s: int = b.get_meta("size")
+		b.button_pressed = s == (3 if chaos else pick_size)
+		b.disabled = chaos
+		# The theme's disabled box hides "pressed": keep the forced 3v3 reading as the pick, dimmed.
+		if chaos and s == 3:
+			b.add_theme_stylebox_override("disabled", UITheme.box(Color(UITheme.CYAN, 0.15), Color(UITheme.CYAN, 0.55)))
+			b.add_theme_color_override("font_disabled_color", Color(UITheme.CREAM, 0.75))
+		else:
+			b.remove_theme_stylebox_override("disabled")
+			b.remove_theme_color_override("font_disabled_color")
+		b.tooltip_text = "Chaosball is always 3v3" if chaos else ""
 
 func _mode_picker() -> void:
 	var h := HBoxContainer.new()
@@ -987,7 +1010,9 @@ func _mode_picker() -> void:
 		b.button_group = group
 		b.button_pressed = m[0] == pick_mode
 		var id: String = m[0]
-		b.pressed.connect(func(): pick_mode = id)
+		b.pressed.connect(func():
+			pick_mode = id
+			_sync_size_picker())
 		h.add_child(b)
 
 ## Top/bottom darkening so the bars and HUD read over the 3D lobby.

@@ -46,6 +46,20 @@ func _btn(root_node: Node, text: String) -> Button:
 			return n
 	return null
 
+## #83: the Size row's state as "<pressed size>/<enabled|disabled>", e.g. "7/enabled".
+func _size_row(root_node: Node) -> String:
+	var on := []
+	var enabled := 0
+	for s in [3, 5, 7]:
+		var b := _btn(root_node, "%dv%d" % [s, s])
+		if b == null:
+			return "missing %dv%d" % [s, s]
+		if b.button_pressed:
+			on.append(s)
+		if not b.disabled:
+			enabled += 1
+	return "%s/%s" % [",".join(on), "enabled" if enabled == 3 else ("disabled" if enabled == 0 else "mixed")]
+
 func _key(code: int, pressed: bool = true) -> void:
 	var ev := InputEventKey.new()
 	ev.keycode = code
@@ -262,10 +276,22 @@ func _setup() -> void:
 			m.host_port = HOST_PORT
 			launch.settings.upnp = false
 			m.list_public = false
-			m.show_screen("online")
 			m.pick_size = 7
+			m.pick_mode = "classic"
+			m.show_screen("online")
+			check(_size_row(m.content) == "7/enabled", "online Size row shows the 7v7 pick under Classic: %s" % _size_row(m.content))
 			_btn(m.content, "Chaosball (3v3, low-g)").pressed.emit()
 			check(m.pick_mode == "chaosball", "online Rules picker selects Chaosball")
+			check(_size_row(m.content) == "3/disabled", "#83 Chaosball locks the Size row to 3v3: %s" % _size_row(m.content))
+			_btn(m.content, "Classic").pressed.emit()
+			check(_size_row(m.content) == "7/enabled" and m.pick_size == 7, "#83 back to Classic restores 7v7: %s" % _size_row(m.content))
+			_btn(m.content, "Chaosball (3v3, low-g)").pressed.emit()
+			m.show_screen("bots")
+			check(_size_row(m.content) == "3/disabled", "#83 VS Bots Size row opens locked under Chaosball: %s" % _size_row(m.content))
+			_btn(m.content, "Classic").pressed.emit()
+			check(_size_row(m.content) == "7/enabled", "#83 VS Bots Classic restores 7v7: %s" % _size_row(m.content))
+			_btn(m.content, "Chaosball (3v3, low-g)").pressed.emit()
+			m.show_screen("online")
 			m.host_match()],
 		[1100, func():
 			var g = current_scene
