@@ -53,15 +53,20 @@ func test_snapshot_round_trip() -> void:
 	assert_eq(b.downs.down, 3, "down")
 	assert_true(bytes.size() < 1400, "fits one MTU-ish packet (%d bytes)" % bytes.size())
 
-func test_legacy_snapshot_defaults_to_halves() -> void:
+## #130: a pre-quarters host never makes a client show H1/H2.
+func test_legacy_snapshot_shows_quarters() -> void:
 	var m := _match()
 	var snapshot := P.encode_snapshot(m, 1)
-	snapshot["c"] = PackedFloat32Array([2.0, 57.0, 12.0, 0.0])
+	snapshot["c"] = PackedFloat32Array([2.0, 57.0, 12.0, 0.0])   # no quarter fields: 2nd half
 	m.clock.quarter_length = 120.0
 	m.clock.quarter = 2
 	P.apply_snapshot(m, snapshot)
-	assert_true(not m.clock.uses_quarters())
-	assert_eq(m.clock.label(), "H2 0:57")
+	assert_eq(m.clock.label(), "Q3 0:57", "2nd half reads as Q3")
+	assert_near(m.clock.quarter_length, 150.0, 0.001)
+	snapshot["c"] = PackedFloat32Array([1.0, 240.0, 12.0, 0.0, 1.0, 0.0])   # halves-format host
+	P.apply_snapshot(m, snapshot)
+	assert_eq(m.clock.label(), "Q1 4:00")
+	assert_near(m.clock.quarter_length, 150.0, 0.001, "zero length falls back to quarters")
 
 func test_sanitize_input() -> void:
 	assert_eq(P.sanitize_input("garbage"), {}, "non-dict rejected")

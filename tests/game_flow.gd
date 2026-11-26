@@ -92,8 +92,8 @@ func _initialize() -> void:
 		[2470, func(): var c = main.world.carrier(); c.position = Vector2(26, 101.0)],
 		[2472, func(): main.next_play(); check(main.series.score[0] == 8, "try good: 8"); check(main.series.state == main.Match.State.KICKOFF and main.world.offense_team == 0 and absf(main.world.los_y - 35.0) < 0.01, "kickoff: home kicks from its 35")],
 		# A09: play clock auto-snap, untimed down, halftime
-		[2473, func(): check(main.hud.text.find("H1 ") >= 0 and main.hud.text.find("PLAY ") >= 0, "HUD game + play clock"); main.series.clock.play_clock = 0.3],
-		[2500, func(): check(main.world.phase == main.World.Phase.LIVE, "play clock auto-snapped"); main.series.clock.remaining = 0.2],
+		[2473, func(): check(main.hud.text.find("Q1 ") >= 0 and main.hud.text.find("H1 ") < 0 and main.hud.text.find("PLAY ") >= 0, "HUD game + play clock"); main.series.clock.play_clock = 0.3],
+		[2500, func(): check(main.world.phase == main.World.Phase.LIVE, "play clock auto-snapped"); main.series.clock.quarter = 2; main.series.clock.remaining = 0.2],
 		[2530, func(): check(main.series.clock.expired(), "clock hit 0:00")],
 		[3200, func(): _force_dead_if_live(); main.next_play(); check(main.series.clock.half == 2, "halftime -> 2nd half"); check(main.series.last_outcome.get("receiving", -1) == 1 - main.series.opening_receiver, "other team receives 2nd half")],
 		# Match assignment stays fixed between plays as well as during them.
@@ -158,8 +158,8 @@ func _initialize() -> void:
 		[4603, func(): before_id = main.my_id; _key(KEY_TAB)],
 		[4604, func(): check(main.pres.overlay.scoreboard.visible and main.my_id == before_id, "Tab shows scoreboard with fixed assignment"); _key(KEY_TAB, false)],
 		[4605, func(): check(not main.pres.overlay.scoreboard.visible, "scoreboard closes on release"); _key(KEY_SPACE)],
-		[4606, func(): check(main.world.phase == main.World.Phase.LIVE, "Space key snaps"); _key(KEY_C)],
-		[4607, func(): check(main.player.athlete.move_charge == 1.0, "C consumes one dash charge")],
+		[4606, func(): check(main.world.phase == main.World.Phase.LIVE, "Space key snaps"); _key(KEY_R)],
+		[4607, func(): check(main.player.athlete.move_charge == 1.0, "R consumes one dash charge")],
 		[4625, func(): _key(KEY_E)],
 		[4626, func(): check(main.player.athlete.is_spinning() and main.player.athlete.move_charge < 1.0, "E (spin right) consumes one spin charge")],
 		# Defense Space double-tap unlocks a stance without snapping; one press does nothing (#142).
@@ -212,7 +212,7 @@ func _initialize() -> void:
 			if carrier != null and main.world.phase == main.World.Phase.LIVE:
 				carrier.position.x = -1.0],
 		[6799, func(): main.leaderboard_path = "user://test_flow_leaderboard.json"; DirAccess.remove_absolute(ProjectSettings.globalize_path(main.leaderboard_path))],
-		[6800, func(): check(main.stats.total("att") >= 1 and main.stats.total("comp") >= 1, "stats tracked the completion (%d/%d)" % [main.stats.total("comp"), main.stats.total("att")]); _force_dead_if_live(); main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.next_play(); main.ai.defense_enabled = true],
+		[6800, func(): check(main.stats.total("att") >= 1 and main.stats.total("comp") >= 1, "stats tracked the completion (%d/%d)" % [main.stats.total("comp"), main.stats.total("att")]); _force_dead_if_live(); main.series.clock.quarter = 4; main.series.clock.remaining = 0.0; main.next_play(); main.ai.defense_enabled = true],
 		[6802, func(): check(main.series.is_final(), "final"); check(main.hud.text.find("You QB: 1/1") >= 0, "HUD summary shows your QB line"); check(not main.replay_active, "final whistle ends an auto highlight replay")],
 		# A22: match recorded to the leaderboard file; HUD shows your rank
 		[6803, func(): var lb = main.Leaderboard.new(); lb.load_file(main.leaderboard_path); check(lb.rank_of("You", "QB") == 1, "leaderboard file has You|QB at #1"); check(main.hud.text.find("YOUR RANKS: QB #1") >= 0, "HUD shows your rank"); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.leaderboard_path))],
@@ -223,7 +223,7 @@ func _initialize() -> void:
 		# A23: ranked match vs a human rival -> rating change saved + on HUD.
 		# #102: the rival shares our display name ("You"); records are keyed by install id, so each keeps its own.
 		[6900, func(): main.configure(7); _setup_ranked_rival()],
-		[6902, func(): main.series.score = [7, 0]; main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.world.phase = main.World.Phase.DEAD; main.series.last_result = {"type": "incomplete"}; main.next_play()],
+		[6902, func(): main.series.score = [7, 0]; main.series.clock.quarter = 4; main.series.clock.remaining = 0.0; main.world.phase = main.World.Phase.DEAD; main.series.last_result = {"type": "incomplete"}; main.next_play()],
 		[6904, func(): var rk = main.Ranked.new(); rk.load_file(main.ranked_path); var mine: String = main.Ranked.id_key(main.profile.install_id); var theirs: String = main.Ranked.id_key(RIVAL_INSTALL); check(rk.players.size() == 2 and not rk.players.has("You"), "same-named players get two id-keyed records (%s)" % str(rk.players.keys())); check(rk.rating(mine) > 1000.0 and rk.rating(theirs) < 1000.0, "ratings saved (host %.0f, rival %.0f)" % [rk.rating(mine), rk.rating(theirs)]); check(int(rk.players[mine]["games"]) == 1 and int(rk.players[mine]["wins"]) == 1 and int(rk.players[theirs]["wins"]) == 0, "one game each, one win"); check(rk.players[theirs].get("name") == "You", "display name kept on the record"); check(main.hud.text.find("RATING ") >= 0 and main.hud.text.find("(+24)") >= 0, "HUD shows rating change"); var saved = main.Cosmetics.new(); saved.load_file(main.profile_path); check(saved.install_id != "" and saved.install_id == main.profile.install_id, "host install id minted + saved with the profile"); main.peer_installs.erase(99); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.ranked_path)); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.leaderboard_path))],
 		# A24: earned cosmetics on your athlete, TD celebration, XP at final
 		[7000, func(): main.profile.xp = 600; check(main.profile.equip("trim", "ember") and main.profile.equip("celebration", "spin") and main.profile.equip("number", 88), "equip earned items (level 1)"); check(not main.profile.equip("trim", "aurora"), "locked item refused"); main.configure(7)],
@@ -231,7 +231,7 @@ func _initialize() -> void:
 		[7003, func(): _key(KEY_SPACE)],
 		[7030, func(): main.world.carrier().position = Vector2(26, 101.0)],
 		[7032, func(): check(main.views[main.my_id].is_celebrating(), "TD celebration plays")],
-		[7033, func(): xp0 = main.profile.xp; main.next_play(); main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.world.phase = main.World.Phase.DEAD; main.series.last_result = {"type": "incomplete"}; main.next_play()],
+		[7033, func(): xp0 = main.profile.xp; main.next_play(); main.series.clock.quarter = 4; main.series.clock.remaining = 0.0; main.world.phase = main.World.Phase.DEAD; main.series.last_result = {"type": "incomplete"}; main.next_play()],
 		[7035, func(): check(main.profile.xp > xp0 and main.hud.text.find("XP +") >= 0, "XP awarded at final (%d -> %d)" % [xp0, main.profile.xp]); var saved = main.Cosmetics.new(); saved.load_file(main.profile_path); check(saved.xp == main.profile.xp, "XP saved to (temp) profile"); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.profile_path))],
 		# A25: instant replay with the real V key, saved replay, viewer
 		[7100, func(): main.replay_dir = "user://test_flow_replays"; main.configure(7); main.ai.defense_enabled = false],
@@ -240,7 +240,7 @@ func _initialize() -> void:
 		[7203, func(): check(main.world.phase == main.World.Phase.DEAD, "play over"); frozen_y = main.world.athletes[0].position.y; _key(KEY_V); check(main.replay_active, "V starts instant replay")],
 		[7210, func(): var p = main.replay.last_play(); var smp = main.replay.sample(); var rp = Vector3(smp["pos"][3].x, 0, -smp["pos"][3].y); check(main.views[3].target_position().distance_to(rp) < 0.01, "views show replay frames"); check(main.views[3].position.distance_to(rp) < 0.5, "drawn view within one interpolation step of the replay frame"); check(main.hud.text.find("REPLAY 0.5x") >= 0, "HUD shows replay"); check(absf(main.world.athletes[0].position.y - frozen_y) < 0.001 and main.world.phase == main.World.Phase.DEAD, "offline sim frozen during replay")],
 		[7500, func(): check(not main.replay_active, "replay ends -> back to live"); main.ai.defense_enabled = true],
-		[7501, func(): main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.series.last_result = {"type": "incomplete"}; main.next_play()],
+		[7501, func(): main.series.clock.quarter = 4; main.series.clock.remaining = 0.0; main.series.last_result = {"type": "incomplete"}; main.next_play()],
 		[7502, func(): check(main.saved_replay != "" and FileAccess.file_exists(main.saved_replay), "replay saved at final (%s)" % main.saved_replay)],
 		[7503, func(): check(main.open_replay(main.saved_replay) and main.replay_viewer and main.replay.plays.size() >= 1, "viewer opens the saved replay"); _key(KEY_BRACKETRIGHT); check(main.replay.speed == 2.0, "] speeds up")],
 		[7504, func(): _key(KEY_V); check(not main.replay_active, "V exits viewer"); for f in DirAccess.get_files_at(ProjectSettings.globalize_path("user://test_flow_replays")): DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_flow_replays/" + f))],
@@ -248,7 +248,7 @@ func _initialize() -> void:
 		[7600, func(): main.profile.achievements = []; main.profile.games = 0; main.configure(7); main.ai.defense_enabled = false],
 		[7601, func(): _key(KEY_SPACE)],
 		[7630, func(): main.world.carrier().position = Vector2(26, 101.0)],
-		[7632, func(): main.next_play(); main.world.snap(); main.series.last_result = {"type": "touchdown", "team": 0}; main.world.phase = main.World.Phase.DEAD; main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.next_play()],
+		[7632, func(): main.next_play(); main.world.snap(); main.series.last_result = {"type": "touchdown", "team": 0}; main.world.phase = main.World.Phase.DEAD; main.series.clock.quarter = 4; main.series.clock.remaining = 0.0; main.next_play()],
 		[7634, func(): check(main.series.is_final(), "final"); check(main.profile.achievements.has("first_td") and main.profile.achievements.has("first_win"), "First Touchdown + First Win unlocked (%s)" % str(main.profile.achievements)); check(main.hud.text.find("ACHIEVEMENTS: ") >= 0, "HUD lists achievements"); var saved = main.Cosmetics.new(); saved.load_file(main.profile_path); check(saved.achievements.has("first_win"), "achievements saved"); main.ai.defense_enabled = true; DirAccess.remove_absolute(ProjectSettings.globalize_path(main.profile_path))],
 		# C01: call a run, hand off, and keep the assigned quarterback.
 		[7710, func():
@@ -275,13 +275,15 @@ func _initialize() -> void:
 				back.position.x = -0.5],
 		[7932, func():
 			check(main.world.phase == main.World.Phase.DEAD and main.stats.total("car") == 1 and main.stats.total("rush_yds") > 0.0, "whistle records the RB's rushing attempt and gain")],
-		# C04a: U from dead ball, then the one-minute warning at the next whistle.
+		# C04a: T from dead ball, then the one-minute warning at the next whistle.
 		[7950, func():
 			main.configure(3)
 			main.ai.defense_enabled = false
+			main.series.clock.quarter = 2   # #130: the warning comes in Q2/Q4
+			main.pres._period = 1           # jumped there: no SWITCH ENDS banner over the timeout one
 			main.series.clock.remaining = 60.1
-			_key(KEY_U)
-			check(main.series.clock.timeouts == [1, 2], "U spends a timeout in 3v3")
+			_key(KEY_T)
+			check(main.series.clock.timeouts == [1, 2], "T spends a timeout in 3v3")
 			check(main.pres.overlay.banner.text == "TIMEOUT", "timeout banner appears")
 			_key(KEY_SPACE)],
 		[7970, func():
@@ -291,8 +293,8 @@ func _initialize() -> void:
 			var overlay = main.pres.overlay
 			check(overlay.field_strip.is_visible_in_tree() and overlay.play_clock_l.text == "",
 				"the field strip remains live and the play clock clears on snap")
-			_key(KEY_U)
-			check(main.series.clock.timeouts == [1, 2], "U cannot call timeout during the play")
+			_key(KEY_T)
+			check(main.series.clock.timeouts == [1, 2], "T cannot call timeout during the play")
 			main.world.carrier().position.x = -0.5],
 		[7974, func():
 			check(main.world.phase == main.World.Phase.DEAD and main.pres.overlay.banner.text == "ONE-MINUTE WARNING", "warning appears after the whistle")],
@@ -307,7 +309,7 @@ func _initialize() -> void:
 		[8210, func(): var t0 = main.replay.time; _key(KEY_COMMA); check(absf(main.replay.time - (t0 - 1.0)) < 0.001 and main.hud.text.find("(paused)") >= 0, ", steps back while paused"); _key(KEY_SPACE); check(not main.replay.paused, "Space resumes")],
 		[8211, func(): _key(KEY_ENTER); check(not main.replay_active, "Enter skips the highlight")],
 		[8250, func(): check(not main.replay_active and main.world.phase == main.World.Phase.DEAD, "a skipped highlight does not replay again"); var o = main.pres.overlay if main.pres else null; check(o == null or o.mode_l.visible, "live overlay widgets restored after replay")],
-		[8251, func(): main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.series.last_result = {"type": "incomplete"}; main.next_play()],
+		[8251, func(): main.series.clock.quarter = 4; main.series.clock.remaining = 0.0; main.series.last_result = {"type": "incomplete"}; main.next_play()],
 		[8252, func(): check(main.series.is_final(), "final"); _key(KEY_V); check(main.replay_active and main.replay_reel, "V at FINAL plays the highlight reel")],
 		[8254, func(): check(main.hud.text.find("HIGHLIGHT REEL") >= 0, "HUD: HIGHLIGHT REEL"); check(main.postgame == null, "postgame show waits while the reel plays"); _key(KEY_V); check(not main.replay_active, "V exits the reel"); main.auto_replay = false; main.ai.defense_enabled = true; for f in DirAccess.get_files_at(ProjectSettings.globalize_path("user://test_flow_replays")): DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_flow_replays/" + f))],
 		# Training ground: hub portals, blocking station, Backspace home, practice-field targets
@@ -321,7 +323,7 @@ func _initialize() -> void:
 		[9002, func(): var t: Vector2 = main.Drills.target_list(main.field)[0]["pos"]; main.world.get_athlete(main.my_id).position = t - Vector2(0, 10); main.aim_point = t],
 		[9030, func(): _key(KEY_J); check(main.drill.throws == 1, "practice-field throw with the real throw path")],
 		[9200, func(): check(main.drill.hits == 1 and main.drill.points >= 1, "hit the short target (%s)" % main.drill.last_result); check(main.world.ball.is_held_by(main.my_id), "ball back in your hands"); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.training_path))],
-		# Gridiron controls: POV aim + throw (mouse look), Q/E spin, F dive, wheel/T taunt
+		# Gridiron controls: POV aim + throw (mouse look), Q/E spin, F dive, wheel/C taunt
 		[12400, func(): main.configure(7); main.ai.defense_enabled = false; main.pov_enabled = true],
 		[12402, func(): check(main.pov_active(), "QB presnap: POV aim active"); check(absf(main.aim_yaw) < 0.001, "aim starts downfield"); _key(KEY_SPACE)],
 		[12405, func(): check(main.pov_active(), "POV stays on while the snap is in the air")],
@@ -344,6 +346,13 @@ func _initialize() -> void:
 		[12540, func(): check(main.world.ball.is_held_by(main.controlled_id), "QB has the ball"); _key(KEY_E); check(main.world.get_athlete(main.controlled_id).is_spinning() and main.world.get_athlete(main.controlled_id).spin_dir == 1, "E spins right")],
 		[12543, func(): check(main.views[main.controlled_id].spin_vis_t > 0.0, "spin animates the athlete")],
 		[12640, func(): _key(KEY_Q); check(main.world.get_athlete(main.controlled_id).spin_dir == -1, "Q spins left")],
+		# #138: R dashes only with a charge. Both charges are spent (E, Q): R does nothing.
+		[12670, func():
+			var qb = main.world.get_athlete(main.controlled_id)
+			var c0: float = qb.move_charge
+			check(main.world.phase == main.World.Phase.LIVE and c0 < 1.0 and qb.move_t == 0.0, "both move charges spent (%.2f)" % c0)
+			_key(KEY_R)
+			check(qb.move_t == 0.0 and qb.move_charge == c0, "R without a charge does not dash")],
 		[12680, func(): main.world.get_athlete(main.controlled_id).facing = Vector2(0, 1); _key(KEY_F); check(main.world.get_athlete(main.controlled_id).is_diving(), "F dives with the ball")],
 		[12720, func(): check(main.world.phase == main.World.Phase.DEAD and main.last_whistle == "TACKLE", "carrier dive: down where he lands (%s)" % main.last_whistle)],
 		[12721, func():
@@ -352,9 +361,9 @@ func _initialize() -> void:
 			ev.pressed = true
 			main._unhandled_input(ev)
 			check(main.emote_picker.index == 1 and main.emote_picker.show_t > 0.0, "wheel scrolls the taunt picker")
-			_key(KEY_T)
+			_key(KEY_C)
 			var v = main.views[main.controlled_id]
-			check(v.emote_t > 0.0 and v.emote_id == main.emote_picker.selected() and v.bubble.visible, "T performs the selected taunt (%s)" % v.emote_id)
+			check(v.emote_t > 0.0 and v.emote_id == main.emote_picker.selected() and v.bubble.visible, "C performs the selected taunt (%s)" % v.emote_id)
 			main.ai.defense_enabled = true
 			main.pov_enabled = false],   # later steps aim at a field point
 		# C04c (#89): Q1 runs out on a live play snapped with Space -> after the whistle the
@@ -434,9 +443,12 @@ func _initialize() -> void:
 			check(main.world.phase == main.World.Phase.LIVE, "Space starts the last play of Q1")
 			main.series.clock.remaining = 0.0
 			main.world.carrier().position.x = -0.5],
-		[12228, func(): _key(KEY_R)],
+		[12228, func():
+			_key(KEY_R)
+			check(main.series.clock.quarter == 1 and main.world.phase == main.World.Phase.DEAD, "R (dash) no longer advances the play (#138)")
+			_key(KEY_ENTER)],
 		[12238, func():
-			check(main.series.clock.quarter == 2 and main.series.downs.down == 2 and main.world.offense_team == 0, "R advances to Q2 and preserves the drive")
+			check(main.series.clock.quarter == 2 and main.series.downs.down == 2 and main.world.offense_team == 0, "Enter advances to Q2 and preserves the drive")
 			check(main.pres.overlay.clock_l.text == "Q2 2:00", "scorebug updates to Q2")
 			main.ai.defense_enabled = true],
 		# C06a (#98): forward progress. Space snaps; a linebacker meets the QB and drives him back
