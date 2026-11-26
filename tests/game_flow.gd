@@ -665,16 +665,15 @@ func _check_carry_pose(two_hand: bool, context: String) -> void:
 	check(off < 0.05, "ball pinned to the palm socket (%s): %.3f m off" % [context, off])
 	var to_hand: float = main.ball_view.global_position.distance_to(v.hand_r.global_position)
 	check(to_hand < 0.3, "ball in the hand (%s): %.2f m from the wrist" % [context, to_hand])
-	# #245: everyone else near enough to the camera tracks the ball; far heads and the
-	# carrier don't look. Views within 15% of the cutoff are skipped (they may be fading).
+	# #245: heads far from the camera and the carrier don't look. Views within 15% of the
+	# cutoff are skipped (they may be fading). Near ones are checked by role below.
 	var cam: Camera3D = main.get_viewport().get_camera_3d()
 	var size := func(o): return o.global_position.distance_to(cam.global_position) * tan(deg_to_rad(cam.fov) * 0.5) / o.LOOK_VIEW_SIZE
 	var near: Array = main.views.filter(func(o): return o != v and size.call(o) < 0.85)
 	var far: Array = main.views.filter(func(o): return o != v and size.call(o) > 1.15)
-	var near_ok: int = near.filter(func(o): return (o.pose.look_weight > 0.5) == o.watches_now()).size()
 	var far_ok: int = far.filter(func(o): return o.pose.look_weight < 0.5).size()
-	check(v.pose.look_weight < 0.2 and near_ok == near.size() and far_ok == far.size(),   # the carrier's look fades over ~0.3 s
-		"heads track the ball near the camera (%s): %d/%d near match their role, %d/%d far don't, carrier %.2f" % [context, near_ok, near.size(), far_ok, far.size(), v.pose.look_weight])
+	check(v.pose.look_weight < 0.2 and far_ok == far.size(),   # the carrier's look fades over ~0.3 s
+		"heads far from the camera don't look (%s): %d/%d far don't, carrier %.2f" % [context, far_ok, far.size(), v.pose.look_weight])
 	# Live with the ball held: offensive linemen and route runners don't watch it; free defenders do.
 	var offense: int = main.world.offense_team
 	var o_look: int = main.views.filter(func(o): return o != v and o.athlete.team == offense and o.pose.look_weight > 0.5).size()

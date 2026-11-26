@@ -8,6 +8,23 @@ Machine for all entries so far: WSL2 Ubuntu 24.04, i7-11800H (16 threads), RTX 3
 
 ---
 
+## 2026-11-26 — perf-08: decide who looks at 10 Hz (#245)
+
+`player.gd` now decides "near the camera" and "watches the ball" at `LOOK_DECIDE_HZ` (10 Hz, staggered by
+athlete id) instead of every frame; carrying, down and celebrating still apply at once. Same machine and
+mode as perf-05, CPU load 16% (quiet, so tighter spread than perf-06/07), 3 rounds interleaved,
+scene_frame p50 / p99 medians in µs:
+
+| Tree | p50 | p99 |
+|---|---|---|
+| #244 baseline | 919 (909–929) | 1898 |
+| role rules, decided every frame | 969 (963–972) | 1927 |
+| role rules, decided at 10 Hz | 948 (942–993) | 1924 |
+
+The head look's cost goes from about +50 to about +29 µs/frame (about 3% of this headless frame). Round 1 of
+the throttled tree was an outlier (993); rounds 2–3 were 21–27 µs under the per-frame tree. Remaining cost:
+the look math for the athletes who do look, plus the per-frame target and blend update.
+
 ## 2026-11-26 — perf-07: only athletes who need the ball watch it (#245)
 
 Behavior change for realism (owner's call): defense reads the ball unless blocked; offensive linemen

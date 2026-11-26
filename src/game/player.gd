@@ -39,6 +39,9 @@ const LOOK_K := 10.0
 const LOOK_VIEW_SIZE := 16.0
 ## Offensive players only watch a pass or loose ball this close (yd).
 const WATCH_RANGE := 15.0
+## "Near the camera" and "watches the ball" rarely change frame to frame: decide them this
+## often (staggered by athlete id) instead of every frame (#245, LOG.md perf-08).
+const LOOK_DECIDE_HZ := 10.0
 ## Ball seat in hand_r bone space: in the palm, long axis along the forearm (#244).
 const BALL_SOCKET := Transform3D(Basis(Vector3.RIGHT, -PI / 2.0), Vector3(-0.13, 0.08, 0.0))
 
@@ -73,6 +76,8 @@ var pose: Node              # athlete_pose.gd (null without a rig)
 var ball_node: Node3D       # the ball while this athlete carries it (presentation.gd sets it)
 var look_node: Node3D       # the ball view: heads track it (#245; main.gd sets it)
 var _look_point := Vector3.ZERO   # smoothed world-space look target
+var _look_decide_t := 0.0         # time to the next look decision
+var _look_wanted := false         # last decision: near the camera and watches the ball
 var _skel: Skeleton3D
 var _ball_xf := Transform3D()   # palm socket (world), cached at each skeleton update
 var _ball_xf_ok := false
@@ -130,6 +135,7 @@ func _ready() -> void:
 	var head_bone := _bone(skel, "Head")
 	hand_r = _attach(skel, "hand_r")
 	_skel = skel
+	_look_decide_t = float(athlete.id % 6) / 60.0   # stagger: the 14 views don't all decide on the same frame
 	if skel:
 		pose = Pose.new()
 		skel.add_child(pose)
@@ -364,9 +370,12 @@ func watches_now() -> bool:
 ## Heads track the ball (not the carrier's own; not while down, celebrating, too far from
 ## the camera to see, or when the athlete has no reason to watch it).
 func _update_look(delta: float, down: bool) -> void:
-	var cam := get_viewport().get_camera_3d()
-	var near := cam != null and head_visible(global_position.distance_to(cam.global_position), cam.fov)
-	var looking := near and look_node != null and ball_node == null and not down and celebrate_t <= 0.0 and watches_now()
+	_look_decide_t -= delta
+	if _look_decide_t <= 0.0:
+		_look_decide_t = 1.0 / LOOK_DECIDE_HZ
+		var cam := get_viewport().get_camera_3d()
+		_look_wanted = cam != null and head_visible(global_position.distance_to(cam.global_position), cam.fov) and watches_now()
+	var looking := _look_wanted and look_node != null and ball_node == null and not down and celebrate_t <= 0.0
 	var k := 1.0 - exp(-LOOK_K * delta)
 	if look_node != null and (looking or pose.look_weight > 0.0):   # also while fading out, so a fading head never points at an old spot
 		var target := look_node.global_position
