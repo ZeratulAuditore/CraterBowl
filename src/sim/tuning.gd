@@ -103,6 +103,7 @@ const RECOVER_MAX_HEIGHT := 1.0
 
 # Bots
 const NEUTRAL_ZONE_HALF := 0.5     # pre-snap: each side stops this far from the LOS
+const STANCE_DOUBLE_TAP := 0.35    # s: a set defender's two Space presses within this break stance (#142)
 const BARRIER_HEIGHT := 2.4        # LOS barrier wall height (m)
 const BARRIER_REVEAL_DIST := 3.0   # barrier brightens near athletes within this (yd)
 const BARRIER_DROP_TIME := 0.3     # barrier dissolve after the snap (s)

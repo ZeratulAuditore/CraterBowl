@@ -5,7 +5,8 @@ Feature-level doc: how this works for players **today** on `main`. Design/implem
 ## Summary
 The defense picks one of nine calls (man, zone or blitz in base, goal-line or prevent shells) before the snap. The call
 drives bot defenders' assignments and is drawn on the turf for your team only. Defenders line up locked in stance;
-non-linemen press Space to break stance and roam up to a visible barrier at the line of scrimmage. Tackling is in
+non-linemen double-tap Space to break stance and roam up to a visible barrier at the line of scrimmage. The offense
+can't move at all before the snap. Tackling is in
 [movement.md](movement.md); the pass rush is in [line-play.md](line-play.md).
 
 ## How it plays
@@ -46,8 +47,14 @@ non-linemen press Space to break stance and roam up to a visible barrier at the 
   defenders play the receiver's hands without sprinting.
 
 ### Pre-snap stance and roam
-- Every defender starts set (`set_lock`). A locked defender can turn but not move.
-- **Space** (gamepad A) on defense breaks stance for LB, CB and S. It is one-way for the play. DL can never break stance.
+- Everyone lines up set (`set_lock`), both teams. A locked athlete can turn to face but not move.
+- **Offense:** every offensive athlete, human or bot, stays set until the snap (or the kickoff kick). Space on
+  offense snaps on one press, as before (#142).
+- **Defense:** a **double-tap of Space** (gamepad A), two presses within `STANCE_DOUBLE_TAP` (0.35 s), breaks stance
+  for LB, CB and S. One press does nothing. It is one-way for the play. DL can never break stance (#142).
+- The double-tap is resolved on the pressing machine (`src/sim/double_tap.gd`, used by `main.gd`'s Space handler)
+  into the same single `snap` action as before, which the host routes to `World.break_stance`. The protocol is
+  unchanged. `World.can_break_stance` is the one predicate for both.
 - A set LB/CB/S holds the shield stance; once roaming he stands in a plain idle, so roamers read differently from set teammates.
 - HUD: `PRE-SNAP: SET`, then `PRE-SNAP: ROAMING`; DL see `PRE-SNAP (hold your stance)`.
 - Neutral zone: offense stops `NEUTRAL_ZONE_HALF` (0.5 yd) short of the LOS, defense 0.5 yd past it. The same clamp
@@ -68,6 +75,15 @@ non-linemen press Space to break stance and roam up to a visible barrier at the 
   Assignments are drawn on the field so they read from the normal camera.
 - Stance-lock plus Space (C08d) over always-free or auto-unlock on push (accidental breaks). One key routed by side:
   offense snaps, defense breaks stance.
+- Whole offense frozen pre-snap, defense double-tap (#142, owner's call): "The entire offense should not be able to
+  move before the play starts." Before this the offense lined up free (`set_lock` only on defense), so any human
+  could walk a receiver anywhere behind the line. Locking by `set_lock = true` for everyone (not a separate offense
+  check in `is_stance_locked`) keeps one rule for host step, client prediction and snapshots, and leaves a clean hook
+  for pre-snap motion (#10): motion would clear one athlete's lock. That motion needs an explicit exception later.
+- Double-tap over a single press: a stray Space (e.g. mashing to snap after switching sides) no longer pulls a
+  defender out of stance. Resolving it client-side keeps the wire at one action; a host-side "two snap actions
+  within N ticks" rule was rejected because latency jitter would stretch or shrink the window per player.
+- The in-game hint is the settings label for now; a HUD "Space ×2 to roam" hint is #183.
 - The barrier is one vertical wall. A recolored ground line is flat and doesn't read as "can't pass"; a two-wall
   neutral-zone box doubles the visual noise, and the camera sits behind one wall anyway. The proximity reveal keeps it
   near-invisible from the backfield, and the ripple gives feedback instead of an invisible stop.
@@ -78,12 +94,15 @@ non-linemen press Space to break stance and roam up to a visible barrier at the 
 
 ## Code and tests
 - `src/sim/defensive_playbook.gd` — call catalog and `suggest()`.
-- `src/sim/world.gd` — `call_defense`, `defense_assignment`, `man_assignments`, `break_stance`, `enforce_neutral_zone`.
+- `src/sim/world.gd` — `call_defense`, `defense_assignment`, `man_assignments`, `can_break_stance`, `break_stance`,
+  `enforce_neutral_zone`. `src/sim/double_tap.gd` — Space double-tap window.
 - `src/sim/ai.gd` — coverage, spy, zone drops, breaking on the ball, pursuit.
-- `src/game/main.gd` — `_draw_defense_routes`, pre-snap prompt. `src/game/overlay.gd` — picker.
+- `src/game/main.gd` — `_draw_defense_routes`, pre-snap prompt, Space double-tap. `src/game/overlay.gd` — picker.
 - `src/game/art/los_barrier.gd` + `los_barrier.gdshader` — barrier view. `src/net/protocol.gd` — `defense`, `recall_call`, `snap` routing.
-- Tests: `tests/test_defensive_playbook.gd`, `tests/test_presnap_roam.gd`, `tests/test_bots.gd` (man coverage, break on
+- Tests: `tests/test_defensive_playbook.gd`, `tests/test_presnap_roam.gd` (offense lock, double-tap),
+  `tests/visual/presnap_locks_test.gd`, `tests/test_bots.gd` (man coverage, break on
   ball, press), `tests/test_turnovers.gd`, `tests/game_flow.gd` (Space on defense), `tests/net_client.gd`.
 
 ## Open issues
 - #35 B02 DB press / jam mechanic
+- #183 HUD hint for the Space double-tap

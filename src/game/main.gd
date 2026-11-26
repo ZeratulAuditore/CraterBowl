@@ -78,6 +78,15 @@ const POV_ANGLE_OFFSET := 10.0      # launch angle = view pitch + this (deg): le
 const CAMERA_FOV := 65.0
 const AIM_ZOOM_FOV := 45.0          # FOV at full charge
 const AIM_ZOOM_RATE := 8.0          # 1/s easing rate (frame-rate independent)
+## Camera framing (#128). Offsets are (right, up, back) from the controlled player. The
+## follow look is clamped (_framed_look) so the player's ring never drops below
+## FRAME_FEET_MAX of the screen height, whatever the offset, FOV or aim range; a future
+## camera zoom (#140) only has to scale FOLLOW_CAM_OFFSET.
+const FOLLOW_CAM_OFFSET := Vector3(0, 6, 9)
+const FOLLOW_CAM_OFFSET_BLOCKING := Vector3(0, 10, 13)   # blocking drill: both lines in view
+const POV_CAM_OFFSET := Vector3(0.9, 2.8, 5.4)           # over the passer's right shoulder
+const FRAME_RING_R := 1.1      # PlayerRing outer edge (presentation.gd quad half-size)
+const FRAME_FEET_MAX := 0.8    # lowest screen row (fraction) for the ring; scorebug top ≈ 0.865
 var pov_enabled := true             # tests/bots that aim at a field point turn this off
 var aim_yaw := 0.0                  # 0 = straight downfield (+y), + = right
 var aim_pitch := POV_PITCH_START
@@ -287,10 +296,12 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	if drill != null:
 		TrainingArt.build(field_root, drill, field)
 	series = Match.new(world)
+	if debug_playclock > 0.0:
+		series.clock.play_clock_length = debug_playclock
 	_start_series()
 	world.event.connect(_on_world_event)
 	stats = Stats.new()
-	stats.attach(world, owner_name)
+	stats.attach(world, owner_name, series)
 	replay = Replay.new()
 	replay.attach(world)
 	replay.meta = {"size": match_size, "mode": match_mode}
@@ -401,9 +412,7 @@ func _draw_crosshair() -> void:
 		var bar := Rect2(c + Vector2(-50, 44), Vector2(100, 8))
 		crosshair.draw_rect(bar.grow(2.0), shade)
 		crosshair.draw_rect(Rect2(bar.position, Vector2(bar.size.x * charge, bar.size.y)), col.lerp(Color(1.0, 0.45, 0.15), charge))
-	var lbl := "LOFT %d°" % int(round(launch_angle()))
-	crosshair.draw_string_outline(ArtMats.ui_font(600), c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, shade)
-	crosshair.draw_string(ArtMats.ui_font(600), c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, col)
+	# No LOFT N° readout (#131): the view pitch is the loft; the arc dots show the throw.
 
 ## True while the human is the passer: QB before the forward pass (Chaosball: any holder).
 func pov_active() -> bool:
@@ -649,7 +658,7 @@ func _match_contexts(ratings: Dictionary) -> Dictionary:
 		for k in stats.lines:
 			if k.get_slice("|", 0) == nm:
 				for f in stats.lines[k]:
-					line[f] = maxf(line.get(f, 0.0), float(stats.lines[k][f])) if f == "max_td_pts" else line.get(f, 0.0) + float(stats.lines[k][f])
+					line[f] = maxf(line.get(f, 0.0), float(stats.lines[k][f])) if f in Stats.MAX_FIELDS else line.get(f, 0.0) + float(stats.lines[k][f])
 		var t: int = team_of[nm]
 		out[nm] = {"line": line, "won": series.winner() == t, "deficit": series.max_deficit[t],
 			"rating": ratings.get(nm, 0.0), "mode": match_mode}
@@ -856,9 +865,11 @@ func _ensure_net() -> void:
 ## Open a hosted match (lobby by default). opts: playclock, no_lobby, start_when_ready, advertise, expected, size, mode
 func _host_game(port: int, opts: Dictionary) -> String:
 	_ensure_net()
-	if opts.get("playclock", -1.0) > 0.0:
-		debug_playclock = opts["playclock"]
-		series.clock.play_clock = debug_playclock
+	var playclock: float = opts.get("playclock", -1.0)
+	if playclock > 0.0 and is_finite(playclock):
+		debug_playclock = playclock
+		series.clock.play_clock_length = playclock
+		series.clock.new_play()
 	net.match_size = match_size
 	var err := net.host(port, func(peer): return roster.auto_assign(peer), func(peer): roster.release(peer))
 	print("NET host on %d: %s" % [port, error_string(err)])
@@ -1075,8 +1086,6 @@ func _start_from_lobby() -> void:
 	configure(lobby.settings["size"], "", lobby.settings.get("mode", "classic"))
 	series.clock.quarter_length = lobby.settings["quarter_minutes"] * 60.0
 	series.clock.reset()
-	if debug_playclock > 0.0:
-		series.clock.play_clock = debug_playclock
 	net.match_size = match_size
 	net.match_mode = match_mode
 	# Queue match: seat everyone on the matchmaker's team, by seat token (name only for
@@ -1289,21 +1298,37 @@ func _update_camera(delta: float) -> void:
 	if camera_follow.distance_to(target) > 12.0:
 		camera_follow = target
 	camera_follow = camera_follow.lerp(target, 1.0 - exp(-10.0 * delta))
-	var offset := Vector3(0, 10, 13) if drill != null and drill.kind == "blocking" else Vector3(0, 6, 9)
+	var offset := FOLLOW_CAM_OFFSET_BLOCKING if drill != null and drill.kind == "blocking" else FOLLOW_CAM_OFFSET
 	var follow_pos := camera_follow + rot * offset
-	var follow_look := target + rot * Vector3(0, 0, -aim_distance)
+	var follow_look := _framed_look(follow_pos, target + rot * Vector3(0, 0, -aim_distance), target, camera.fov)
 	if pov_w <= 0.0:
 		camera.global_position = follow_pos
 		camera.look_at(follow_look)
 		return
 	# POV: over the passer's right shoulder, pitched with the aim.
 	var fwd := rot * Vector3(0, 0, -1)
-	var right := rot * Vector3(1, 0, 0)
 	var cam_pitch := aim_pitch * 0.55 - deg_to_rad(8.0)
-	var pov_pos := target + Vector3(0, 2.6, 0) - fwd * 4.2 + right * 0.9
+	var pov_pos := target + rot * POV_CAM_OFFSET
 	var pov_look := pov_pos + (fwd * cos(cam_pitch) + Vector3.UP * sin(cam_pitch)) * 10.0
 	camera.global_position = follow_pos.lerp(pov_pos, pov_w)
 	camera.look_at(follow_look.lerp(pov_look, pov_w))
+
+## Follow look-at point, pitched down just enough that the ring around `feet` sits no lower
+## than FRAME_FEET_MAX of the screen (#128). Exact on the camera's vertical plane (no roll),
+## so it holds for any offset, FOV, aim range or follow lag; unchanged when already framed.
+func _framed_look(cam_pos: Vector3, look: Vector3, feet: Vector3, fov_deg: float) -> Vector3:
+	var flat := Vector3(look.x - cam_pos.x, 0.0, look.z - cam_pos.z)
+	var d := flat.length()
+	if d < 0.001:
+		return look
+	var dir := flat / d
+	var near := Vector3(feet.x - cam_pos.x, 0.0, feet.z - cam_pos.z).dot(dir) - FRAME_RING_R
+	if near <= 0.05:
+		return look   # camera over the ring (never in follow): nothing to frame
+	var min_dip := atan2(cam_pos.y - feet.y, near) - atan((2.0 * FRAME_FEET_MAX - 1.0) * tan(deg_to_rad(fov_deg) * 0.5))
+	if atan2(cam_pos.y - look.y, d) >= min_dip:
+		return look
+	return cam_pos + (dir * cos(min_dip) + Vector3.DOWN * sin(min_dip)) * d
 
 ## Target FOV for the follow/POV camera: narrows with the charge while the passer winds up.
 func aim_zoom_fov() -> float:
@@ -1334,6 +1359,9 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
 		scoreboard_held = false
 
+## Space on a set defender (#142): one press does nothing, a double-tap breaks stance.
+var stance_tap := preload("res://src/sim/double_tap.gd").new()
+
 func _unhandled_key_input(e: InputEvent) -> void:
 	var launch := get_node_or_null("/root/Launch")
 	if launch != null and launch.menu_open():
@@ -1352,6 +1380,9 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		return
 	match e.keycode:
 		KEY_SPACE:
+			# Offense snaps on one press. A set defender needs a double-tap to roam (#142).
+			if world.can_break_stance(world.get_athlete(controlled_id)) and not stance_tap.press(Time.get_ticks_msec() / 1000.0):
+				return
 			do_action({"a": "snap"})
 		KEY_1:
 			do_action({"a": "toss", "c": "receive"} if series.state == Match.State.TOSS else {"a": "try", "n": 1})
