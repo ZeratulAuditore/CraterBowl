@@ -21,17 +21,36 @@ const HOLD_POLE_L := Vector3(1.0, -1.0, -0.3)
 ## palms in (palm is -X of hand_r and +X of hand_l, so both map bone +X to spine -X).
 const HOLD_HAND_BASIS := Basis(Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 1, 0))
 
-## Catch stance (#246), spine_03 space: wrists up in front of the chest, palms forward.
+## Catch stance (#246), in the upright catch frame (see _upright): wrists up in front of the
+## chest, palms forward. Upright, not the chest's own frame: a sprinting chest leans ~40 deg
+## forward, which would put "in front of the chest" at the hips and read overhead balls as behind.
 const CATCH_HAND_R := Vector3(-0.14, 0.12, 0.34)
 const CATCH_HAND_L := Vector3(0.14, 0.12, 0.34)
 const CATCH_POLE_R := Vector3(-1.0, -0.6, -0.2)
 const CATCH_POLE_L := Vector3(1.0, -0.6, -0.2)
-## Palms forward, fingers up (palm = -X of hand_r, +X of hand_l).
-const PALMS_FWD_R := Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0))
-const PALMS_FWD_L := Basis(Vector3(0, 0, 1), Vector3(0, 1, 0), Vector3(-1, 0, 0))
+## Palms forward, fingers up and tipped 35 deg forward so the wrist isn't cocked all the
+## way back (palm = -X of hand_r, +X of hand_l).
+const PALMS_FWD_R := Basis(Vector3(1, 0, 0), deg_to_rad(35.0)) * Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0))
+const PALMS_FWD_L := Basis(Vector3(1, 0, 0), deg_to_rad(35.0)) * Basis(Vector3(0, 0, 1), Vector3(0, 1, 0), Vector3(-1, 0, 0))
 ## Reaching: each wrist sits this far behind the ball and to its side (ball radius + palm).
 const REACH_BACK := 0.13
 const REACH_SIDE := 0.11
+## Joint limits for the reach, in the (twisted) upright catch frame: the hands never go behind
+## REACH_YAW_MAX; past it the reach fades back to the stance by REACH_YAW_MAX + REACH_YAW_FADE.
+const REACH_YAW_MAX := deg_to_rad(75.0)
+const REACH_YAW_FADE := deg_to_rad(45.0)
+const REACH_PITCH_UP := deg_to_rad(75.0)
+const REACH_PITCH_DOWN := deg_to_rad(40.0)
+## The upper body turns toward the ball up to this (split over spine_02 and spine_03), so
+## the arms have less to do. A ball almost straight behind (past TWIST_FADE_FROM) doesn't
+## pick a side: the twist fades out over TWIST_FADE.
+const TWIST_MAX := deg_to_rad(35.0)
+const TWIST_FADE_FROM := deg_to_rad(140.0)
+const TWIST_FADE := deg_to_rad(30.0)
+## A ball this far to one side (after the twist) is caught with the near arm only; the far
+## arm stays in the stance. Blends between the two angles.
+const ONE_ARM_FROM := deg_to_rad(20.0)
+const ONE_ARM_TO := deg_to_rad(35.0)
 
 ## Hands on the ball open from the clip's fist toward the rig's flat rest pose by this
 ## much, leaving a slight curl so the fingers wrap the ball.
@@ -56,6 +75,10 @@ var catch_reach := 0.0            # 0 = ready stance, 1 = hands on the ball
 var _bones := {}
 var _fingers := {}     # "_r"/"_l" -> finger bone ids (joints 01-03)
 var _rig_ok := false   # every bone in _bones exists (checked once: no per-frame allocation)
+## Maps the clip's chest-side bone poses to the twisted ones for this update. The twist is
+## written last, so no bone is ever read after one of its parents was written.
+var _pre := Transform3D()
+var _twist_q := [Quaternion.IDENTITY, Quaternion.IDENTITY]   # spine_02, spine_03 local rotations
 
 func _process_modification() -> void:
 	apply(get_skeleton())
@@ -64,7 +87,7 @@ func apply(sk: Skeleton3D) -> void:
 	if sk == null or (weight <= 0.0 and look_weight <= 0.0 and catch_weight <= 0.0):
 		return
 	if _bones.is_empty():
-		for n in ["spine_03", "neck_01", "Head", "upperarm_r", "lowerarm_r", "hand_r", "upperarm_l", "lowerarm_l", "hand_l"]:
+		for n in ["spine_02", "spine_03", "neck_01", "Head", "upperarm_r", "lowerarm_r", "hand_r", "upperarm_l", "lowerarm_l", "hand_l"]:
 			_bones[n] = sk.find_bone(n)
 		for side in ["_r", "_l"]:
 			_fingers[side] = []
@@ -76,15 +99,21 @@ func apply(sk: Skeleton3D) -> void:
 		_rig_ok = not _bones.values().has(-1)
 	if not _rig_ok:
 		return   # rig without these bones: keep the clip
+	# The arms do one job: the stronger of catching and carrying (they cross over at the catch).
+	var catching := catch_weight > weight
+	_pre = Transform3D()
+	if catching:
+		_plan_twist(sk)
 	if look_weight > 0.0:
 		_look(sk)
-	# The arms do one job: the stronger of catching and carrying (they cross over at the catch).
-	if catch_weight > weight:
+	if catching:
 		_catch(sk)
+		sk.set_bone_pose_rotation(_bones.spine_02, _twist_q[0])
+		sk.set_bone_pose_rotation(_bones.spine_03, _twist_q[1])
 		return
 	if weight <= 0.0:
 		return
-	var chest := sk.get_bone_global_pose(_bones.spine_03)
+	var chest := _g(sk, _bones.spine_03)
 	if two_hand:
 		var palms_in := chest.basis * HOLD_HAND_BASIS
 		_reach(sk, "_r", chest * HOLD_WRIST_R, chest.basis * HOLD_POLE_R, weight, palms_in)
@@ -94,16 +123,57 @@ func apply(sk: Skeleton3D) -> void:
 		_reach(sk, "_r", chest * TUCK_HAND, chest.basis * TUCK_POLE, weight)
 	_open_hand(sk, "_r", weight)
 
-## Ready stance blended toward hands on the ball by catch_reach, palms toward the ball.
+## The catch frame: at the chest, facing the chest's heading, with the rig's +Y (world) up.
+static func _upright(chest: Transform3D) -> Transform3D:
+	var z := Vector3(chest.basis.z.x, 0.0, chest.basis.z.z).normalized()
+	return Transform3D(Basis(Vector3.UP.cross(z), Vector3.UP, z), chest.origin)
+
+## A bone's skeleton-space pose with this update's twist applied (see _pre).
+func _g(sk: Skeleton3D, bone: int) -> Transform3D:
+	return _pre * sk.get_bone_global_pose(bone)
+
+## Turn the upper body toward the ball (#246): up to TWIST_MAX about the vertical,
+## half on spine_02 and half on spine_03. Computes _pre and the two local rotations to write.
+func _plan_twist(sk: Skeleton3D) -> void:
+	var s2: int = _bones.spine_02
+	var g2 := sk.get_bone_global_pose(s2)
+	var g3 := sk.get_bone_global_pose(_bones.spine_03)
+	var d := _upright(g3).affine_inverse() * catch_target
+	var yaw := atan2(d.x, d.z)
+	var fade := clampf(1.0 - (absf(yaw) - TWIST_FADE_FROM) / TWIST_FADE, 0.0, 1.0)
+	# About true vertical: a twist about a sprint-leaning spine would overshoot the heading.
+	var r := Basis(Vector3.UP, clampf(yaw, -TWIST_MAX, TWIST_MAX) * fade * catch_weight * 0.5)
+	var t2 := Transform3D(r, g2.origin - r * g2.origin)
+	var p3 := t2 * g3.origin
+	_pre = Transform3D(r, p3 - r * p3) * t2
+	var parent := sk.get_bone_global_pose(sk.get_bone_parent(s2)).basis
+	_twist_q[0] = (parent.inverse() * r * g2.basis).orthonormalized().get_rotation_quaternion()
+	_twist_q[1] = ((r * g2.basis).inverse() * r * r * g3.basis).orthonormalized().get_rotation_quaternion()
+
+## Ready stance blended toward hands on the ball by catch_reach, palms toward the ball. The
+## reach direction is clamped to what a shoulder can do (never behind); a ball well off to
+## one side is caught with the near arm only.
 func _catch(sk: Skeleton3D) -> void:
-	var chest := sk.get_bone_global_pose(_bones.spine_03)
-	var toward := (catch_target - chest.origin).normalized()
+	var chest := _upright(_g(sk, _bones.spine_03))
+	var to_ball := catch_target - chest.origin
+	var d := chest.basis.inverse() * to_ball
+	var yaw := atan2(d.x, d.z)
+	var pitch := atan2(d.y, Vector2(d.x, d.z).length())
+	var reach := catch_reach * clampf(1.0 - (absf(yaw) - REACH_YAW_MAX) / REACH_YAW_FADE, 0.0, 1.0)
+	yaw = clampf(yaw, -REACH_YAW_MAX, REACH_YAW_MAX)
+	pitch = clampf(pitch, -REACH_PITCH_DOWN, REACH_PITCH_UP)
+	var toward := (chest.basis * Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch))).normalized()
+	var ball := chest.origin + toward * to_ball.length()
 	var side := toward.cross(chest.basis.y).normalized()   # the athlete's right
 	var turn := Quaternion(chest.basis.z.normalized(), toward)
-	var aim := Quaternion.IDENTITY.slerp(turn, catch_reach)
+	var one := smoothstep(ONE_ARM_FROM, ONE_ARM_TO, absf(yaw))
+	var near_side := "_l" if yaw > 0.0 else "_r"
 	for s in [["_r", CATCH_HAND_R, CATCH_POLE_R, PALMS_FWD_R, 1.0], ["_l", CATCH_HAND_L, CATCH_POLE_L, PALMS_FWD_L, -1.0]]:
-		var ball_side: Vector3 = catch_target - toward * REACH_BACK + side * (REACH_SIDE * s[4])
-		var wrist: Vector3 = (chest * s[1]).lerp(ball_side, catch_reach)
+		var near: bool = s[0] == near_side
+		var r: float = reach if near else reach * (1.0 - one)   # the far arm drops back to the stance
+		var spread: float = REACH_SIDE * s[4] * ((1.0 - one) if near else 1.0)   # one arm: palm on the ball's back
+		var wrist: Vector3 = (chest * s[1]).lerp(ball - toward * REACH_BACK + side * spread, r)
+		var aim := Quaternion.IDENTITY.slerp(turn, r)
 		_reach(sk, s[0], wrist, chest.basis * s[2], catch_weight, Basis(aim) * chest.basis * s[3])
 		_open_hand(sk, s[0], catch_weight)
 
@@ -118,18 +188,18 @@ static func look_angles(d: Vector3) -> Vector2:
 ## Turn neck and head toward look_target: NECK_SHARE of the clamped turn on the neck,
 ## the rest on the head, about the chest's up and left axes.
 func _look(sk: Skeleton3D) -> void:
-	var chest := sk.get_bone_global_pose(_bones.spine_03)
+	var chest := _g(sk, _bones.spine_03)
 	var n: int = _bones.neck_01
 	var h: int = _bones.Head
-	var gn := sk.get_bone_global_pose(n)
-	var gh := sk.get_bone_global_pose(h)
+	var gn := _g(sk, n)
+	var gh := _g(sk, h)
 	var a := look_angles(chest.basis.inverse() * (look_target - gh.origin)) * look_weight
 	var up := chest.basis.y.normalized()
 	var left := chest.basis.x.normalized()
 	var rn := Basis(up, a.x * NECK_SHARE) * Basis(left, -a.y * NECK_SHARE)
 	var rh := Basis(up, a.x * (1.0 - NECK_SHARE)) * Basis(left, -a.y * (1.0 - NECK_SHARE))
 	var neck := rn * gn.basis
-	var parent := sk.get_bone_global_pose(sk.get_bone_parent(n)).basis
+	var parent := _g(sk, sk.get_bone_parent(n)).basis
 	sk.set_bone_pose_rotation(n, (parent.inverse() * neck).orthonormalized().get_rotation_quaternion())
 	sk.set_bone_pose_rotation(h, (neck.inverse() * rh * rn * gh.basis).orthonormalized().get_rotation_quaternion())
 
@@ -145,9 +215,9 @@ func _reach(sk: Skeleton3D, side: String, target: Vector3, pole: Vector3, w: flo
 	var u: int = _bones["upperarm" + side]
 	var l: int = _bones["lowerarm" + side]
 	var h: int = _bones["hand" + side]
-	var gu := sk.get_bone_global_pose(u)
-	var gl := sk.get_bone_global_pose(l)
-	var gh := sk.get_bone_global_pose(h)
+	var gu := _g(sk, u)
+	var gl := _g(sk, l)
+	var gh := _g(sk, h)
 	var a := gu.origin.distance_to(gl.origin)
 	var b := gl.origin.distance_to(gh.origin)
 	var to := target - gu.origin
@@ -161,7 +231,7 @@ func _reach(sk: Skeleton3D, side: String, target: Vector3, pole: Vector3, w: flo
 	var rl := Basis(Quaternion((ru * (gh.origin - gl.origin)).normalized(), (gu.origin + dir * d - elbow).normalized()))
 	var nl := Transform3D(rl * ru * gl.basis, elbow)
 	var nh_basis: Basis = hand_basis if hand_basis != null else nl.basis * (gl.basis.inverse() * gh.basis)
-	_blend(sk, u, sk.get_bone_global_pose(sk.get_bone_parent(u)).basis.inverse() * nu.basis, w)
+	_blend(sk, u, _g(sk, sk.get_bone_parent(u)).basis.inverse() * nu.basis, w)
 	_blend(sk, l, nu.basis.inverse() * nl.basis, w)
 	_blend(sk, h, nl.basis.inverse() * nh_basis, w)
 

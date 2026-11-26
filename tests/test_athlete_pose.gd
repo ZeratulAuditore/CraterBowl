@@ -224,7 +224,7 @@ func test_catch_stance_puts_both_hands_up_in_front() -> void:
 	var v = _view(Athlete.Role.WR)
 	var sk := _skel(v)
 	_pose(sk, v.anim.get_animation("Sprint"), 0.3)
-	var chest := sk.get_bone_global_pose(sk.find_bone("spine_03"))
+	var chest: Transform3D = Pose._upright(sk.get_bone_global_pose(sk.find_bone("spine_03")))
 	v.pose.catch_target = chest * Vector3(0, 0.5, 8.0)   # pass still far out in front
 	v.pose.catch_reach = 0.0
 	v.pose.catch_weight = 1.0
@@ -270,6 +270,70 @@ func test_reach_never_stretches_the_arm() -> void:
 	var d := _bone_pos(sk, "upperarm_r").distance_to(_bone_pos(sk, "hand_r"))
 	assert_true(d <= arm + 0.005, "arm not stretched: %.3f <= %.3f" % [d, arm])
 	assert_true(d > arm * 0.95, "arm fully extended toward a ball out of reach: %.3f of %.3f" % [d, arm])
+	v.free()
+
+## Puts the ball at (yaw, pitch) degrees and `dist` m from the clip's chest in the upright
+## catch frame (yaw + = left), fully reaching, and returns that frame for measuring.
+func _catch_at(v, sk: Skeleton3D, clip: Animation, yaw: float, pitch: float, dist: float) -> Transform3D:
+	_pose(sk, clip, 0.3)
+	var chest: Transform3D = Pose._upright(sk.get_bone_global_pose(sk.find_bone("spine_03")))
+	var y := deg_to_rad(yaw)
+	var p := deg_to_rad(pitch)
+	v.pose.catch_target = chest * (Vector3(sin(y) * cos(p), sin(p), cos(y) * cos(p)) * dist)
+	v.pose.catch_reach = 1.0
+	v.pose.catch_weight = 1.0
+	v.pose.apply(sk)
+	sk.force_update_all_bone_transforms()
+	return chest
+
+func test_reach_keeps_human_joint_limits_for_every_ball_direction() -> void:
+	var v = _view(Athlete.Role.WR)
+	var sk := _skel(v)
+	var clip: Animation = v.anim.get_animation("Sprint")
+	var worst := {"upper_back": 1.0, "hand_back": 1.0, "wrist": 0.0, "stretch": 0.0, "twist": 0.0}
+	for i in 24:
+		for pitch in [-30.0, 0.0, 30.0, 60.0]:
+			var clip_chest := _catch_at(v, sk, clip, i * 15.0, pitch, 1.0)
+			var chest: Transform3D = Pose._upright(sk.get_bone_global_pose(sk.find_bone("spine_03")))
+			var f := clip_chest.basis.inverse() * chest.basis.z
+			worst.twist = maxf(worst.twist, absf(rad_to_deg(atan2(f.x, f.z))))
+			for s in ["_r", "_l"]:
+				var u := _bone_pos(sk, "upperarm" + s)
+				var l := _bone_pos(sk, "lowerarm" + s)
+				var h := sk.get_bone_global_pose(sk.find_bone("hand" + s))
+				var up := (chest.basis.inverse() * (l - u)).normalized()
+				worst.upper_back = minf(worst.upper_back, up.z)
+				worst.hand_back = minf(worst.hand_back, (chest.affine_inverse() * h.origin).z)
+				worst.wrist = maxf(worst.wrist, rad_to_deg((h.origin - l).normalized().angle_to(h.basis.y.normalized())))
+				var arm := u.distance_to(l) + l.distance_to(h.origin)
+				worst.stretch = maxf(worst.stretch, u.distance_to(h.origin) - arm)
+	assert_true(worst.upper_back > -0.35, "upper arm never points behind the chest: worst forward %.2f" % worst.upper_back)
+	assert_true(worst.hand_back > -0.05, "hands stay in front of the chest: worst %.2f m" % worst.hand_back)
+	assert_true(worst.wrist < 95.0, "wrist within 95 deg of the forearm: worst %.0f" % worst.wrist)
+	assert_true(worst.stretch < 0.005, "arm never stretched: worst %.3f m over" % worst.stretch)
+	assert_true(worst.twist < 36.0, "torso twist at most 35 deg: worst %.1f" % worst.twist)
+	v.free()
+
+func test_torso_turns_toward_a_ball_off_to_the_side() -> void:
+	var v = _view(Athlete.Role.WR)
+	var sk := _skel(v)
+	var clip_chest := _catch_at(v, sk, v.anim.get_animation("Idle"), 60.0, 0.0, 1.0)
+	var f := clip_chest.basis.inverse() * Pose._upright(sk.get_bone_global_pose(sk.find_bone("spine_03"))).basis.z
+	assert_near(rad_to_deg(atan2(f.x, f.z)), 35.0, 2.0, "chest turns 35 deg toward a ball 60 deg to the left")
+	v.free()
+
+func test_ball_wide_to_one_side_is_caught_one_handed() -> void:
+	var v = _view(Athlete.Role.WR)
+	var sk := _skel(v)
+	var clip_chest := _catch_at(v, sk, v.anim.get_animation("Idle"), -80.0, 10.0, 0.8)
+	var ball: Vector3 = v.pose.catch_target
+	var r := _bone_pos(sk, "hand_r").distance_to(ball)
+	var l := _bone_pos(sk, "hand_l").distance_to(ball)
+	assert_true(r < 0.3, "near (right) hand on the ball: %.2f m" % r)
+	assert_true(l > r + 0.25, "far (left) hand stays back in the stance: %.2f m vs %.2f m" % [l, r])
+	var chest: Transform3D = Pose._upright(sk.get_bone_global_pose(sk.find_bone("spine_03")))   # twisted
+	var stance: Vector3 = chest * v.pose.CATCH_HAND_L
+	assert_true(_bone_pos(sk, "hand_l").distance_to(stance) < 0.12, "far hand at its stance spot: %.2f m off" % _bone_pos(sk, "hand_l").distance_to(stance))
 	v.free()
 
 # --- helpers ------------------------------------------------------------------
