@@ -11,6 +11,9 @@ GODOT="${GODOT:-godot}"
 # Medians (p50): robust to other processes on the box. See docs/optimization/README.md#budgets.
 SIM_TICK_P50_US="${SIM_TICK_P50_US:-800}"       # measured ~130 us (7v7, all bots, idle box)
 SCENE_FRAME_P50_US="${SCENE_FRAME_P50_US:-8000}" # measured ~2.5-4 ms with rigged athletes (anim ~1.6 ms); half a 60 Hz frame
+# Godot resolves user:// inside this temporary directory on Linux.
+export XDG_DATA_HOME="$(mktemp -d "${TMPDIR:-/tmp}/crater-bowl-perf.XXXXXX")" || exit 1
+trap 'rm -rf "$XDG_DATA_HOME"' EXIT
 ARGS=(-- --profile-file=user://test_perf_profile.json --leaderboard-file=user://test_perf_lb.json
   --ranked-file=user://test_perf_ranked.json --replay-dir=user://test_perf_replays)
 "$GODOT" --headless --path . --import >/dev/null 2>&1 || true
@@ -31,7 +34,5 @@ check scene_frame_p50 "$(val scene_frame_p50_us)" "$SCENE_FRAME_P50_US"
 growth=$(echo "$b" | grep -E "^BENCH scene_object_growth=" | cut -d= -f2)
 # Leak = growth in BOTH of two consecutive 400-frame windows (first-use allocations hit only one).
 if [ "${growth:-0}" -gt 50 ]; then echo "PERF FAIL: objects grew by >= $growth in each of two 400-frame windows (per-frame allocation?)"; fail=1; else echo "PERF OK   object growth = ${growth:-?} (min of two 400-frame windows)"; fi
-USERDATA="$HOME/.local/share/godot/app_userdata/Fourth & Long"
-rm -rf "$USERDATA"/test_perf_* 2>/dev/null
 [ $fail -eq 0 ] && echo "PERF PASS" || echo "PERF FAIL"
 exit $fail
