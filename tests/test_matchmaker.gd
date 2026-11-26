@@ -50,16 +50,20 @@ func test_modes_and_sizes_never_mix() -> void:
 	assert_true(not mm.enqueue(4, "ranked-ish", 3, 1000, 0.0), "bad mode")
 	assert_true(not mm.enqueue(4, "casual", 4, 1000, 0.0), "bad size")
 
-func test_snake_draft_balances() -> void:
-	var entries := []
-	var ratings := [1900, 1700, 1500, 1300, 1100, 900]
+func test_competitive_draft_balances_solos() -> void:
+	var mm := MM.new()
+	var ratings := [1500, 1400, 1300, 1200, 1100, 1000]
 	for i in ratings.size():
-		entries.append({"id": i, "rating": ratings[i]})
-	var teams := MM.snake_teams(entries)
+		mm.enqueue(i + 1, "competitive", 3, ratings[i], 0.0)
+	var matches := mm.tick((MM.MAX_WINDOW - MM.BASE_WINDOW) / MM.WINDOW_GROWTH)
+	assert_eq(matches.size(), 1, "full competitive match")
+	if matches.is_empty():
+		return
+	var teams: Dictionary = matches[0]["teams"]
 	var sums := [0, 0]
 	for i in ratings.size():
-		sums[teams[i]] += ratings[i]
-	assert_true(absf(sums[0] - sums[1]) <= 400, "balanced: %s" % str(sums))
+		sums[teams[i + 1]] += ratings[i]
+	assert_true(absf(sums[0] - sums[1]) <= 200, "balanced: %s" % str(sums))
 
 func test_requeue_replaces() -> void:
 	var mm := MM.new()

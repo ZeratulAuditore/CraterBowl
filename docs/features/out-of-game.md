@@ -32,7 +32,7 @@ Feature-level doc: how this works **today** on `main`. The in-match game is in t
 | Settings | Player, video, audio, online, controls (click to rebind; conflicts swap) |
 
 ## Finding games + internet play
-- **Matchmaker** (`--matchmaker`) does queues (casual/competitive, parties, Chaosball) and now also the **server browser**: hosts `register` their lobby every 5 s (`src/net/lobby_advertiser.gd`); entries expire after 20 s (`src/net/lobby_registry.gd`). `whoami` returns the caller's public IP.
+- **Matchmaker** (`--matchmaker`) does queues (casual/competitive, parties, Chaosball) and now also the **server browser**: hosts `register` their lobby every 5 s (`src/net/lobby_advertiser.gd`); entries expire after 20 s (`src/net/lobby_registry.gd`).
 - **UPnP** (`src/net/port_mapper.gd`): before hosting or queueing, the menu asks the router to forward the UDP port (24565 for hosting, 24566 for queue hosts). It puts the router's **public IP in the invite code**, so friends on other networks can join without manual port forwarding. If UPnP fails, including when the router reports a carrier-grade NAT address, the code falls back to the LAN address. The host sees the failure and the UDP port to forward alongside the invite code in the match lobby. The mapping is removed when hosting ends or the game closes ([online.md](online.md)).
 
 ## Distribution
