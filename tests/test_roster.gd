@@ -31,9 +31,16 @@ func test_claim_conflict_and_release() -> void:
 	var r := _roster()
 	r.auto_assign(1)
 	var s := r.slot_of_player(1)
+	r.auto_assign(2)
+	var requester_slot := r.slot_of_player(2)
+	assert_true(requester_slot >= 0 and requester_slot != s, "both players start assigned")
 	assert_true(not r.claim(2, s), "occupied")
+	assert_eq(r.slot_of_player(1), s, "current owner keeps the slot")
+	assert_eq(r.slot_of_player(2), requester_slot, "requester keeps their previous slot")
 	r.release(1)
 	assert_true(r.claim(2, s), "free after release")
+	assert_eq(r.slot_of_player(2), s, "requester moves to the released slot")
+	assert_eq(r.slots[requester_slot]["owner"], -1, "requester's old slot is free")
 	assert_eq(r.humans().size(), 1)
 
 func test_swap_team_keeps_pairing() -> void:

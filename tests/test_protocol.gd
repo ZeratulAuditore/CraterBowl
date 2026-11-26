@@ -75,6 +75,13 @@ func test_sanitize_input() -> void:
 	assert_near(P.sanitize_action({"a": "throw", "t": Vector2(1, 2), "p": 9.0})["p"], 1.0, 0.0001, "power clamped")
 	assert_eq(P.sanitize_action({"a": "try", "n": 5}), {}, "bad try value")
 
+func test_protocol_rejects_client_roster_changes() -> void:
+	var m := _match()
+	var athlete_id := m.world.find_role(1, R.LB).id
+	for action in [{"a": "team"}, {"a": "pick", "slot": 0}]:
+		assert_eq(P.sanitize_action(action), {}, "match protocol rejects %s" % action["a"])
+		assert_true(not P.apply_action(m, athlete_id, action), "authority rejects %s" % action["a"])
+
 func test_apply_action_authority() -> void:
 	var m := _match()
 	var w := m.world

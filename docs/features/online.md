@@ -32,7 +32,7 @@ Bots fill every empty slot. Everything runs peer-hosted: there are no dedicated 
 ### Team and position online
 - Humans are seated automatically: each joins the team with fewer humans and takes the first free slot in priority order (QB/LB, WR/CB, WR/CB, RB/S, C/DL, OL/DL, OL/S).
 - Queue matches seat players on the matchmaker's team split, matched by name.
-- There is **no** way to change team or position online today. Clients have no key for it, and the host ignores `team`/`pick` actions (see #18).
+- Online players keep their host-assigned athlete during the match. Pre-match role preferences and QB voting are tracked in #18.
 
 ### Queues (`src/net/matchmaker.gd`)
 | Rule | Casual | Competitive (Ranked) |
@@ -60,7 +60,7 @@ Bots fill every empty slot. Everything runs peer-hosted: there are no dedicated 
 ### UPnP (`src/net/port_mapper.gd`)
 - Settings → Online → "Open my router port automatically when hosting (UPnP)", on by default.
 - Before hosting (24565) or queueing (24566, so any queuer can be elected host), the game asks the router to forward the UDP port. The lease is 4 h, and the mapping is not removed on exit.
-- If the reported external IP is private or carrier-grade NAT (100.64/10), the attempt counts as failed and the code falls back to the LAN address. The failure text appears only after you return to the menu (#47). There is no relay yet (#32).
+- A private or carrier-grade NAT external IP (100.64/10) counts as a mapping failure. The code uses the LAN address, and the host lobby shows the failure and the UDP port to forward (#47).
 
 ### Disconnects
 - **A client leaves (host side):** in the lobby they're removed. In a match their slot is released and a bot plays that athlete for the rest of the match.
@@ -108,7 +108,6 @@ Bots fill every empty slot. Everything runs peer-hosted: there are no dedicated 
 - #29 C23 New-player protection
 - #32 B07 NAT relay for CGNAT/strict routers + hosted public matchmaker
 - #44 C29 Events and variety: weather, time of day, rotating modes
-- #47 UPnP failure notice appears after the match instead of in the lobby
 - #48 Decide: host the public matchmaker (VPS/AWS + DNS)?
 - #54 Lobby accepts more peers than the match has slots
 - #56 Client doesn't detect losing the host
