@@ -289,6 +289,10 @@
 - Before the fix, one malformed action raised a script error in `_step_authoritative`. That aborted the host tick and dropped any valid action queued behind it in the same tick.
 - Verified with 4 new unit tests (`test_action_validation.gd`) and a rendered host test (`tests/visual/invalid_actions_test.gd`). Restoring the old `protocol.gd`/`net_session.gd` made both fail: the unit queue test because 16 entries were queued instead of 1, and the visual test because of a script error and a dropped play call. Design notes are in `docs/design/netcode.md` under Validation.
 
+## Fix: Explicit human flag on sim inputs (#62)
+- `world.step` used to treat an input as human iff it had a `"block"` key, so a bot input that ever carried `block` would silently switch to human blocking rules (no auto-engage, release on letting go of the shield). Inputs now carry an explicit `World.HUMAN` flag (`World.is_human_input`). `main.gd` sets it on the local player's input and, on the host, on every peer's sanitized input; the wire never carries it. Player-facing behavior is unchanged.
+- Verified with 4 new unit tests in `test_blocking.gd` (human input without a `block` key doesn't auto-engage and releases a block; a bot input with `block: false` still auto-engages and isn't released) and a rendered host test (`tests/visual/peer_human_block_test.gd`). Restoring the old `has("block")` rule failed 3 of the unit tests; dropping the host-side flag in `main.gd` failed the visual test (the peer lineman auto-engaged). Determinism tests unchanged (all-bot games).
+
 ## Fix: Client returns to the menu when the host is lost (#56)
 - Reproduced first: a client in a match whose host was SIGKILLed stayed in the frozen match. The new net-test phase timed out with no menu and no status. Nothing connected `server_disconnected`, so nothing ever set `Launch.last_status`.
 - `NetSession.join()` now hooks `server_disconnected` and emits `host_lost` unless the client was refused. `main.gd:_on_host_lost` returns to the menu with "Host disconnected" and keeps the game overview if the post-game had started.
