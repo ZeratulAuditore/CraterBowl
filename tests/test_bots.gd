@@ -55,6 +55,7 @@ func test_man_coverage_sticks() -> void:
 	var m := _match()
 	var w := m.world
 	w.call_play("Verticals")
+	w.call_defense("cover_1")
 	w.snap()
 	var ai := AI.new()
 	var qb := w.find_role(0, R.QB)

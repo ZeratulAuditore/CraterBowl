@@ -19,6 +19,7 @@ var downs := Downs.new()
 var clock := Clock.new()
 var opening_receiver := 0
 var score := [0, 0]
+var max_deficit := [0, 0]   # worst trailing margin each team faced
 var state: State = State.SCRIMMAGE
 var try_points := 1
 var last_result := {}
@@ -45,12 +46,21 @@ func start(offense: int = 0, los: float = -1.0) -> void:
 	state = State.SCRIMMAGE
 	opening_receiver = offense
 	clock.reset()
+	world.last_offensive_calls = ["", ""]
+	world.last_defensive_calls = ["", ""]
 	downs.reset(offense, los)
 	world.set_offense(offense)
 	_setup_formation()
 
 func _setup_formation() -> void:
 	world.setup_formation(downs.los)
+	if not world.is_chaos():
+		if downs.distance() <= 3.0:
+			world.call_play("Slants")
+		elif downs.distance() >= 15.0 and goal() - downs.los >= 25.0:
+			world.call_play("Deep Shot")
+		else:
+			world.call_play("Mesh")
 	world.call_defense(World.DefensivePlaybook.suggest(downs.down, downs.distance(),
 		goal() - downs.los, clock.remaining))
 
@@ -77,6 +87,8 @@ func choose_try(points: int) -> bool:
 
 func _award(team: int, pts: int, why: String) -> void:
 	score[team] += pts
+	for t in 2:
+		max_deficit[t] = maxi(max_deficit[t], score[1 - t] - score[t])
 	match_event.emit("score", {"team": team, "points": pts, "why": why, "score": score.duplicate()})
 
 func _kickoff(receiving: int) -> Dictionary:

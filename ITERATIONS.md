@@ -195,6 +195,19 @@
 - Matchmaker `game` dimension (classic/chaosball, Chaosball forced 3v3) through server/client/main; host lobby opens in the queued game mode. Parity G17 automated.
 - Tests: 191 unit (+1); `MODE=chaos mm_test.sh` in smoke.sh + parity audit.
 
+## 030: D04 Achievements (2026-11-25)
+- `src/sim/achievements.gd`: 12 original milestones (First Touchdown, First Win, Gunslinger, Sure Hands, Workhorse, Sack Artist, Lockdown, Pick Six, Perfect Chaos, Comeback Kids, Going for Gold, Iron Man) as predicates over a per-player match context; bonus XP each. Stats `def_td` + `max_td_pts`; Match `max_deficit`; profile `achievements` + `games`.
+- FINAL: host computes ranked first, then per-human contexts, broadcasts `awards` {xp, ctx}; each machine evaluates/saves only its own player; HUD "ACHIEVEMENTS: …". Parity G23 automated → all 3 pre-audit gaps closed.
+- Found: flow steps placed out of frame order silently never ran (harness quits after the last listed step) → game_flow.gd now sorts steps by frame.
+- Tests: 196 unit (+5); flow +3 (real TD + win unlocks + HUD + saved).
+
+## 031: A28 Parity audit — PASS (2026-11-25)
+- Pulled and verified the parallel merges on main: out-of-game (A27 menus/settings/rebinding/gamepad, B07 UPnP/public matchmaker, Crater Bowl identity, exports) and graphics (A26 rigged CC0 characters, stadium, overlay/scorebug, presentation). Combined tree: 205 unit, game/menu/net flows, 4 matchmaking scenarios, user data untouched.
+- Data-safety fixes while merging: flow test now isolates replays from frame 2 (earlier finals had written test replays into the real replays/ folder in both old and new user dirs — 36 test-only files, deleted); smoke guard now covers replays/ and cleans test_flow_replays. Real settings.cfg was not written by our tests (left untouched).
+- Parity: G25 evidence = menu_flow (name, matchmaking, rebinding via real keys, gamepad, Esc overlay) + unit tests; G26 evidence = offscreen real-renderer screenshots (viewed: stadium, rigged players, scorebug, live play).
+- `./scripts/parity_audit.sh` full run: **26/26 PASS, 0 gaps, 0 pending** (7m11s). Built game: `./scripts/export.sh Linux` → CraterBowl-0.1.0-linux.zip, EXPORT BOOT CHECK PASS.
+- Phase A complete. Open follow-ups: D05 return yards; Phase B items (B07 owned by out-of-game session); Phase C TODOs from docs/gaps.
+
 ## 030: C08a Defensive playbook (2026-11-25)
 - Added nine named defensive calls across man, zone and blitz families and base, goal-line and prevent shells. Suggestions use down, yards to gain, yards to goal and time remaining.
 - C08b still owns on-field assignments and play art. B03 still owns the huddle.
@@ -205,9 +218,15 @@
 - Player controls, assignment behavior and play art remain open in C08c and B03.
 - Tests: 204 unit (+2); full smoke passed, including a remote defender's selection round-tripping through the host.
 
-## 032: B04a Play replays (2026-11-25)
+## 032: C08c + B03 Defensive assignments and play-call huddle (2026-11-25)
+- Classic presnap shows a five-second play-call panel for both teams. Q cycles calls, L recalls the team's last call, X mirrors the offense's wide receiver routes, and Y opts into the situational default without the panel.
+- Calls drive bot man, zone and rush behavior. Presnap turf art shows teammates' coverage landmarks, man tethers, rush lanes, receiver routes and pass protection targets. The local assignment is emphasized.
+- Cover 2 allowed 1 deep completion across 24 matched bot snaps versus 8 with legacy coverage. Deep attempts fell from 10 to 1.
+- Tests: 208 unit (+4) and full smoke passed, including remote recall. Checked offense and defense screenshots offscreen. An initial smoke attempt hit a matchmaker port bind error and passed on retry.
+
+## 033: B04a Play replays (2026-11-25)
 - `replay.gd`: per-play summaries from sim events (yards from LOS, pass/run, TOUCHDOWN / INTERCEPTION / FUMBLE LOST / SACK tags, 20+ yd = highlight, clock + down context in the label). Highlight clips run at 1x and finish with a 2 s slow-mo. Also adds a highlight reel, next-highlight, frame-step and progress. Files from before this change still load; the save version is now 2.
 - Main: offline highlights auto-replay 1 s after the whistle (once; V/Enter skips; `--auto-replay=0`). In-match and viewer transport: Space, `,` `.`, ←/→, H, `[ ]`, C. Ball-tracking replay cameras (Broadcast / End zone / Sky / Player) cut in, then track. V at FINAL plays the highlight reel.
 - `src/game/replay_overlay.gd`: broadcast REPLAY / HIGHLIGHT / REEL bug, summary, context, progress bar, hints. It hides the live overlay widgets during the replay and restores them; `overlay.gd` (A26) is untouched.
 - Tests: 208 unit (+4); flow 116 checks (+19, real keys). Verified visually with shot.sh: sack highlight on the Broadcast cam, then on the End zone cam in slow-mo.
-- Gaps → B04b: online auto replay needs a skip vote; MVP card; free-cam theater; clip export; no Settings toggle for auto replay yet (CLI flag only). An `mm_test` competitive run failed once under load from 14 Godot processes run by other sessions; it passed 3/3 alone.
+- Gaps → B04b: online auto replay needs a skip vote (MVP card is covered by the Players of the Game postgame); free-cam theater; clip export; no Settings toggle for auto replay yet (CLI flag only). An `mm_test` competitive run failed once under load from 14 Godot processes run by other sessions; it passed 3/3 alone.

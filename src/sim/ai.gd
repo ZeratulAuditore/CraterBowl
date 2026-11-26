@@ -17,7 +17,7 @@ var _man_ref = null
 
 ## Presnap bot behavior: an AI-run offense calls a situational play and snaps.
 ## `down`/`distance` describe the situation (pass downs.down / downs.distance()).
-func presnap_tick(world, human_ids: Array, dt: float, down: int = 1, distance: float = 10.0) -> void:
+func presnap_tick(world, human_ids: Array, dt: float, down: int = 1, distance: float = 10.0, snap_delay: float = T.AI_SNAP_DELAY) -> void:
 	if world.phase != world.Phase.PRESNAP:
 		_presnap_t = 0.0
 		_presnap_called = false
@@ -33,7 +33,7 @@ func presnap_tick(world, human_ids: Array, dt: float, down: int = 1, distance: f
 		world.call_play(choose_play(down, distance, _calls))
 		_calls += 1
 		_presnap_called = true
-	if not humans_on_offense and _presnap_t >= T.AI_SNAP_DELAY:
+	if not humans_on_offense and _presnap_t >= snap_delay:
 		world.snap()
 
 ## Situational play choice: deterministic, rotating through fitting plays so
@@ -83,7 +83,11 @@ func think(world, human_ids: Array) -> Dictionary:
 			if not defense_enabled:
 				continue
 			if pass_phase and a.role != Athlete.Role.DL:
-				out[a.id] = _cover(world, a, c)
+				var assignment: Dictionary = world.defense_assignment(a)
+				match assignment.get("kind", ""):
+					"rush": out[a.id] = _pursue(world, a, c)
+					"zone": out[a.id] = _arrive(a, assignment.target)
+					_: out[a.id] = _cover(world, a, c)
 			else:
 				out[a.id] = _pursue(world, a, c)
 			continue
@@ -91,6 +95,12 @@ func think(world, human_ids: Array) -> Dictionary:
 			out[a.id] = _escort(world, a, c)
 			continue
 		# Pass phase (offense) or ball in the air.
+		if in_air and a.team != world.offense_team:
+			var assignment: Dictionary = world.defense_assignment(a)
+			if assignment.get("kind") == "zone":
+				if defense_enabled:
+					out[a.id] = _arrive(a, landing if ball_chasers.has(a.id) else assignment.target)
+				continue
 		if in_air and a.team != world.offense_team and _man.has(a.id):
 			if not defense_enabled:
 				continue
@@ -131,25 +141,7 @@ func _refresh_man(world) -> void:
 	if _man_ref == world.route_paths:
 		return
 	_man_ref = world.route_paths
-	_man = {}
-	var taken := {}
-	for r in world.receivers_in_order():
-		var best = null
-		var best_d := INF
-		for d in world.athletes:
-			if d.team == world.offense_team or taken.has(d.id):
-				continue
-			if not (d.role == Athlete.Role.CB or d.role == Athlete.Role.S or d.role == Athlete.Role.LB):
-				continue
-			if d.role == Athlete.Role.LB and r.role != Athlete.Role.RB:
-				continue   # LBs only take backs; they spy the QB otherwise
-			var dist: float = d.position.distance_to(r.position)
-			if dist < best_d:
-				best_d = dist
-				best = d
-		if best:
-			_man[best.id] = r.id
-			taken[best.id] = true
+	_man = world.man_assignments()
 
 func man_of(defender_id: int) -> int:
 	return _man.get(defender_id, -1)
@@ -399,15 +391,7 @@ func _protect(world, a, carrier) -> Dictionary:
 	if a.engaged_with >= 0:
 		var held = world.get_athlete(a.engaged_with)
 		return {"dir": (held.position - a.position).normalized(), "sprint": false}
-	var best = null
-	var best_d := INF
-	for d in world.athletes:
-		if d.team == world.offense_team or d.is_grounded():
-			continue
-		var dist: float = d.position.distance_to(a.position)
-		if dist < best_d and dist < 8.0:
-			best_d = dist
-			best = d
+	var best = world.protection_target(a)
 	if best == null:
 		return {"dir": Vector2.ZERO, "sprint": false}
 	var spot: Vector2 = best.position + (carrier.position - best.position).normalized() * 0.9

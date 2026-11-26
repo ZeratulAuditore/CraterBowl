@@ -12,3 +12,5 @@
 .menu-flow.log
 build/
 __pycache__/
+.parity-shots/
+.parity-shots.log

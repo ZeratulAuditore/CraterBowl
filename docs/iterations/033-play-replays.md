@@ -1,4 +1,4 @@
-# 032: Play replays (B04a)
+# 033: Play replays (B04a)
 
 ## Goal
 Make replays of plays something players actually see and use: big plays replay themselves, every

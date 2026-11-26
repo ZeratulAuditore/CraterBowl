@@ -33,16 +33,16 @@ Sources: Steam 708720, Steam 3878710, Gematsu "Gridiron Remastered" page (resear
 - [x] A23 Ranked: skill rating, rank tiers, seasons with season rewards; competitive hosts apply the matchmaker's snake-draft teams (computed in A18, not yet applied)
 - [x] A24 Cosmetics: earnable through play, no gameplay effect, character customization
 - [x] A25 Replays: record + playback of matches/plays
-- [~] A26 Presentation (IN PROGRESS in a parallel session: branch graphics-overhaul, worktree ~/Coding/football-game-gfx — loop skips this; checked off when merged): original sci-fi lunar stadium, animations, lighting pass
+- [x] A26 Presentation (built by the graphics session, merged 1868056): original sci-fi lunar stadium, animations, lighting pass
 - [x] A27 Menus/HUD/settings (out-of-game session; see docs/OUT_OF_GAME.md): main menu, Esc overlay, gamepad + controls rebinding (translation layer in src/ui/controls.gd), audio/video settings. Gap: right-stick aiming
-- [ ] A28 Parity audit: walk this list end to end in a built game, file bugs as new items
+- [x] A28 Parity audit (PASS 2026-11-25, iter 031 — `./scripts/parity_audit.sh`): walk this list end to end in a built game, file bugs as new items
 
 ## Phase B: Better than Gridiron (from PLAN.md)
 - [ ] B01 Line play minigame (leverage/hand-fighting timing)
 - [ ] B02 DB press/jam mechanic
-- [ ] B03 Play-card huddle (5s, 6–8 plays per side)
+- [x] B03 Play-card huddle (5s, 6–8 plays per side)
 - [x] B04a Play replays: play summaries + highlight tags, auto highlight replay (offline), replay cameras, in-match transport (pause/frame/plays/highlights/speed), highlight reel at FINAL, replay overlay
-- [ ] B04b Highlights, part 2: online auto TD replay with a skip vote, MVP card at FINAL, free-cam replay theater, clip export (frame range → image sequence/video), auto-replay toggle in Settings
+- [ ] B04b Highlights, part 2: online auto TD replay with a skip vote, free-cam replay theater, clip export (frame range → image sequence/video), auto-replay toggle in Settings
 - [ ] B05 Friend-group seasons + persistent stats
 - [ ] B06 Juice: hit-stop, screenshake, crowd stingers
 - [~] B07 Steam relay / NAT traversal (out-of-game session): UPnP + public-IP invite codes + server browser DONE; relay for CGNAT + hosted public matchmaker pending (needs user decision, docs/OUT_OF_GAME.md)
@@ -56,5 +56,5 @@ After Phase B, take the first unchecked `C##` item in `docs/gaps/TODO.md` (P0 �
 ## Discovered (bugs/follow-ups the loop adds here; fixed before new features)
 - [x] D02 Party queue: friends queue together and land in the same match/team (matchmaker backend + CLI; menu UI belongs to the out-of-game session) — parity G09
 - [x] D03 Chaosball in matchmaking: queue mode for Chaosball 3v3 — parity G17
-- [ ] D04 Achievements: milestone unlocks (first TD, 300-yd game, pick-six, 7-pt Chaosball TD, …) with profile persistence — parity G23
+- [x] D04 Achievements: milestone unlocks (first TD, 300-yd game, pick-six, 7-pt Chaosball TD, …) with profile persistence — parity G23
 - [ ] D05 Stats: return yards after interceptions/fumble recoveries (gap noted in A21)
