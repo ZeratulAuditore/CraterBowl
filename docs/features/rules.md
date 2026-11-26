@@ -33,7 +33,7 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
   bounds and touchdowns are unchanged. Numbers: `CONTACT_REACH`, `FORWARD_PROGRESS_GRACE`,
   `FORWARD_PROGRESS_BANNER` in `src/sim/tuning.gd`.
 - Four downs; failing on 4th is a turnover on downs, new offense at the mirrored spot (`goal − spot`).
-- Snap: Space by any offensive human. If nobody snaps, the 20 s play clock (`Clock.PLAY_CLOCK`) auto-snaps.
+- Snap: Space by any offensive human. If nobody snaps, the play clock auto-snaps. It defaults to 20 s, and a hosted debug match can set every countdown with `--playclock=N` (#167).
 - Next play starts `NEXT_PLAY_DELAY` (2.0 s) after the whistle; R skips the wait (offline or host only).
 
 ### Scoring and tries
@@ -93,6 +93,7 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
   change-driven from `presentation.gd`) is the whole cue.
 - The scrimmage try reuses the regular downs engine. The PAT uses the field goal kick.
 - Play-clock expiry auto-snaps, so an AFK player can't stall a lobby.
+- The authoritative clock stores the configured countdown length so it carries through lobby start, each down and each period.
 - Forward progress is the furthest point in contact, capped by how far opponents pushed the carrier. Whistling on
   first contact was rejected because it kills the contact game (spins, breaking a lean, the dive). The uncapped
   furthest point was rejected because a QB drifting back with a rusher on him would get the yards back on a sack.

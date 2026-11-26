@@ -62,6 +62,34 @@ func test_play_clock_resets_each_play() -> void:
 	m.next_play()
 	assert_near(m.clock.play_clock, Clock.PLAY_CLOCK, 0.001, "reset")
 
+func test_short_play_clock_auto_snaps_consecutive_plays() -> void:
+	var m := _match()
+	m.clock.play_clock_length = 4.0
+	m.start(0)
+	for play in 2:
+		assert_near(m.clock.play_clock, 4.0)
+		_tick(m, 3.9)
+		assert_eq(m.world.phase, World.Phase.PRESNAP)
+		_tick(m, 0.2)
+		assert_eq(m.world.phase, World.Phase.LIVE)
+		assert_eq(mevents.count("auto_snap"), play + 1)
+		m.last_result = {"type": "incomplete"}
+		m.world.phase = World.Phase.DEAD
+		m.next_play()
+
+func test_short_play_clock_resets_at_period_changes() -> void:
+	var clock := Clock.new()
+	clock.play_clock_length = 4.0
+	clock.quarter_length = 60.0
+	clock.reset()
+	assert_near(clock.play_clock, 4.0, 0.001, "opening period")
+	clock.tick(1.0, false, true)
+	assert_true(clock.advance_midhalf_quarter(), "start Q2")
+	assert_near(clock.play_clock, 4.0, 0.001, "quarter change")
+	clock.tick(1.0, false, true)
+	clock.start_next_half()
+	assert_near(clock.play_clock, 4.0, 0.001, "halftime")
+
 func test_untimed_down_and_halftime() -> void:
 	var m := _match()
 	m.clock.remaining = 0.5
