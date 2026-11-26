@@ -31,6 +31,20 @@ func _run() -> void:
 	check(not overlay.me_panel.get_global_rect().intersects(overlay.bug.get_global_rect()) and overlay.me_panel.get_global_rect().end.x <= overlay.bug.get_global_rect().position.x, "movement meters sit beside the scorebug")
 	await capture("hud-presnap")
 
+	# #169: switching sides relabels the same buttons instead of rebuilding them.
+	var ids: Array = overlay.picker_grid.get_children().map(func(c): return c.get_instance_id())
+	var offense_buttons: int = overlay.picker_grid.get_children().filter(func(c): return c.visible).size()
+	w.offense_team = 1 - w.offense_team
+	await _refresh()
+	var shown: Array = overlay.picker_grid.get_children().filter(func(c): return c.visible)
+	check(shown.size() == w.DefensivePlaybook.CALLS.size() + 1 and overlay.picker_title.text == "Call a defense",
+		"defense picker shows its calls + Repeat last (%d)" % shown.size())
+	w.offense_team = 1 - w.offense_team
+	await _refresh()
+	var after: Array = overlay.picker_grid.get_children().map(func(c): return c.get_instance_id())
+	check(after == ids and overlay.picker_grid.get_children().filter(func(c): return c.visible).size() == offense_buttons,
+		"picker reuses its buttons across possession changes (no node churn)")
+
 	# The snap: the play clock cell goes away but the bug keeps its width.
 	overlay.on_event("snap", {"qb": game.my_id})
 	w.phase = w.Phase.LIVE

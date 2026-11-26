@@ -14,7 +14,7 @@ Run the full one before every commit that touches code. The pre-commit hook runs
 | Rules/sim logic is right | `./scripts/test.sh` | ~10s |
 | Nothing got slower (render budget + CPU medians) | `./scripts/perf.sh` | ~30s |
 | Scene boots clean + scripted play works | `./scripts/smoke.sh` (also runs net + mm) | ~2–3 min |
-| Networked behavior | `./scripts/net_test.sh` (host + client flow, then a host-loss phase that SIGKILLs a second host, #56), `./scripts/mm_test.sh`; lobby seat cap: `godot --headless --path . -s res://tests/net_capacity.gd` (one process, host + 8 joiners; run by smoke.sh) | ~15s each |
+| Networked behavior | `./scripts/net_test.sh` (host + client flow, then a host-loss phase that SIGKILLs a second host, #56, then a client forced to `--protocol-version=0` that must be refused with the version reason, #165), `./scripts/mm_test.sh`; lobby seat cap: `godot --headless --path . -s res://tests/net_capacity.gd` (one process, host + 8 joiners; run by smoke.sh) | ~15s each |
 | **What it looks like** (visuals, HUD, camera, art) | `./scripts/shot.sh ...` then view the PNGs | ~30s |
 | **What changed visually** (PR evidence) | `./scripts/before_after.sh ...` then `./scripts/pr_evidence.sh <PR#> <out>` | ~1–4 min |
 
@@ -66,7 +66,9 @@ your change**, and stage only your own paths (`AGENTS.md` "Shipping").
    `--headless`) holds such meshes until the node is gone, so headless runs are clean. smoke.sh
    fails the boot, game_flow and menu_flow steps if that line reappears (#92). Freeing a mesh node
    outside the tree skips the guard: keep its mesh referenced until after `free()`
-   (see `CharacterArt.instance()`).
+   (see `CharacterArt.instance()`). A Label3D frees its own mesh, so a test that builds and
+   frees Label3Ds outside the tree frees them with `HeadlessMeshGuard.free_node()` (#179).
+   test.sh fails on any `ERROR:` line in the unit run and names the test that printed it.
 2. **Xvfb + Mesa software GL** (`scripts/shot.sh`). Real Compatibility (OpenGL 3) renderer on
    `llvmpipe` (CPU) inside a private virtual X display. You get real lighting, shadows, materials
    and HUD, and nothing appears on screen. It is slower (~6–7 fps), so capture a few frames rather

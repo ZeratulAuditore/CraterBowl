@@ -63,7 +63,7 @@ post-game overview or the command line. Online skip votes, a free camera and cli
   - tags from interception, recovery-turnover and sack events
   - yards (end spot minus LOS, clamped to the goal lines; the offense always attacks +y)
   - a summary, a highlight flag, and the clock/down context
-  Label: `Play 7 (H1 4:12, 3rd & 4 at OWN 30): TOUCHDOWN: pass for 31 yd`.
+  Label: `Play 7 (Q2 1:12, 3rd & 4 at OWN 30): TOUCHDOWN: pass for 31 yd`.
 - File: zstd-compressed Godot `store_var` of `{version: 2, meta: {size, mode}, plays, frames}`. Loading never decodes objects.
   Version-1 files still load; their plays have no tags, so they have no highlights.
 

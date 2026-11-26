@@ -180,7 +180,7 @@ func test_bots_execute_both_run_paths_and_engage_assigned_defenders() -> void:
 func test_two_minute_bot_game_uses_passes_and_handoffs() -> void:
 	var m := _match()
 	var w := m.world
-	m.clock.half_length = 60.0
+	m.clock.quarter_length = 30.0   # two-minute game
 	m.start()
 	var bots := AI.new()
 	var events := {"handoff": 0, "throw": 0}

@@ -1,6 +1,7 @@
 extends RefCounted
 ## Shared material + font factory for the presentation layer (no gameplay).
 
+const UITheme := preload("res://src/ui/ui_theme.gd")
 static var _cache := {}
 
 static func cloth(c: Color) -> StandardMaterial3D:
@@ -85,22 +86,15 @@ static func blob_shadow() -> ShaderMaterial:
 		_cache["blob"] = shader("res://src/game/art/blob_shadow.gdshader")
 	return _cache["blob"]
 
+## Jersey, yard and sign numbers: Graduate, the collegiate block face (#125).
 static func number_font() -> Font:
 	if not _cache.has("num"):
-		var fv := FontVariation.new()
-		fv.base_font = load("res://assets/fonts/Oswald.ttf")
-		fv.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 700}
-		_cache["num"] = fv
+		_cache["num"] = UITheme.display_font()
 	return _cache["num"]
 
+## Labels in the 3D/HUD layer: the UI role (Teko) from UITheme.
 static func ui_font(weight: int = 700) -> Font:
 	var key := "ui%d" % weight
 	if not _cache.has(key):
-		if weight >= 700:
-			_cache[key] = load("res://assets/fonts/Rajdhani-Bold.ttf")
-		else:
-			var fv := FontVariation.new()
-			fv.base_font = load("res://assets/fonts/Oswald.ttf")
-			fv.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 500}
-			_cache[key] = fv
+		_cache[key] = UITheme.font(weight)
 	return _cache[key]
