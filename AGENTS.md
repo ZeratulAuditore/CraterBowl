@@ -6,7 +6,9 @@ Godot 4.3 football game. Work procedure: `LOOP.md`. Plan/backlog: `PLAN.md`, `FE
 When you finish a task (or a loop iteration), commit **everything** in the working tree without
 asking: `git add -A && git commit`. That includes files other parallel sessions changed. The owner
 wants the tree clean and every change in history rather than work-in-progress left lying around.
-- Commit to the current branch (normally `main`). Don't push or publish unless asked.
+- Commit each completed feature to local `main` after verification. If development starts on another
+  branch, integrate the verified feature into local `main` before reporting it complete. Preserve
+  unrelated work. Don't push or publish unless asked.
 - Never `git stash`, reset or checkout files to isolate your changes. Other sessions share this
   worktree and that discards or tangles their work.
 - Write the message about your change, and add a line listing other sessions' files that rode
