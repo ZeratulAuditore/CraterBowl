@@ -102,3 +102,34 @@ func test_host_controls_quarter_settings_and_legacy_lobbies_default_to_halves() 
 	client.from_dict({"settings": {"half_minutes": 5}})
 	assert_true(not client.settings["quarters"])
 	assert_true(client.summary().contains("5-min halves"))
+
+func test_capacity_is_both_teams_slots() -> void:
+	var l := Lobby.new()
+	assert_eq(l.capacity(3), 6)
+	assert_eq(l.capacity(5), 10)
+	assert_eq(l.capacity(7), 14)
+	l.settings["size"] = 3
+	for id in 5:
+		l.add(id + 1)
+	assert_true(not l.is_full(), "5 of 6")
+	l.add(6)
+	assert_true(l.is_full(), "6 of 6")
+	assert_true(l.full_reason().contains("Lobby full") and l.full_reason().contains("3v3"), l.full_reason())
+	assert_true(l.summary().contains("6/6 players"), l.summary())
+
+func test_shrinking_below_present_players_is_refused_with_notice() -> void:
+	var l := Lobby.new()
+	l.settings["size"] = 5
+	for id in 7:
+		l.add(id + 1)
+	assert_true(not l.set_setting(1, "size", 3), "7 players can't fit 3v3")
+	assert_eq(l.settings["size"], 5)
+	assert_true(l.notice.contains("7 players") and l.notice.contains("6 seats"), l.notice)
+	assert_true(not l.set_setting(1, "mode", "chaosball"), "Chaosball is 3v3 too")
+	assert_eq(l.settings["mode"], "classic")
+	assert_true(l.notice.contains("Chaosball"), l.notice)
+	assert_true(l.set_setting(1, "size", 7), "growing is always fine")
+	assert_eq(l.notice, "", "accepted change clears the notice")
+	l.remove(7)
+	assert_true(l.set_setting(1, "mode", "chaosball"), "6 players fit Chaosball")
+	assert_eq(l.settings["size"], 3)

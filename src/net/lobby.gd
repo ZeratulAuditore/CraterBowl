@@ -6,6 +6,7 @@ const SIZES := [3, 5, 7]
 const HALF_MINUTES := [2, 5, 8]
 const QUARTER_MINUTES := [1, 2, 3]
 const DEFAULT_QUARTER_MINUTES := 2
+const MatchConfig := preload("res://src/sim/match_config.gd")
 
 var phase: Phase = Phase.LOBBY
 var host_id := 1
@@ -14,6 +15,18 @@ var settings := {"size": 7, "half_minutes": 5, "mode": "classic",
 	"quarters": false, "quarter_minutes": DEFAULT_QUARTER_MINUTES}
 var players := {}   # id -> {"name": String, "ready": bool}
 var expected := 0   # queue matches: auto-start only once this many players are present
+var notice := ""    # host-facing: why the last settings change was refused ("" = none)
+
+## Seats in a match of `size` (both teams' slots); defaults to the current setting.
+func capacity(size: int = -1) -> int:
+	return MatchConfig.get_config(settings["size"] if size < 0 else size)["slots"] * 2
+
+func is_full() -> bool:
+	return players.size() >= capacity()
+
+## What a joiner turned away from a full lobby is told.
+func full_reason() -> String:
+	return "Lobby full: %dv%d seats %d players" % [settings["size"], settings["size"], capacity()]
 
 func add(id: int, name: String = "") -> void:
 	if not players.has(id):
@@ -41,13 +54,16 @@ func set_name(id: int, name: String) -> bool:
 	return true
 
 ## Host-only, lobby-only, validated.
+## Shrinking below the players already present is refused (nobody gets kicked); `notice` says why.
 func set_setting(by: int, key: String, value) -> bool:
 	if by != host_id or phase != Phase.LOBBY:
 		return false
+	var new_size: int = settings["size"]
 	match key:
 		"size":
 			if not (value is int and SIZES.has(value)):
 				return false
+			new_size = value
 		"half_minutes":
 			if not (value is int and HALF_MINUTES.has(value)):
 				return false
@@ -61,9 +77,15 @@ func set_setting(by: int, key: String, value) -> bool:
 			if not (value is String and (value == "classic" or value == "chaosball")):
 				return false
 			if value == "chaosball":
-				settings["size"] = 3   # Chaosball is 3v3
+				new_size = 3   # Chaosball is 3v3
 		_:
 			return false
+	if players.size() > capacity(new_size):
+		notice = "Can't switch to %s%dv%d: %d players here, %d seats. Someone has to leave first." % [
+			"Chaosball " if key == "mode" and value == "chaosball" else "", new_size, new_size, players.size(), capacity(new_size)]
+		return false
+	notice = ""
+	settings["size"] = new_size
 	settings[key] = value
 	for id in players:
 		players[id]["ready"] = id == host_id and players[id]["ready"]   # settings changed: re-ready
@@ -107,4 +129,5 @@ func summary() -> String:
 		names.append("%s%s" % [players[id]["name"], " ✓" if players[id]["ready"] else ""])
 	var mode_txt := "Chaosball " if settings.get("mode", "classic") == "chaosball" else ""
 	var period := "%d-min quarters" % settings["quarter_minutes"] if settings["quarters"] else "%d-min halves" % settings["half_minutes"]
-	return "%s%dv%d, %s | %s" % [mode_txt, settings["size"], settings["size"], period, ", ".join(names)]
+	return "%s%dv%d, %s | %d/%d players | %s" % [mode_txt, settings["size"], settings["size"], period,
+		players.size(), capacity(), ", ".join(names)]
