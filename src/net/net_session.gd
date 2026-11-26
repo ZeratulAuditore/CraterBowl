@@ -12,6 +12,8 @@ signal lobby_changed()
 signal refused(reason: String)
 signal connection_failed()     # client: the initial connection never reached the host
 signal host_lost()             # client: the host went away (quit, crashed, timed out) mid-session
+signal host_stalled()          # client: in the match, nothing from the host for STALL_AFTER s (#86)
+signal host_recovered()        # client: the host was heard from again before DROP_AFTER
 
 const P := preload("res://src/net/protocol.gd")
 const DEFAULT_PORT := 24565
@@ -20,6 +22,12 @@ const INPUT_BUFFER_LIMIT := 6  # 100 ms at the 60 Hz sim rate
 const NO_INPUT := {}
 const REFUSE_GRACE := 1.0      # s: server drops a refused peer after this (the client normally hangs up first)
 const FULL_MATCH_REASON := "Match full: every seat is taken"
+# #86 host-silence watchdog (client, in the match). The host sends 30 snapshots/s, so silence
+# means trouble long before ENet's own peer timeout (5-30 s, measured 5.8-9.7 s). Decision and
+# why: docs/features/online.md "Design decisions".
+const STALL_AFTER := 2.0       # s of silence: warn ("Connection to host lost...")
+const DROP_AFTER := 4.0        # s of silence: give up -> host_lost (the #17 reconnect grace would go here)
+const SILENCE_STEP_MAX := 0.25 # s: one frame counts at most this much, so our own hitch isn't the host's silence
 const HELLO_TIMEOUT := 5.0      # s: server refuses a peer that never says hello (a pre-#165 build)
 
 enum Mode { OFFLINE, SERVER, CLIENT }
@@ -43,6 +51,10 @@ var lobby                      # server: Lobby (set by main)
 var lobby_actions: Array = []  # server: [[peer_id, action], ...]
 var last_snapshot_tick := -1
 var refused_reason := ""       # client: why the host turned us away ("" = not refused)
+var host_silence := 0.0        # client: seconds since the last packet from the host (watchdog clock)
+var stalled := false           # client: the watchdog is warning (host_stalled sent, not yet recovered)
+var _host_gone := false        # client: host_lost already sent (once per session)
+var _watch_us := 0             # client: wall clock of the previous watchdog step
 var version_refused := false   # client: the refusal was a protocol version mismatch (#165)
 var protocol_version := P.local_version()   # both: announced (client) / required (server) wire version
 var _awaiting_hello := {}      # server: peer_id -> true until its hello arrives (#165)
@@ -71,6 +83,9 @@ func join(address: String, port: int) -> Error:
 	if err != OK:
 		return err
 	api.multiplayer_peer = peer
+	host_silence = 0.0
+	stalled = false
+	_host_gone = false
 	if not api.server_disconnected.is_connected(_on_server_disconnected):
 		api.server_disconnected.connect(_on_server_disconnected)
 	if not api.connection_failed.is_connected(_on_connection_failed):
@@ -89,8 +104,47 @@ func _on_connection_failed() -> void:
 ## (and already shows why), so only an unexpected loss counts.
 func _on_server_disconnected() -> void:
 	if mode == Mode.CLIENT and refused_reason == "":
-		print("NET host lost")
-		host_lost.emit()
+		_lose_host("disconnected")
+
+func _lose_host(why: String) -> void:
+	if _host_gone:
+		return
+	_host_gone = true
+	print("NET host lost (%s)" % why)
+	host_lost.emit()
+
+## Client watchdog (#86): armed once we're seated in the match (the host then sends snapshots
+## every other tick). Wall clock, so time scale doesn't matter; each frame counts at most
+## SILENCE_STEP_MAX so a hitch on our side (loading, a debugger) isn't blamed on the host.
+func _process(_delta: float) -> void:
+	if mode != Mode.CLIENT or my_athlete < 0 or refused_reason != "" or _host_gone:
+		_watch_us = 0
+		return
+	var now := Time.get_ticks_usec()
+	var step := 0.0 if _watch_us == 0 else minf((now - _watch_us) / 1000000.0, SILENCE_STEP_MAX)
+	_watch_us = now
+	watch_host(step)
+
+## Advance the silence clock by `step` seconds: warn at STALL_AFTER, give up at DROP_AFTER.
+## Hearing from the host (any packet) resets it in _heard_host. #17 (reconnect) slots in at the
+## DROP_AFTER branch: try to rejoin during a grace window instead of leaving.
+func watch_host(step: float) -> void:
+	host_silence += step
+	if not stalled and host_silence >= STALL_AFTER:
+		stalled = true
+		print("NET host stalled (%.1fs silent)" % host_silence)
+		host_stalled.emit()
+	if host_silence >= DROP_AFTER:
+		_lose_host("silent %.1fs" % host_silence)
+		if peer != null:
+			peer.close.call_deferred()   # stop sending into the void; the menu frees us anyway
+
+func _heard_host() -> void:
+	host_silence = 0.0
+	if stalled and not _host_gone:
+		stalled = false
+		print("NET host recovered")
+		host_recovered.emit()
 
 func human_athletes() -> Array:
 	return peer_athlete.values()
@@ -247,6 +301,8 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 		return
 	if mode == Mode.CLIENT and refused_reason != "":
 		return   # turned away: ignore anything still in flight
+	if mode == Mode.CLIENT and from == 1:
+		_heard_host()
 	match msg.get("k", ""):
 		"hello":
 			if mode == Mode.SERVER:

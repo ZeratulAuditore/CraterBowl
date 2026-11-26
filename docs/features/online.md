@@ -67,7 +67,7 @@ Bots fill every empty slot, so a 1v1 friend game or a two-player casual queue st
 
 ### Disconnects
 - **A client leaves (host side):** in the lobby they're removed. In a match their slot is released and a bot plays that athlete for the rest of the match.
-- **Host leaves or crashes (#56):** the client goes back to the menu, and the footer status reads **Host disconnected**. This works in the lobby or mid-match. If the match already ended (FINAL hold or Players of the Game), the game overview is kept. A host that quits cleanly is noticed right away. A crashed host is noticed only when ENet times out, about 10 s on localhost (#86). There is no reconnect or host migration (#17).
+- **Host leaves or crashes (#56):** the client goes back to the menu, and the footer status reads **Host disconnected**. This works in the lobby or mid-match. If the match already ended (FINAL hold or Players of the Game), the game overview is kept. A host that quits cleanly is noticed right away. In the match, a crashed or unreachable host is noticed by silence (#86): after **2 s** with nothing from the host a **Connection to host lost…** banner shows at the top with a countdown, it clears if the host is heard again, and after **4 s** the client goes to the menu. Measured 2026-11-26 on WSL localhost with a SIGKILLed host: host_lost 4.0 s after the last snapshot, menu up at 4.2 s (was 5.8-9.7 s at ENet's peer timeout). In the lobby the host sends nothing while nothing changes, so a crash there still waits for ENet's timeout (#175). There is no reconnect or host migration (#17).
 - **Esc menu online:** the match keeps running (no pause). Leave match closes the connection.
 - **Unreachable host or matchmaker:** an initial connection failure returns the player to the menu. The footer says **Couldn't reach the host** or **Couldn't reach the matchmaker**. This covers both connection setup errors and ENet timeouts.
 
@@ -79,19 +79,20 @@ Bots fill every empty slot, so a 1v1 friend game or a two-player casual queue st
 - **Queue matches start only with the full matched group** (`Lobby.expected`), so no one is seated by a bot because they joined late.
 - **No team or position changes online.** The old team/slot requests are rejected rather than kept as an online position-selection API ahead of #18.
 - Teams come from the party-aware `unit_teams`.
+- **Host loss is a client-side silence watchdog, not a shorter ENet timeout (#86).** The host streams 30 snapshots/s in a match, so 2 s of silence already means trouble. `NetSession.watch_host` warns at `STALL_AFTER` (2 s) and gives up at `DROP_AFTER` (4 s); any packet from the host resets it, so a lag spike shorter than 4 s shows the banner and then carries on. Rejected: lowering `ENetPacketPeer.set_timeout` on the server peer. ENet's drop is final (no warning, no recovery) and depends on retransmit backoff (it measured anywhere from 5.8 s to 9.7 s for the same kill), and the watchdog leaves a clean seam for #17: a "reconnecting…" grace window replaces the `DROP_AFTER` branch. The clock is wall time, but one frame counts at most `SILENCE_STEP_MAX` (0.25 s), so a hitch on the client's side (loading, a debugger) isn't blamed on the host. The cost: a client running below ~4 FPS detects more slowly (seen in the llvmpipe visual test). 4 s rather than 3 s because Wi-Fi roams and brief route flaps run 1-3 s; ENet keeps the link through those, so dropping a live match for one would be worse than waiting 1 s longer for a dead host.
 - **Remote movement inputs are buffered.** The host preserves short bursts of commands so rapid cuts
   survive uneven packet delivery. The queue has a fixed limit to keep corrections responsive. See
   [client prediction](../design/netcode.md#client-prediction-client_predictorgd).
 
 ## Code and tests
-- `src/net/net_session.gd`: ENet host/join, seat assignment, lobby relay, disconnect → release.
+- `src/net/net_session.gd`: ENet host/join, seat assignment, lobby relay, disconnect → release, host-silence watchdog (#86). `src/game/link_banner.gd`: the "Connection to host lost…" banner.
 - `src/net/lobby.gd`: lobby state, ready rules, host-only settings.
 - `src/net/invite_code.gd`: code ⇄ IP:port.
 - `src/net/matchmaker.gd`: queue rules, parties, team split. `src/net/mm_server.gd` / `src/net/mm_client.gd`: matchmaker process and client.
 - `src/net/lobby_registry.gd`, `src/net/lobby_advertiser.gd`, `src/ui/server_browser.gd`: match browser.
 - `src/net/port_mapper.gd`: UPnP. `src/sim/roster.gd`: slots, auto-assign.
 - `src/game/main.gd` (`_host_game`, `_join_game`, `_queue_up`, `_step_lobby`, `_start_from_lobby`) and `src/ui/main_menu.gd` (`_screen_online`, `_queue`, `host_match`, `_with_port`).
-- Tests: `tests/test_lobby.gd`, `tests/test_matchmaker.gd`, `tests/test_protocol.gd`, `tests/test_roster.gd`, `tests/test_out_of_game.gd` (registry, advertiser, public-IP check), `tests/test_port_mapper.gd` (UPnP map/unmap lifetime with a fake router), `tests/net_host.gd` + `tests/net_client.gd` via `scripts/net_test.sh` (second phase: SIGKILLs the host and expects the client on the menu with "Host disconnected", #56), `tests/visual/host_lost_test.gd` (rendered menu after the host quits), `scripts/mm_test.sh` (`MODE=casual|competitive|party|chaos`), `tests/menu_flow.gd` (classic and Chaosball private hosts), `tests/visual/private_lobby_chaosball_test.gd` (rendered Chaosball lobby), `tests/visual/size_picker_chaosball_test.gd` (Size row locked to 3v3 under Chaosball, #83), `tests/test_protocol_version.gd` + `tests/visual/version_mismatch_test.gd` + `net_test.sh` phase 3 (version handshake, #165).
+- Tests: `tests/test_lobby.gd`, `tests/test_matchmaker.gd`, `tests/test_protocol.gd`, `tests/test_roster.gd`, `tests/test_out_of_game.gd` (registry, advertiser, public-IP check), `tests/test_port_mapper.gd` (UPnP map/unmap lifetime with a fake router), `tests/net_host.gd` + `tests/net_client.gd` via `scripts/net_test.sh` (second phase: SIGKILLs the host and expects the client on the menu with "Host disconnected", #56, within `DROP_AFTER` + 0.75 s of the last snapshot after the banner, #86), `tests/test_netcode.gd` (`test_watchdog_*`: warn/drop thresholds, lag spike recovers, only seated clients, own-hitch cap), `tests/visual/host_lost_test.gd` (rendered menu after the host quits), `tests/visual/host_stall_test.gd` (rendered "Connection to host lost…" banner; it clears on a packet, then drops at 4 s with ENet still connected), `scripts/mm_test.sh` (`MODE=casual|competitive|party|chaos`), `tests/menu_flow.gd` (classic and Chaosball private hosts), `tests/visual/private_lobby_chaosball_test.gd` (rendered Chaosball lobby), `tests/visual/size_picker_chaosball_test.gd` (Size row locked to 3v3 under Chaosball, #83), `tests/test_protocol_version.gd` + `tests/visual/version_mismatch_test.gd` + `net_test.sh` phase 3 (version handshake, #165).
 
 ## Open issues
 - #14 C32 Co-op vs bots playlist + bot difficulty
@@ -107,7 +108,7 @@ Bots fill every empty slot, so a 1v1 friend game or a two-player casual queue st
 - #44 C29 Events and variety: weather, time of day, rotating modes
 - #48 Decide: host the public matchmaker (VPS/AWS + DNS)?
 - #85 Joining a bad code / unreachable host hangs forever
-- #86 A crashed host takes ~10 s to detect
+- #175 A host that crashes while you're in the lobby still takes ENet's 5-30 s timeout
 - #221 Menu footer status clips long reasons
 - #222 Matchmaker serves more than one protocol version during a rollout
 - #75 Stadium screen shows a running-match clock in the private lobby

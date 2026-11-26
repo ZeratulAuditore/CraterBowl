@@ -41,7 +41,16 @@ see when hosting, joining, queueing) lives in `docs/features/` (online play). La
 - Client side, `join()` hooks `SceneMultiplayer.server_disconnected`. If the client wasn't refused (a refused
   client hangs up on purpose), `NetSession` emits `host_lost`, and `main.gd:_on_host_lost` calls
   `Launch.go_to_menu("Host disconnected")`. It keeps the match overview if the post-game had already started (#56).
-  A crash is noticed only at ENet's peer timeout (#86). `connection_failed` is still unhandled (#85).
+  `connection_failed` is still unhandled (#85).
+- Host-silence watchdog (#86, client): once seated (`my_athlete >= 0`, the host then sends a snapshot
+  every other tick), `_process` adds wall-clock time since the previous frame, capped at
+  `SILENCE_STEP_MAX` (0.25 s) per frame, to `host_silence`; any packet from peer 1 (`_heard_host`) zeroes it.
+  `STALL_AFTER` (2 s) emits `host_stalled` (`src/game/link_banner.gd` shows "Connection to host lost…"),
+  a packet after that emits `host_recovered`, and `DROP_AFTER` (4 s) goes through `_lose_host` →
+  `host_lost` and closes the peer. `_lose_host` sends `host_lost` once per session, whether the watchdog or
+  ENet's `server_disconnected` gets there first. A reconnect (#17) would replace the `DROP_AFTER` branch.
+  Not armed in the lobby, where the host is silent while nothing changes (#175). Why not a shorter ENet
+  timeout: [online.md](../features/online.md#design-decisions).
 
 ## Messages — game session (`net_session.gd:_on_packet`)
 

@@ -29,7 +29,8 @@ if [ -z "$CID" ] || ! grep -q "NET host got install id $CID" .net-host.log; then
 fi
 echo "NET install id reached the host: $CID"
 # Host loss (#56): a client in the match whose host dies (SIGKILL: no goodbye packet)
-# must return to the menu with "Host disconnected".
+# must return to the menu with "Host disconnected". #86: the client's silence watchdog, not
+# ENet's 5-30 s peer timeout, must do it: within DROP_AFTER (+ slack, asserted in net_client.gd).
 PORT2=$((PORT + 1000))
 timeout 80 "$GODOT" --headless --path . -- --host --port="$PORT2" --no-lobby --no-kickoff --profile-file=user://test_net_profile.json --leaderboard-file=user://test_net_lb.json --ranked-file=user://test_net_ranked.json > .net-host2.log 2>&1 &
 HOST=$!
@@ -49,6 +50,9 @@ rm -f "$ARMED"
 grep -E "NET " .net-hostloss.log
 if [ $status -ne 0 ] || grep -E "SCRIPT ERROR|Parse Error" .net-hostloss.log | grep -q .; then
   grep -E "SCRIPT ERROR|Parse Error|at: " .net-hostloss.log | head; echo "NET TEST FAIL (host loss)"; exit 1
+fi
+if ! grep -q "NET host lost (silent" .net-hostloss.log; then
+  echo "NET TEST FAIL (host loss): the silence watchdog didn't fire ($(grep 'NET host lost' .net-hostloss.log))"; exit 1
 fi
 # Version handshake (#165): a client forced to protocol v0 must be refused by a current
 # host with the readable reason on its join screen, via the existing refuse() path.

@@ -402,8 +402,8 @@ func _draw_crosshair() -> void:
 		crosshair.draw_rect(bar.grow(2.0), shade)
 		crosshair.draw_rect(Rect2(bar.position, Vector2(bar.size.x * charge, bar.size.y)), col.lerp(Color(1.0, 0.45, 0.15), charge))
 	var lbl := "LOFT %d°" % int(round(launch_angle()))
-	crosshair.draw_string_outline(ThemeDB.fallback_font, c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, shade)
-	crosshair.draw_string(ThemeDB.fallback_font, c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, col)
+	crosshair.draw_string_outline(ArtMats.ui_font(600), c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, shade)
+	crosshair.draw_string(ArtMats.ui_font(600), c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, col)
 
 ## True while the human is the passer: QB before the forward pass (Chaosball: any holder).
 func pov_active() -> bool:
@@ -915,6 +915,7 @@ func _join_game(target: String, port: int, opts: Dictionary) -> void:
 	net.snapshot_received.connect(_on_snapshot)
 	net.event_received.connect(_on_world_event)
 	net.host_lost.connect(_on_host_lost)
+	add_child(preload("res://src/game/link_banner.gd").new(net))   # #86: "Connection to host lost…"
 
 const HOST_LOST_STATUS := "Host disconnected"
 const HOST_UNREACHABLE_STATUS := "Couldn't reach the host"
@@ -1182,7 +1183,7 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 		pres.on_event(n, d)
 	if n == "incomplete" and last_whistle == "":
 		last_whistle = "INCOMPLETE"
-	if n in ["tackle", "out_of_bounds", "breakup", "touchdown", "explode", "touchback", "kick_out_of_bounds", "kick_downed"]:
+	if n in ["tackle", "out_of_bounds", "breakup", "touchdown", "explode", "touchback", "kick_out_of_bounds", "kick_downed", "fair_catch"]:
 		last_whistle = n.replace("kick_", "").replace("_", " ").to_upper()
 	if n == "field_goal":
 		last_whistle = "FIELD GOAL GOOD" if d.get("good", false) else "FIELD GOAL NO GOOD"
@@ -1445,7 +1446,7 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 	if maybe_auto_replay():
 		return
 	if drill == null:
-		series.tick(delta)          # practice never runs the clocks
+		series.tick(delta, _clock_snap)   # practice never runs the clocks
 	if drill != null and drill.kind != "scrimmage":
 		if drill.tick(world, delta):
 			drill.start_rep(world)
@@ -1472,6 +1473,10 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 	var snap_delay := T.AI_SNAP_DELAY
 	if drill == null and not world.is_chaos() and not humans.is_empty():
 		snap_delay = T.HUDDLE_SECONDS
+	# #136: in a match the play clock is the bots' snap timer too (one shown countdown).
+	ai.snaps_on_clock = drill == null
+	if drill == null and AI.offense_is_bot(world, humans):
+		series.huddle(AI.huddle_seconds(world, snap_delay))
 	ai.presnap_tick(world, humans, delta, series.downs.down, series.downs.distance(), snap_delay)
 	var inputs := ai.think(world, humans)
 	if drill != null:
@@ -1490,6 +1495,13 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 		net_tick += 1
 		if net_tick % SNAPSHOT_EVERY == 0:
 			net.broadcast_snapshot(Protocol.encode_snapshot(series, net_tick, net.acks()))
+
+## Play clock ran out: a bot offense snaps its own way (kickoff depth), a human one gets
+## the default snap / kick.
+func _clock_snap() -> bool:
+	if AI.offense_is_bot(world, [controlled_id] + roster.humans()):
+		return ai.snap(world)
+	return world.snap()
 
 ## Instant replay of the last play at half speed (V). At FINAL, V plays the highlight
 ## reel instead. Offline the match pauses; online only your view changes.
@@ -1877,8 +1889,8 @@ func _process(delta: float) -> void:
 		clock_txt += " | STREAK %d -> TD %d | BALL %.1fs" % [world.streak, world.streak_points(), maxf(0.0, T.PASS_CLOCK - world.hold_t)]
 	if drill != null:
 		clock_txt = drill.label()
-	if world.phase == World.Phase.PRESNAP:
-		clock_txt += " | PLAY %d" % int(ceil(series.clock.play_clock))
+	if series.play_clock_shown() >= 0 and drill == null:
+		clock_txt += " | PLAY %d" % series.play_clock_shown()
 	if series.is_final():
 		var w := series.winner()
 		phase_name = "FINAL: HOME %d - AWAY %d  %s\n%s" % [series.score[0], series.score[1], "TIE" if w < 0 else ("HOME WINS" if w == 0 else "AWAY WINS"),
