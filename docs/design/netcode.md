@@ -105,10 +105,12 @@ The host re-broadcasts every world event from `main.gd:_on_world_event`, plus ma
 | `pl`, `rt`, `dc`, `rf`, `hc`, `cs` | play name, route index per athlete (-1 none), defensive call, run flipped, handoff cooldown, Chaosball streak/hold |
 | `ack` | athlete id → last input `seq` the server stored (`NetSession.acks()`) |
 
-It's a full snapshot every time (no deltas). `apply_snapshot` writes straight into the client's
-`World`/`Match`; dive/ground flags become token timers (`0.01`). Newer keys are read with `.get()`
-defaults; the core keys (`ph`, `a`, `r`, `b`, `d`, `s`, `c`, `ms`, `tp`) are indexed directly, so the
-client trusts the host's shape. New sim state: add to both functions and `tests/test_protocol.gd`.
+Each message contains a full snapshot. Before advancing its last accepted tick, the client validates
+the payload types, array lengths for the advertised match size, finite numeric fields and input
+acknowledgments. A rejected snapshot leaves the previous game state and tick intact.
+`apply_snapshot` writes accepted state into the client's `World` and `Match`. Dive and ground
+flags become token timers (`0.01`), and optional fields retain their compatibility defaults.
+When adding wire fields, update the encoder, validator, decoder and protocol tests together.
 The quarter fields extend the clock array after its four original entries. If they are absent, the client uses halves.
 
 ## Client prediction (`client_predictor.gd`)
@@ -205,8 +207,9 @@ messages are reliable on channel 0.
 ## Trust model and known limits
 
 - Server-authoritative for movement and actions; clients can't teleport or call plays for the other side.
-- Clients fully trust the host: snapshots, `awards` (clients add host-sent XP to their own profile in
-  `main.gd:_apply_award`) and `ranked`. Ratings and leaderboards live only on the host's disk (#28).
+- Clients validate snapshot shape and accept integer match XP from 0 through 10,000. Malformed
+  achievement context or XP leaves the local profile untouched. The host remains the authority on
+  match outcomes and awards. Ratings and leaderboards live only on the host's disk (#28).
 - No reconnect, leaver handling or forfeit; a client doesn't react to losing the host (#17).
 - Prediction covers the local athlete's free movement only (#45). No snapshot deltas or compression.
 - No message rate limits on game or matchmaker sockets.
