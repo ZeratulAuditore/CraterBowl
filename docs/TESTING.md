@@ -126,7 +126,22 @@ page and check that every image displays.
   llvmpipe renders at once load the CPU enough that time-driven motion drifts: an untouched
   `scorebug` frame measured 39% changed in parallel and 0.4% serial (2026-11-25, WSL, 1280x720).
 - User data is throwaway on both sides, and the base worktree is removed when the script exits.
+- **Linux/WSL only** (needs Xvfb, like `shot.sh`). On macOS or Windows, use the CI
+  `visual-test-evidence` artifact as described in AGENTS.md "Regressions" until `remote_shots.sh` (#121) lands.
 - Re-running `pr_evidence.sh` adds a commit on top of the branch, so earlier image links keep working.
+
+**Captures are regression baselines.** CI will diff every capture against the same capture rendered
+from main (`docs/design/regression-baselines.md`, #121), so:
+
+- Set exact state, and settle camera easing and animations before `capture()`. A capture must not
+  depend on wall-clock time or on how many frames have run. On 2026-11-25 (WSL, llvmpipe), 20 of 23
+  captures differed on more than 0.1 % of pixels between two identical runs, mostly from the camera
+  still easing (#124).
+- Capture names are the comparison keys. Don't rename or delete one to hide a diff.
+- Every player-visible state a PR adds or changes gets a capture. A bug fix for something visible
+  adds the capture that would have shown it.
+- On macOS or Windows (no Xvfb), push a draft PR and read the captures from the run's
+  `visual-test-evidence` artifact: `gh run download <run-id> -n visual-test-evidence`.
 
 ## Screenshots: `scripts/shot.sh`
 
