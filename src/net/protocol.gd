@@ -26,7 +26,7 @@ static func encode_snapshot(m, tick: int, acks: Dictionary = {}) -> Dictionary:
 		r.append_array([ath.role, flags, ath.team])
 		moves.append_array([ath.move_charge, ath.move_t])
 	var b = w.ball
-	return {
+	var snap := {
 		"k": "snap", "t": tick, "ph": w.phase, "off": w.offense_team, "los": w.los_y, "fpt": w.forward_pass_thrown, "pt": w.last_possession,
 		"a": a, "r": r, "moves": moves,
 		"b": PackedFloat32Array([b.state, b.holder_id, b.position.x, b.position.y, b.position.z, b.velocity.x, b.velocity.y, b.velocity.z]),
@@ -40,6 +40,9 @@ static func encode_snapshot(m, tick: int, acks: Dictionary = {}) -> Dictionary:
 		"kp": w.kick_play, "kk": w.kicked, "tw": m.toss_winner,
 		"cs": PackedFloat32Array([w.streak, w.hold_t]),
 	}
+	if w.fair_catch_id >= 0:
+		snap["fc"] = w.fair_catch_id   # only while signaled: snapshots sit near the 1400-byte budget
+	return snap
 
 static func _routes_array(w) -> PackedInt32Array:
 	var out := PackedInt32Array()
@@ -89,6 +92,9 @@ static func valid_snapshot(s: Dictionary, athletes: int) -> bool:
 	if not (possession is int and possession in [0, 1] and toss is int and toss in [-1, 0, 1]):
 		return false
 	if not _finite_number(s.get("hc", 0.0)):
+		return false
+	var fc = s.get("fc", -1)
+	if not (fc is int and fc >= -1 and fc < athletes):
 		return false
 	var acks = s.get("ack", {})
 	if not (acks is Dictionary) or acks.size() > athletes:
@@ -173,6 +179,7 @@ static func apply_snapshot(m, s: Dictionary) -> void:
 	w.handoff_cooldown = s.get("hc", 0.0)
 	w.kick_play = str(s.get("kp", ""))
 	w.kicked = s.get("kk", false) == true
+	w.fair_catch_id = int(s.get("fc", -1))
 	m.toss_winner = int(s.get("tw", -1))
 	var cs: PackedFloat32Array = s.get("cs", PackedFloat32Array([0, 0]))
 	w.streak = int(cs[0])
@@ -279,7 +286,10 @@ static func apply_action(m, athlete_id: int, action) -> bool:
 		return false
 	match act["a"]:
 		"snap":
-			# One key, routed by side: offense hikes, defense breaks stance.
+			# One key, routed by side: offense hikes, defense breaks stance, and a
+			# returner under a punt/kickoff in the air signals a fair catch (#189).
+			if w.can_signal_fair_catch(athlete_id):
+				return w.signal_fair_catch(athlete_id)
 			if ath.team == w.offense_team:
 				return w.snap()
 			return w.break_stance(athlete_id)

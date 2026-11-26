@@ -34,6 +34,12 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
   `FORWARD_PROGRESS_BANNER` in `src/sim/tuning.gd`.
 - Four downs; failing on 4th is a turnover on downs, new offense at the mirrored spot (`goal − spot`).
 - Snap: Space by any offensive human. If nobody snaps, the 20 s play clock (`Clock.PLAY_CLOCK`) auto-snaps.
+- **One play clock** (#136): the scorebug's `PLAY :NN` is the countdown the snap obeys. A bot-run offense's play clock
+  is its huddle (`HUDDLE_SECONDS` 5 s, kickoffs `AI_SNAP_DELAY` 2.5 s) and the bots snap or kick when it reads 0;
+  a human offense gets the full 20 s and may snap any time before. An unattended kickoff gets the default kick
+  (`KICKOFF_DEFAULT_POWER`) at 0. The play clock is hidden and doesn't run while it governs no snap: live and dead
+  balls, the coin toss (its own `TOSS_WINDOW`), FINAL. A timeout or the one-minute warning restarts it (a fresh huddle
+  for bots). Clients show the same value: it is computed by `Match.play_clock_shown()` from snapshot state only.
 - Next play starts `NEXT_PLAY_DELAY` (2.0 s) after the whistle; R skips the wait (offline or host only).
 
 ### Scoring and tries
@@ -94,6 +100,15 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
   change-driven from `presentation.gd`) is the whole cue.
 - The scrimmage try reuses the regular downs engine. The PAT uses the field goal kick.
 - Play-clock expiry auto-snaps, so an AFK player can't stall a lobby.
+- One clock, not two (#136). Bots used to snap on a private timer (`AI._presnap_t`) while the scorebug counted a
+  20 s clock they ignored, so you'd see `PLAY :16` (`:18` on a bot kickoff) as the ball went, and a bot kickoff after
+  the coin toss went the instant the toss was chosen because that timer had run through the toss. Now the bots' huddle
+  *is* the play clock (`Match.huddle` caps it, `Match.tick`'s snapper does the bots' snap, so kickoff depth still varies).
+  Rejected: keeping both timers and only lining up their starts (still two sources that drift on timeouts, the warning
+  and the toss); hiding the clock whenever bots have the ball (the defense loses the one cue for when the ball goes);
+  a delay-of-game penalty at 0 (a later rules decision; auto-snap stays).
+- The shown value is `ceil(play_clock - 1 ms)`: snapshots carry the clock as float32, and a plain `ceil` put the client
+  one second behind the host at every whole-second boundary.
 - Forward progress is the furthest point in contact, capped by how far opponents pushed the carrier. Whistling on
   first contact was rejected because it kills the contact game (spins, breaking a lean, the dive). The uncapped
   furthest point was rejected because a QB drifting back with a rusher on him would get the yards back on a sack.
@@ -126,8 +141,8 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 - `src/net/lobby.gd` (size and quarter-length settings), `src/net/protocol.gd` (period snapshots and host-validated `try`/`timeout` actions).
 - Tests: `tests/test_downs.gd`, `tests/test_scoring.gd`, `tests/test_match.gd`, `tests/test_clock.gd`,
   `tests/test_turnovers.gd`, `tests/test_tackling.gd`, `tests/test_match_sizes.gd`, `tests/test_field.gd`, `tests/test_switch_ends.gd`, `tests/game_flow.gd`,
-  `tests/test_lobby.gd`, `tests/test_protocol.gd`, `tests/visual/switch_ends_test.gd`, `tests/visual/quarter_clock_test.gd`
-  (scorebug, Tab board and stadium screens at Q1 2:30).
+  `tests/test_lobby.gd`, `tests/test_protocol.gd`, `tests/test_play_clock.gd`, `tests/visual/switch_ends_test.gd`,
+  `tests/visual/play_clock_test.gd`, `tests/visual/quarter_clock_test.gd` (scorebug, Tab board and stadium screens at Q1 2:30).
 
 ## Open issues
 - #6 C04c Switching ends, mercy rule and clock actions (parent; #89 switching ends in review)
