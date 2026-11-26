@@ -8,4 +8,11 @@
 
 ### Testing
 
-<!-- List automated checks and their results. Upload and embed screenshots from the new integration test with ![Descriptive alt text](image-url), or embed the test video. Include the Actions artifact link for the full captures and logs. -->
+<!-- List automated checks and their results (check.sh, the new tests/visual case).
+Visual change? Embed before/after pairs, never an "after" alone (docs/TESTING.md "Before/after screenshots"):
+  ./scripts/before_after.sh <menu | potg | shot NAME <shot.sh args> | visual CASE>
+  ./scripts/pr_evidence.sh <this PR#> <out dir> [names]   # prints the table below
+| What changed | Before (`origin/main`) | After (this PR) |
+|---|---|---|
+| <what the reviewer should notice> | ![Before: ...](url) | ![After: ...](url) |
+Include the Actions artifact link for the full captures and logs. -->

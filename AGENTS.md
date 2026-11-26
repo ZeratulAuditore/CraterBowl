@@ -48,8 +48,11 @@ or push `main` yourself, and never merge a PR (not even your own, not even when 
 - Use the headings `### Motivation`, `### Solution`, and `### Testing` in the PR description.
 - Add automated integration coverage for the specific behavior changed. The new test must
   generate a screenshot or video of the exercised state. Inspect the capture before sharing it.
-- In Testing, name the automated checks that produced the evidence. Upload the relevant
-  test-generated screenshots and embed them inline with `![Descriptive alt text](image-url)`.
+- In Testing, name the automated checks that produced the evidence. **Visual changes embed
+  before/after pairs** (same capture on `origin/main` and on the branch):
+  `./scripts/before_after.sh <menu|potg|shot NAME ...|visual CASE>`, look at the compare PNGs,
+  then `./scripts/pr_evidence.sh <PR#> <out>` and paste its Before | After table with captions
+  saying what to look at. Rules and examples: `docs/TESTING.md` "Before/after screenshots".
   For video evidence, embed the uploaded video where GitHub supports playback or embed a
   test-generated screenshot and link to the video. Verify the media displays in the PR.
   Include the Actions artifact link for the full set of captures and logs.
@@ -64,7 +67,7 @@ Every unit of work, whether a loop iteration, a bug fix or a perf pass, has the 
 2. **Define done first.** Write acceptance criteria as testable statements in the issue (Scope / Accept).
 3. **Smallest complete change.** One item per loop. Rules in `src/sim`, visuals in `src/game`.
 4. **Gate.** `./scripts/check.sh` must print `CHECK PASS`. Add tests for every criterion *before* calling it done.
-5. **Look** at visual changes with `./scripts/shot.sh` and actually view the PNGs.
+5. **Look** at visual changes with `./scripts/shot.sh` and actually view the PNGs; for the PR, capture before/after pairs with `./scripts/before_after.sh`.
 6. **Record.** Docs that own what you changed (below), the PR description (what, why, tests, follow-up issues), and the issue itself (link the PR or narrow it).
 7. **Ship a PR** (see Shipping above): commit your own files on your branch, check `git show --stat`, push, and `gh pr create`. Never commit to `main` and never merge.
 
@@ -85,6 +88,7 @@ Full guide: `docs/TESTING.md`.
 | `./scripts/smoke.sh` | headless boot + `game_flow.gd` + `menu_flow.gd` + net + matchmaking | 2–3 min |
 | `./scripts/shot.sh --frames=60,200 --snap=100` | real-renderer PNGs via Xvfb. **View them.** | about 30 s |
 | `./scripts/visual_test.sh` | rendered integration tests in `tests/visual/` (what CI runs). Linux/WSL only | about 2.5 min |
+| `./scripts/before_after.sh menu` (or `shot NAME ...`, `visual CASE`, `potg`) | same capture on `origin/main` and your tree, side by side: the PR's visual evidence | 1–4 min |
 
 - New player-facing behavior gets a step in `tests/game_flow.gd`, driven through the real input
   handler (`_key()`). New networked behavior extends `tests/net_client.gd`.
