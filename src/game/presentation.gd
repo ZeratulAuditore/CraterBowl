@@ -322,7 +322,10 @@ func _process(delta: float) -> void:
 		stadium.set_excitement(excite)
 		var s = main.series
 		if s:
-			stadium.set_scoreboard("HELIOS %d   NEBULA %d\n%s" % [s.score[0], s.score[1], s.clock.label()])
+			if (main.is_server() or main.is_client()) and main.in_lobby():
+				stadium.set_scoreboard("PRIVATE MATCH LOBBY")
+			else:
+				stadium.set_scoreboard("HELIOS %d   NEBULA %d\n%s" % [s.score[0], s.score[1], s.clock.label()])
 			if s.score[0] != _last_score[0] or s.score[1] != _last_score[1]:
 				_last_score = [s.score[0], s.score[1]]
 			_update_ends(s, w)

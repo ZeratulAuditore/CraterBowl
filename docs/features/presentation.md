@@ -5,6 +5,9 @@ Feature-level doc: how a match looks and sounds for players **today** on `main`.
 ## Summary
 Matches are played in **Crater Bowl**, an original lunar stadium built inside a crater. Rigged CC0 athletes, a broadcast-style overlay and event effects (camera shake, tackle dust, touchdown fireworks) sit on top of a sim that knows nothing about them. The menus have a licensed music soundtrack. Matches have no sound effects yet.
 
+The stadium screens show “PRIVATE MATCH LOBBY” while players are in the private lobby. When the
+match starts, the screens show the score and the configured game clock.
+
 ## How it looks and plays
 | Piece | What the player sees | Owner |
 |---|---|---|
