@@ -251,7 +251,7 @@ func test_punt_return_yards() -> void:
 func test_bot_match_kicking_stats_match_the_scoreboard() -> void:
 	var m := Match.new(_world())
 	var w := m.world
-	m.clock.half_length = 150.0
+	m.clock.quarter_length = 75.0   # quarters only since #130: the same 5-minute match
 	m.start_match(3, false)
 	var s := Stats.new()
 	s.attach(w, func(_aid): return "Bot", m)

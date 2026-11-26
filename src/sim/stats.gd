@@ -251,7 +251,6 @@ func summary_lines() -> Array:
 		if l["att"] > 0: parts.append("%d/%d %dyd %dTD %dINT" % [l["comp"], l["att"], l["pass_yds"], l["pass_td"], l["int_thrown"]])
 		if l["rec"] > 0: parts.append("%d rec %dyd %dTD" % [l["rec"], l["rec_yds"], l["rec_td"]])
 		if l["car"] > 0: parts.append("%d car %dyd %dTD" % [l["car"], l["rush_yds"], l["rush_td"]])
-		if l["ret_td"] > 0: parts.append("%d ret TD" % l["ret_td"])
 		var dfn := []
 		for f in ["tkl", "sack", "int", "pbu", "ff", "fr"]:
 			if l[f] > 0: dfn.append("%d %s" % [l[f], f])
@@ -264,6 +263,7 @@ func summary_lines() -> Array:
 		if l["punts"] > 0: st.append("%d punt %.1f avg" % [l["punts"], l["punt_yds"] / l["punts"]])
 		for f in [["kr", "kick ret"], ["pr", "punt ret"]]:
 			if l[f[0]] > 0: st.append("%d %s %dyd" % [l[f[0]], f[1], roundi(l[f[0] + "_yds"])])
+		if l["ret_td"] > 0: st.append("%d ret TD" % l["ret_td"])
 		if not st.is_empty(): parts.append(", ".join(st))
 		if parts.is_empty():
 			continue
