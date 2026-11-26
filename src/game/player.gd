@@ -32,6 +32,10 @@ const BLEND := 0.18
 const CARRY_K := 14.0
 ## Head look smoothing (1/s): the look point trails a fast ball a little, like eyes do.
 const LOOK_K := 10.0
+## Heads only turn when the athlete is big enough on screen to see it: the camera view's
+## half-height (yd) at the athlete's distance must be under this. About 25 yd away for the
+## 65 deg follow camera, further for zoomed replay cameras. Saves the look math (#245).
+const LOOK_VIEW_SIZE := 16.0
 ## Ball seat in hand_r bone space: in the palm, long axis along the forearm (#244).
 const BALL_SOCKET := Transform3D(Basis(Vector3.RIGHT, -PI / 2.0), Vector3(-0.13, 0.08, 0.0))
 
@@ -328,11 +332,19 @@ func ball_local(sk: Skeleton3D) -> Transform3D:
 	var held = pose.hold_ball(sk) if pose else null
 	return held if held != null else sk.get_bone_global_pose(sk.find_bone("hand_r")) * BALL_SOCKET
 
-## Heads track the ball (not the carrier's own; not while down or celebrating).
+## True when an athlete `dist` yd from a camera with vertical FOV `fov_deg` is close
+## enough on screen for a head turn to be seen.
+static func head_visible(dist: float, fov_deg: float) -> bool:
+	return dist * tan(deg_to_rad(fov_deg) * 0.5) < LOOK_VIEW_SIZE
+
+## Heads track the ball (not the carrier's own; not while down, celebrating or too far
+## from the camera to see).
 func _update_look(delta: float, down: bool) -> void:
-	var looking := look_node != null and ball_node == null and not down and celebrate_t <= 0.0
+	var cam := get_viewport().get_camera_3d()
+	var near := cam != null and head_visible(global_position.distance_to(cam.global_position), cam.fov)
+	var looking := near and look_node != null and ball_node == null and not down and celebrate_t <= 0.0
 	var k := 1.0 - exp(-LOOK_K * delta)
-	if look_node != null:   # keep following while fading out too, so a fading head never points at an old spot
+	if look_node != null and (looking or pose.look_weight > 0.0):   # also while fading out, so a fading head never points at an old spot
 		var target := look_node.global_position
 		# Snap after a teleport (new spot, replay seek) so every head doesn't sweep the field.
 		var snap: bool = pose.look_weight <= 0.0 or target.distance_to(_look_point) > TELEPORT_DIST * 2.0

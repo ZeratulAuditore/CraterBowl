@@ -180,6 +180,12 @@ func test_no_look_weight_leaves_the_head_alone() -> void:
 	assert_eq(sk.get_bone_pose_rotation(sk.find_bone("Head")), q, "weight 0: head bone")
 	v.free()
 
+func test_heads_far_from_the_camera_do_not_look() -> void:
+	assert_true(PlayerNode.head_visible(20.0, 65.0), "follow camera (65 deg): 20 yd away turns")
+	assert_true(not PlayerNode.head_visible(30.0, 65.0), "follow camera: 30 yd away is too small to see")
+	assert_true(PlayerNode.head_visible(45.0, 34.0), "zoomed broadcast replay (34 deg): 45 yd still turns")
+	assert_true(not PlayerNode.head_visible(60.0, 34.0), "broadcast replay: 60 yd doesn't")
+
 # --- helpers ------------------------------------------------------------------
 
 ## Head facing (Head bone +Z) as (yaw, pitch) degrees in the chest's frame.

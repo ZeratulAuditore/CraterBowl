@@ -665,10 +665,16 @@ func _check_carry_pose(two_hand: bool, context: String) -> void:
 	check(off < 0.05, "ball pinned to the palm socket (%s): %.3f m off" % [context, off])
 	var to_hand: float = main.ball_view.global_position.distance_to(v.hand_r.global_position)
 	check(to_hand < 0.3, "ball in the hand (%s): %.2f m from the wrist" % [context, to_hand])
-	# #245: everyone else tracks the ball; the carrier doesn't look at its own ball.
-	var lookers: int = main.views.filter(func(o): return o != v and o.pose.look_weight > 0.5).size()
-	check(v.pose.look_weight < 0.2 and lookers >= main.views.size() - 3,   # the carrier's look fades over ~0.3 s
-		"heads track the ball (%s): %d of %d others look, carrier %.2f" % [context, lookers, main.views.size() - 1, v.pose.look_weight])
+	# #245: everyone else near enough to the camera tracks the ball; far heads and the
+	# carrier don't look. Views within 15% of the cutoff are skipped (they may be fading).
+	var cam: Camera3D = main.get_viewport().get_camera_3d()
+	var size := func(o): return o.global_position.distance_to(cam.global_position) * tan(deg_to_rad(cam.fov) * 0.5) / o.LOOK_VIEW_SIZE
+	var near: Array = main.views.filter(func(o): return o != v and size.call(o) < 0.85)
+	var far: Array = main.views.filter(func(o): return o != v and size.call(o) > 1.15)
+	var near_ok: int = near.filter(func(o): return o.pose.look_weight > 0.5).size()
+	var far_ok: int = far.filter(func(o): return o.pose.look_weight < 0.5).size()
+	check(v.pose.look_weight < 0.2 and near_ok == near.size() and far_ok == far.size(),   # the carrier's look fades over ~0.3 s
+		"heads track the ball near the camera (%s): %d/%d near look, %d/%d far don't, carrier %.2f" % [context, near_ok, near.size(), far_ok, far.size(), v.pose.look_weight])
 
 ## #245: after the ball teleports (new spot), heads point at it at once instead of
 ## sweeping across the field: every looking view's look point is already at the ball.

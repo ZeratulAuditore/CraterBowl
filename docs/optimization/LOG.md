@@ -8,6 +8,26 @@ Machine for all entries so far: WSL2 Ubuntu 24.04, i7-11800H (16 threads), RTX 3
 
 ---
 
+## 2026-11-26 — perf-06: where the head look's cost goes, and a camera-distance cutoff (#245)
+
+Same machine and mode as perf-05. **Attribution** (variants of `athlete_pose.gd` swapped into one tree,
+interleaved with the #244 baseline, 3 rounds, scene_frame p50 medians in µs, CPU load 18%): baseline 998;
+`player.gd` target/weight update only 978; the two bone writes only (no math) 1002; the look math only
+(no bone writes) 1032; full look 1055. So the cost is the GDScript math in `_look()` (several `Basis`
+builds and two inverses per athlete), not the bone writes; run-to-run noise is about ±50 µs, so the
+split is rough. **Fix:** heads only turn when the athlete is big enough on screen to see it
+(`player.gd` `head_visible()`: distance × tan(fov/2) < `LOOK_VIEW_SIZE` 16 yd, about 25 yd for the 65°
+follow camera), and views that don't look and have faded out skip the look entirely.
+
+| Tree (3 rounds interleaved, CPU load 48%) | scene_frame p50 | scene_frame p99 |
+|---|---|---|
+| #244 baseline | 958 (927–1013) | 2284 |
+| head look before the cutoff | 1031 (992–1040) | 2410 |
+| head look with the cutoff | 999 (993–1025) | 2550 |
+
+The cutoff cuts the look's cost from about +73 to +41 µs/frame. Not done: rewriting `_look()` to
+rotate in each bone's local frame (fewer `Basis` ops); worth it only if the remaining ~40 µs matters.
+
 ## 2026-11-26 — perf-05: cost of procedural head look (#245)
 
 Machine: native Windows 11, RTX 3060 Ti, Godot 4.3 console exe, `./scripts/perf.sh` (headless bench, so CPU-side
