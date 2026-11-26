@@ -159,3 +159,4 @@ const PUNT_RETURNER_DEPTH := 38.0  # yd past the LOS
 const KICKOFF_DEFAULT_POWER := 0.85    # Space / play clock kickoff
 const AI_FG_MAX := 50.0            # longest field goal (kick distance) a bot tries
 const AI_GO_FOR_IT := 2.0          # bots go for it on 4th & this or less past midfield
+const AI_FAIR_CATCH_PRESSURE := 5.0    # bot returner fair-catches when coverage is this close to the landing spot (#189)

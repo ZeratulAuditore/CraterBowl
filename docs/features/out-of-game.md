@@ -6,8 +6,9 @@ Feature-level doc: how this works **today** on `main`. The in-match game is in t
 ## Identity
 - **Name: Crater Bowl.** The stadium is built inside a lunar crater, which matches the graphics pass (lunar dome stadium, HELIOS vs NEBULA).
   No video game with this name was found (2026-11-25 search). The low-gravity football space is crowded (Gridiron's Chaosball, G-Ball, Zero-G), so the name leans on *crater/bowl*, not *gravity*.
-- **Mark:** a gold football launching out of a cyan-rimmed crater. Wordmark: "CRATER" in cream + "BOWL" in cyan, set in Oswald Bold (OFL), converted to paths.
+- **Mark:** a gold football launching out of a cyan-rimmed crater. Wordmark: "CRATER" in cream + "BOWL" in cyan, set in Graduate (OFL, collegiate block), converted to paths.
   - Sources: `tools/brand/build_logo.py` → `assets/brand/*.svg`; `tools/brand/rasterize.gd` → PNGs (icon 64/256/512, wide and stacked logos).
+  - Type (#125): three roles, all OFL. **Graduate** (collegiate block) for the wordmark, PLAY, nameplates and jersey/yard numbers; **Teko** (broadcast scorebug style) for nav, buttons, headings and the HUD (the default); **Barlow Semi Condensed** for paragraphs. Helpers: `UITheme.display_font()`, `font()`/`ui_font()`, `body_font()`. Teko and Barlow are rescaled by `tools/brand/scale_fonts.py` so their capitals match the sizes the layouts were tuned for. Credits are listed in Settings and `ASSETS.md`.
   - Palette (shared with art direction): space `#07080F`, navy `#0E1424`, cream `#FFF4E0`, cyan `#5CE1FF`, orange `#FF6A1F`, gold `#F2BF26`. Constants are in `src/ui/ui_theme.gd`.
 - **User data** lives in a fixed dir, `crater-bowl` (`config/use_custom_user_dir`), so a future rename can't orphan profiles. On first windowed launch, `Launch.migrate()` copies data from the old `Fourth & Long` dir. It never overwrites, skips `test_*`, and runs once (`.migrated` marker).
 

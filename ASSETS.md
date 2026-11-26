@@ -11,8 +11,9 @@ Only CC0 / permissive assets. Never use assets, names, UI or audio from Gridiron
 | Metal009 | `assets/textures/metal/` | ambientCG | CC0 | Light towers / trusses |
 | Grass004 | `assets/textures/grass/` | ambientCG | CC0 | Turf detail |
 | Space skybox (galaxy) | `assets/sky/` | Kenney (Skyboxes Space) | CC0 (`assets/sky/LICENSE_Kenney.txt`) | Night sky panorama |
-| Oswald (variable) | `assets/fonts/Oswald.ttf` | Google Fonts (github.com/google/fonts) | SIL OFL 1.1 (`assets/fonts/OFL.txt`) | Menu/brand type, jersey + yard numbers |
-| Rajdhani Bold | `assets/fonts/Rajdhani-Bold.ttf` | Google Fonts (github.com/google/fonts) | SIL OFL 1.1 (`assets/fonts/rajdhani_OFL.txt`) | HUD headings |
+| Graduate | `assets/fonts/Graduate-Regular.ttf` | Google Fonts (github.com/google/fonts) | SIL OFL 1.1 (`assets/fonts/graduate_OFL.txt`) | Display type: wordmark, PLAY, names, jersey/yard numbers |
+| Teko (variable) | `assets/fonts/Teko-UI.ttf` (built from `tools/brand/font_src/Teko-VF.ttf`) | Google Fonts (github.com/google/fonts) | SIL OFL 1.1 (`assets/fonts/teko_OFL.txt`) | UI/HUD type: nav, buttons, headings, scorebug. Rescaled by `tools/brand/scale_fonts.py` |
+| Barlow Semi Condensed Medium + SemiBold | `assets/fonts/BarlowSemiCondensed-*-UI.ttf` (built from `tools/brand/font_src/`) | Google Fonts (github.com/google/fonts) | SIL OFL 1.1 (`assets/fonts/barlow_OFL.txt`) | Body type: paragraphs, descriptions, help. Rescaled by `tools/brand/scale_fonts.py` |
 
 Original (made in this repo): stadium bowl/crowd/towers/arches/jumbotron geometry, turf/sky/ribbon/emblem shaders, helmet + facemask + pads, football, overlay.
 

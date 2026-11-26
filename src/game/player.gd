@@ -48,6 +48,8 @@ var emote_t := 0.0
 var spin_vis_t := 0.0      # view-side spin animation (works for net + local)
 var spin_vis_side := 0
 var bubble: Label3D
+var fair_catch_label: Label3D   # "FAIR CATCH" over a signaling returner (#189), built on first use
+var fair_catch_shown := false
 
 var model: Node3D
 var mesh_i: MeshInstance3D
@@ -238,6 +240,26 @@ func emote(id: String) -> void:
 	bubble.text = Emotes.bubble(id)
 	bubble.visible = true
 
+## Fair-catch signal (#189): a raised arm plus a label everyone can read, while the
+## kick is in the air. Change-driven: toggled only when the signal flips.
+func _show_fair_catch(on: bool) -> void:
+	fair_catch_shown = on
+	if on and fair_catch_label == null:
+		fair_catch_label = Label3D.new()
+		fair_catch_label.name = "FairCatchSignal"
+		fair_catch_label.text = "FAIR CATCH"
+		fair_catch_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		fair_catch_label.no_depth_test = true
+		fair_catch_label.pixel_size = 0.0032
+		fair_catch_label.font_size = 64
+		fair_catch_label.outline_size = 16
+		fair_catch_label.modulate = Color(1.0, 1.0, 1.0)
+		fair_catch_label.outline_modulate = Color(0.05, 0.05, 0.1)
+		fair_catch_label.position = Vector3(0, 2.7, 0)
+		add_child(fair_catch_label)
+	if fair_catch_label:
+		fair_catch_label.visible = on
+
 func is_celebrating() -> bool:
 	return celebrate_t > 0.0
 
@@ -310,6 +332,9 @@ func _process(delta: float) -> void:
 		spin_vis_side = athlete.spin_dir
 	spin_vis_t = maxf(0.0, spin_vis_t - delta)
 	_release_t = maxf(0.0, _release_t - delta)
+	var fc: bool = world != null and world.get("fair_catch_id") == athlete.id and int(world.phase) == 1
+	if fc != fair_catch_shown:
+		_show_fair_catch(fc)
 	_choose_anim(spd, down)
 	_was_down = down
 	# Celebration flourishes on top of the dance.
@@ -351,6 +376,9 @@ func _choose_anim(spd: float, down: bool) -> void:
 		return
 	if emote_t > 0.0 and spd < 1.5:
 		_play(Emotes.clip(emote_id), 0.12)
+		return
+	if fair_catch_shown and spd < 1.5:
+		_play("Pistol_Aim_Up", 0.12)   # arm straight up: the fair-catch wave
 		return
 	if athlete.blocking:
 		_play("u2/Idle_Shield")
