@@ -20,6 +20,7 @@ const INPUT_BUFFER_LIMIT := 6  # 100 ms at the 60 Hz sim rate
 const NO_INPUT := {}
 const REFUSE_GRACE := 1.0      # s: server drops a refused peer after this (the client normally hangs up first)
 const FULL_MATCH_REASON := "Match full: every seat is taken"
+const HELLO_TIMEOUT := 5.0      # s: server refuses a peer that never says hello (a pre-#165 build)
 
 enum Mode { OFFLINE, SERVER, CLIENT }
 
@@ -42,6 +43,9 @@ var lobby                      # server: Lobby (set by main)
 var lobby_actions: Array = []  # server: [[peer_id, action], ...]
 var last_snapshot_tick := -1
 var refused_reason := ""       # client: why the host turned us away ("" = not refused)
+var version_refused := false   # client: the refusal was a protocol version mismatch (#165)
+var protocol_version := P.local_version()   # both: announced (client) / required (server) wire version
+var _awaiting_hello := {}      # server: peer_id -> true until its hello arrives (#165)
 
 func _ready() -> void:
 	api = SceneMultiplayer.new()
@@ -71,6 +75,8 @@ func join(address: String, port: int) -> Error:
 		api.server_disconnected.connect(_on_server_disconnected)
 	if not api.connection_failed.is_connected(_on_connection_failed):
 		api.connection_failed.connect(_on_connection_failed)
+	if not api.connected_to_server.is_connected(_say_hello):
+		api.connected_to_server.connect(_say_hello)
 	mode = Mode.CLIENT
 	return OK
 
@@ -93,8 +99,33 @@ func _send(target: int, msg: Dictionary, reliable: bool) -> void:
 	var m := MultiplayerPeer.TRANSFER_MODE_RELIABLE if reliable else MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED
 	api.send_bytes(var_to_bytes(msg), target, m, 0 if reliable else 1)
 
+## Client: the first message on a new connection announces our protocol version (#165).
+func _say_hello() -> void:
+	if mode == Mode.CLIENT:
+		_send(1, P.hello(protocol_version), true)
+
 # ---- server ----
+## A new peer gets nothing until its hello proves a matching protocol version (#165).
+## Builds from before the handshake never send one and are refused after HELLO_TIMEOUT.
 func _on_peer_connected(id: int) -> void:
+	_awaiting_hello[id] = true
+	if is_inside_tree():
+		get_tree().create_timer(HELLO_TIMEOUT).timeout.connect(func():
+			if mode == Mode.SERVER and _awaiting_hello.has(id):
+				_on_hello(id, {}))
+
+func _on_hello(id: int, msg: Dictionary) -> void:
+	if not _awaiting_hello.has(id):
+		return   # one hello per connection
+	_awaiting_hello.erase(id)
+	var why := P.version_refusal(msg.get("v"), protocol_version)
+	if why != "":
+		print("NET peer %d build %s: protocol v%s, need v%d" % [id, str(msg.get("build", "?")).left(32), str(msg.get("v", "?")).left(8), protocol_version])
+		refuse(id, why, true)
+		return
+	_admit(id)
+
+func _admit(id: int) -> void:
 	if lobby_mode and lobby != null and lobby.phase == lobby.Phase.LOBBY:
 		if lobby.is_full():
 			refuse(id, lobby.full_reason())
@@ -111,9 +142,14 @@ func _on_peer_connected(id: int) -> void:
 
 ## Server: tell a peer why it can't join, then drop it. ENet's disconnect discards queued
 ## packets, so the drop waits REFUSE_GRACE (the client hangs up itself on receipt).
-func refuse(id: int, reason: String) -> void:
+func refuse(id: int, reason: String, version_mismatch := false) -> void:
 	print("NET refused peer %d: %s" % [id, reason])
-	_send(id, {"k": "refused", "why": reason}, true)
+	var msg := {"k": "refused", "why": reason}
+	if version_mismatch:
+		msg["v"] = protocol_version
+	_send(id, msg, true)
+	if not is_inside_tree():
+		return
 	get_tree().create_timer(REFUSE_GRACE).timeout.connect(func():
 		if mode == Mode.SERVER and api.get_peers().has(id):
 			peer.disconnect_peer(id))
@@ -126,6 +162,7 @@ func set_assignment(id: int, aid: int) -> void:
 	_send(id, {"k": "welcome", "aid": aid, "size": match_size, "mode": match_mode}, true)
 
 func _on_peer_disconnected(id: int) -> void:
+	_awaiting_hello.erase(id)
 	if lobby != null and lobby.players.has(id):
 		lobby.remove(id)
 		lobby_changed.emit()
@@ -211,10 +248,14 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 	if mode == Mode.CLIENT and refused_reason != "":
 		return   # turned away: ignore anything still in flight
 	match msg.get("k", ""):
+		"hello":
+			if mode == Mode.SERVER:
+				_on_hello(from, msg)
 		"refused":
 			if mode == Mode.CLIENT and from == 1:
 				var why = msg.get("why", "")
 				refused_reason = str(why).left(120) if why is String and why != "" else "The host refused the connection"
+				version_refused = msg.has("v")
 				print("NET refused by host: %s" % refused_reason)
 				refused.emit(refused_reason)
 				peer.close.call_deferred()

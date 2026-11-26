@@ -29,6 +29,7 @@ Bots fill every empty slot, so a 1v1 friend game or a two-player casual queue st
 - Starts automatically when **every player is ready and at least 2 are present**. A host alone can't start a private match.
 - **Seats are capped at the match size** (both teams' slots: 3v3 = 6, 5v5 = 10, 7v7 = 14 players, host included; #54). A joiner beyond that is turned away and their screen shows `COULDN'T JOIN THE MATCH` with the reason (`Lobby full: 3v3 seats 6 players`). Nobody waits in a lobby they can never play from. There are no spectators yet (#20).
 - **The host can't shrink the match below the players already present.** Pressing 3/5 or M (Chaosball is 3v3) with too many players is refused, and the host lobby shows why (`Can't switch to 3v3: 7 players here, 6 seats. Someone has to leave first.`). Nobody is kicked. Growing the match is always allowed.
+- **Mismatched builds are turned away (#165).** Every client says which protocol version it speaks before the host seats it. If the host runs a different version, the joiner's screen shows `COULDN'T JOIN THE MATCH` and `Update Crater Bowl to play online (server is v2, you have v1)` (or, when the joiner is the newer one, `This server runs an older Crater Bowl …`). A build from before this check is turned away after 5 s with `… you have an older build`. Queueing at a matchmaker on another version returns to the menu with the same reason (the footer clips it today: #221). How it works and when the version is bumped: [netcode](../design/netcode.md#version-handshake-165).
 - Players who join after kickoff go straight into a free slot. With every seat taken they're turned away with `Match full: every seat is taken`. ENet allows at most 13 clients (14 humans, a full 7v7).
 
 ### Team and position online
@@ -73,6 +74,7 @@ Bots fill every empty slot, so a 1v1 friend game or a two-player casual queue st
 ## Design decisions
 - **A menu choice is a CLI launch** (`{"host": true}` == `--host`), so the menu runs the same paths `net_test.sh`/`mm_test.sh` cover ([out-of-game.md](out-of-game.md)).
 - **Peer-hosted, matchmaker only brokers.** The matchmaker never carries game traffic. That keeps hosting free but leaves CGNAT players unable to host (#32, #21).
+- **Refuse mismatched builds up front (#165)** instead of letting them connect and desync. One integer (`Protocol.VERSION`) decides compatibility, not the release number: two releases can be wire-compatible, and an exact integer check is cheap and obvious. The matchmaker refuses rather than queueing each version separately; serving two versions during a rollout matters only once there's a hosted server (#222, part of #166).
 - **Invite code = address.** No server is needed to resolve codes. The downside is that a code changes whenever the host's IP or port does.
 - **Queue matches start only with the full matched group** (`Lobby.expected`), so no one is seated by a bot because they joined late.
 - **No team or position changes online.** The old team/slot requests are rejected rather than kept as an online position-selection API ahead of #18.
@@ -89,7 +91,7 @@ Bots fill every empty slot, so a 1v1 friend game or a two-player casual queue st
 - `src/net/lobby_registry.gd`, `src/net/lobby_advertiser.gd`, `src/ui/server_browser.gd`: match browser.
 - `src/net/port_mapper.gd`: UPnP. `src/sim/roster.gd`: slots, auto-assign.
 - `src/game/main.gd` (`_host_game`, `_join_game`, `_queue_up`, `_step_lobby`, `_start_from_lobby`) and `src/ui/main_menu.gd` (`_screen_online`, `_queue`, `host_match`, `_with_port`).
-- Tests: `tests/test_lobby.gd`, `tests/test_matchmaker.gd`, `tests/test_protocol.gd`, `tests/test_roster.gd`, `tests/test_out_of_game.gd` (registry, advertiser, public-IP check), `tests/test_port_mapper.gd` (UPnP map/unmap lifetime with a fake router), `tests/net_host.gd` + `tests/net_client.gd` via `scripts/net_test.sh` (second phase: SIGKILLs the host and expects the client on the menu with "Host disconnected", #56), `tests/visual/host_lost_test.gd` (rendered menu after the host quits), `scripts/mm_test.sh` (`MODE=casual|competitive|party|chaos`), `tests/menu_flow.gd` (classic and Chaosball private hosts), `tests/visual/private_lobby_chaosball_test.gd` (rendered Chaosball lobby), `tests/visual/size_picker_chaosball_test.gd` (Size row locked to 3v3 under Chaosball, #83).
+- Tests: `tests/test_lobby.gd`, `tests/test_matchmaker.gd`, `tests/test_protocol.gd`, `tests/test_roster.gd`, `tests/test_out_of_game.gd` (registry, advertiser, public-IP check), `tests/test_port_mapper.gd` (UPnP map/unmap lifetime with a fake router), `tests/net_host.gd` + `tests/net_client.gd` via `scripts/net_test.sh` (second phase: SIGKILLs the host and expects the client on the menu with "Host disconnected", #56), `tests/visual/host_lost_test.gd` (rendered menu after the host quits), `scripts/mm_test.sh` (`MODE=casual|competitive|party|chaos`), `tests/menu_flow.gd` (classic and Chaosball private hosts), `tests/visual/private_lobby_chaosball_test.gd` (rendered Chaosball lobby), `tests/visual/size_picker_chaosball_test.gd` (Size row locked to 3v3 under Chaosball, #83), `tests/test_protocol_version.gd` + `tests/visual/version_mismatch_test.gd` + `net_test.sh` phase 3 (version handshake, #165).
 
 ## Open issues
 - #14 C32 Co-op vs bots playlist + bot difficulty
@@ -106,4 +108,6 @@ Bots fill every empty slot, so a 1v1 friend game or a two-player casual queue st
 - #48 Decide: host the public matchmaker (VPS/AWS + DNS)?
 - #85 Joining a bad code / unreachable host hangs forever
 - #86 A crashed host takes ~10 s to detect
+- #221 Menu footer status clips long reasons
+- #222 Matchmaker serves more than one protocol version during a rollout
 - #75 Stadium screen shows a running-match clock in the private lobby
