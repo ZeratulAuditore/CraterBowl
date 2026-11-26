@@ -176,6 +176,7 @@ func _setup() -> void:
 			check(launch._xlate.get(KEY_K) == KEY_SPACE, "translation live")
 			menu.show_screen("online")
 			menu.pick_size = 3
+			menu.pick_mode = "classic"   # earlier steps picked Chaosball; this host covers classic size
 			menu.list_public = true
 			launch.settings.upnp = true
 			menu.host_match()],
@@ -185,7 +186,8 @@ func _setup() -> void:
 			check(g.is_server() and g.lobby.code != "", "hosting a lobby (%s)" % g.lobby.code)
 			check(g.hud.text.contains("No UPnP router found") and g.hud.text.contains("UDP port %d" % HOST_PORT),
 				"host lobby shows the UPnP failure and custom UDP port")
-			check(g.match_size == 3, "size from menu")
+			check(g.match_size == 3 and g.lobby.settings.get("size") == 3, "size from menu")
+			check(g.lobby.settings.get("mode") == "classic", "classic pick hosts a classic lobby")
 			check(g.player_name == "Ace", "name from settings")
 			check(g.get_node_or_null("Advertiser") != null, "public lobby advertiser attached")],
 		[800, func():
@@ -252,7 +254,26 @@ func _setup() -> void:
 			check(not help.visible, "Controls toggles the existing help")
 			_key(KEY_ESCAPE)],
 		[970, func():
-			check(launch._overlay == null and not paused, "Esc closes overlay")],
+			check(launch._overlay == null and not paused, "Esc closes overlay")
+			launch.go_to_menu()],
+		[1000, func():
+			# #74: Chaosball picked under Online must carry into a private host lobby.
+			var m = current_scene
+			m.host_port = HOST_PORT
+			launch.settings.upnp = false
+			m.list_public = false
+			m.show_screen("online")
+			m.pick_size = 7
+			_btn(m.content, "Chaosball (3v3, low-g)").pressed.emit()
+			check(m.pick_mode == "chaosball", "online Rules picker selects Chaosball")
+			m.host_match()],
+		[1100, func():
+			var g = current_scene
+			check(g != null and g.scene_file_path == launch.GAME_SCENE and g.is_server() and g.in_lobby(), "chaosball host -> private lobby")
+			check(g.lobby.settings.get("mode") == "chaosball" and g.lobby.settings.get("size") == 3,
+				"private lobby keeps the menu's Chaosball 3v3 %s" % str(g.lobby.settings))
+			check(g.hud.text.contains("Chaosball 3v3"), "lobby HUD shows Chaosball 3v3")
+			launch.go_to_menu()],
 	]
 
 func _physics_process(_dt: float) -> bool:
@@ -260,7 +281,7 @@ func _physics_process(_dt: float) -> bool:
 	while not steps.is_empty() and frame >= steps[0][0]:
 		var s = steps.pop_front()
 		s[1].call()
-	if steps.is_empty() or frame > 1200:
+	if steps.is_empty() or frame > 1400:
 		for f in ["test_menu_settings.cfg"]:
 			DirAccess.remove_absolute("user://" + f)
 		print("MENU FLOW %s" % ("PASS" if ok and steps.is_empty() else "FAIL"))

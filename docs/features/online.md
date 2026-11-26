@@ -25,7 +25,7 @@ Bots fill every empty slot. Everything runs peer-hosted: there are no dedicated 
 - HUD: `PRIVATE MATCH LOBBY  Invite code: …`, settings and names (✓ = ready).
 - **Enter** toggles ready. The host can press **3/5/7** for team size, **M** for classic/Chaosball, **Q** for halves/quarters and **H** for the duration. Defaults are 7v7 and five-minute halves. See [clock rules](rules.md#clock-srcsimclockgd) for the duration choices.
 - Any settings change un-readies everyone except the host.
-- Hosting from the menu with Chaosball selected opens a classic 3v3 lobby. Press **M** to switch to Chaosball (#74).
+- Hosting from the menu with Chaosball selected opens the lobby in Chaosball 3v3, whatever size was picked (`--host --mode=chaosball` does the same). The host can still press **M** to switch back to classic (#74).
 - Starts automatically when **every player is ready and at least 2 are present**. A host alone can't start a private match.
 - Players who join after kickoff go straight into a free slot. Up to 13 clients (14 humans).
 
@@ -83,7 +83,7 @@ Bots fill every empty slot. Everything runs peer-hosted: there are no dedicated 
 - `src/net/lobby_registry.gd`, `src/net/lobby_advertiser.gd`, `src/ui/server_browser.gd`: match browser.
 - `src/net/port_mapper.gd`: UPnP. `src/sim/roster.gd`: slots, auto-assign.
 - `src/game/main.gd` (`_host_game`, `_join_game`, `_queue_up`, `_step_lobby`, `_start_from_lobby`) and `src/ui/main_menu.gd` (`_screen_online`, `_queue`, `host_match`, `_with_port`).
-- Tests: `tests/test_lobby.gd`, `tests/test_matchmaker.gd`, `tests/test_protocol.gd`, `tests/test_roster.gd`, `tests/test_out_of_game.gd` (registry, advertiser, public-IP check), `tests/net_host.gd` + `tests/net_client.gd` via `scripts/net_test.sh`, `scripts/mm_test.sh` (`MODE=casual|competitive|party|chaos`), `tests/menu_flow.gd`.
+- Tests: `tests/test_lobby.gd`, `tests/test_matchmaker.gd`, `tests/test_protocol.gd`, `tests/test_roster.gd`, `tests/test_out_of_game.gd` (registry, advertiser, public-IP check), `tests/net_host.gd` + `tests/net_client.gd` via `scripts/net_test.sh`, `scripts/mm_test.sh` (`MODE=casual|competitive|party|chaos`), `tests/menu_flow.gd` (classic and Chaosball private hosts), `tests/visual/private_lobby_chaosball_test.gd` (rendered Chaosball lobby).
 
 ## History
 - 010 [Networking core](../iterations/010-networking-core.md)
@@ -114,5 +114,4 @@ Bots fill every empty slot. Everything runs peer-hosted: there are no dedicated 
 - #57 UPnP port mapping is never removed after hosting
 - #58 Dead matchmaker code: whoami/you path and snake_teams
 - #59 Competitive team seating is keyed by display name
-- #74 Private host lobby ignores the menu's Chaosball selection
 - #75 Stadium screen shows a running-match clock in the private lobby
