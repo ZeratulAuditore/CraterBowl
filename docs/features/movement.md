@@ -16,9 +16,9 @@ Defaults from `src/ui/controls.gd`; every keyboard action can be rebound in Sett
 |---|---|---|
 | Move | W A S D (camera-relative) | left stick |
 | Sprint | Shift | LT or L3 |
-| Dash | C | D-pad down |
-| Spin | F | Y |
-| Dive tackle | E | B |
+| Dash (needs a charge) | R | D-pad down |
+| Spin left / right | Q / E | X / Y |
+| Dive tackle | F | B |
 | Block (shield) | hold right mouse | none |
 | Snap / break stance | Space | A |
 | Look / aim | mouse (middle drag pre-snap) | none (#33) |
@@ -37,12 +37,13 @@ Passing, handoff and play-call keys are in [offense.md](offense.md).
 
 ### Dash and spin
 - Only during live play, only with at least one charge, not while diving, grounded or already in a move.
+  Pressing R or Q/E without a charge does nothing; the empty circles by the stamina bar are the cue.
 - The move goes in your input direction (or your facing if no input) and locks steering for its duration.
 
 | Move | Speed | Time | Distance | Extra effect |
 |---|---|---|---|---|
-| Dash (C) | `DASH_SPEED` 13.0 | `DASH_TIME` 0.22 s | about 2.9 yd | breaks your current block |
-| Spin (F) | `SPIN_SPEED` 7.5 | `SPIN_TIME` 0.32 s | about 2.4 yd | breaks your block; can't be tackled or blocked while spinning |
+| Dash (R) | `DASH_SPEED` 13.0 | `DASH_TIME` 0.22 s | about 2.9 yd | breaks your current block |
+| Spin (Q / E) | `SPIN_SPEED` 7.5 | `SPIN_TIME` 0.32 s | about 2.4 yd | breaks your block; can't be tackled or blocked while spinning |
 
 - Charges: up to 2 (two circles next to the stamina bar). Each move costs 1. You earn `MOVE_CHARGE_PER_YARD`
   (0.05) per yard moved during live play, so one charge per 20 yd. Standing still, being in a move, and pre-snap
@@ -50,7 +51,7 @@ Passing, handoff and play-call keys are in [offense.md](offense.md).
 - You can't throw or dive during a move. A move cancels the shield.
 
 ### Dive tackle
-- **E** launches a dive in your facing direction at `DIVE_SPEED` (11 yd/s) for `DIVE_TIME` (0.35 s), about 3.9 yd.
+- **F** launches a dive in your facing direction at `DIVE_SPEED` (11 yd/s) for `DIVE_TIME` (0.35 s), about 3.9 yd.
 - Any opponent of the carrier whose dive brings him within `TACKLE_REACH` (1.0 yd) tackles him, unless the carrier is
   spinning. A tackle can also strip the ball (rules link above).
 - After the dive you are grounded for `DIVE_RECOVER` (1.0 s), sliding to a stop. Grounded players don't collide or block.
@@ -66,6 +67,8 @@ Passing, handoff and play-call keys are in [offense.md](offense.md).
   shapes the post-dive slide.
 - Charges come from distance run, not time, so players can't bank moves standing in the huddle.
 - Spin gives tackle and block immunity; dash is faster but gives neither. That is the trade-off between the two.
+- Default keys match Gridiron (#138): Q/E spin, F dive, R dash. Dash used to be C; next play moved off R to
+  Enter. Why, and how saved bindings migrate: [CONTROLS.md](../CONTROLS.md#why-this-layout-138).
 
 ## Code and tests
 - `src/sim/player_motion.gd` — run/sprint speed, stamina, lockout, clamping.
@@ -74,7 +77,8 @@ Passing, handoff and play-call keys are in [offense.md](offense.md).
 - `src/ui/controls.gd` — action table, rebinding, gamepad map. `src/ui/launch.gd` — gamepad to key translation.
 - `src/game/main.gd` — `read_input` (camera-relative), key handling. `src/game/overlay.gd` — stamina bar, charge circles.
 - Tests: `tests/test_player_motion.gd`, `tests/test_live_controls.gd`, `tests/test_tackling.gd`,
-  `tests/test_turnovers.gd`, `tests/game_flow.gd` (C and F consume charges), `tests/menu_flow.gd` (rebinding, gamepad).
+  `tests/test_turnovers.gd`, `tests/test_controls.gd` (default keys, saved-binding migration),
+  `tests/game_flow.gd` (R and E consume charges, R without a charge does nothing, F dives), `tests/menu_flow.gd` (rebinding, gamepad).
 
 ## Open issues
 - #5 C03 Movement moveset: jump, dive, dash, spin, stiff-arm

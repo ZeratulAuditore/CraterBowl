@@ -34,7 +34,7 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
   `FORWARD_PROGRESS_BANNER` in `src/sim/tuning.gd`.
 - Four downs; failing on 4th is a turnover on downs, new offense at the mirrored spot (`goal − spot`).
 - Snap: Space by any offensive human. If nobody snaps, the 20 s play clock (`Clock.PLAY_CLOCK`) auto-snaps.
-- Next play starts `NEXT_PLAY_DELAY` (2.0 s) after the whistle; R skips the wait (offline or host only).
+- Next play starts `NEXT_PLAY_DELAY` (2.0 s) after the whistle; Enter skips the wait (offline or host only; it was R before #138).
 
 ### Scoring and tries
 | Event | Points | Then |
@@ -73,7 +73,7 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
   sideline stops, first downs, scores, turnovers and tries stop it.
 - **One-minute warning** once per half. In quarters, it applies in Q2 and Q4. A live play finishes first. A crossing
   between plays stops the clock at 1:00.
-- **Timeouts:** U, outside live play, by either team; the scorebug shows pips. Resets the play clock if pre-snap.
+- **Timeouts:** T, outside live play, by either team; the scorebug shows pips. Resets the play clock if pre-snap.
   Counts reset at halftime. No gamepad binding.
 - A period can end between snaps when the running clock hits 0:00. A play in progress at 0:00 finishes, and a touchdown on it still gets its try.
 - At the end of Q1 and Q3, the next period starts with the same possession, down, spot and remaining timeouts.

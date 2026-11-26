@@ -148,8 +148,8 @@ func _initialize() -> void:
 		[4603, func(): before_id = main.my_id; _key(KEY_TAB)],
 		[4604, func(): check(main.pres.overlay.scoreboard.visible and main.my_id == before_id, "Tab shows scoreboard with fixed assignment"); _key(KEY_TAB, false)],
 		[4605, func(): check(not main.pres.overlay.scoreboard.visible, "scoreboard closes on release"); _key(KEY_SPACE)],
-		[4606, func(): check(main.world.phase == main.World.Phase.LIVE, "Space key snaps"); _key(KEY_C)],
-		[4607, func(): check(main.player.athlete.move_charge == 1.0, "C consumes one dash charge")],
+		[4606, func(): check(main.world.phase == main.World.Phase.LIVE, "Space key snaps"); _key(KEY_R)],
+		[4607, func(): check(main.player.athlete.move_charge == 1.0, "R consumes one dash charge")],
 		[4625, func(): _key(KEY_E)],
 		[4626, func(): check(main.player.athlete.is_spinning() and main.player.athlete.move_charge < 1.0, "E (spin right) consumes one spin charge")],
 		# Defense Space unlocks a stance without snapping.
@@ -250,13 +250,13 @@ func _initialize() -> void:
 				back.position.x = -0.5],
 		[7932, func():
 			check(main.world.phase == main.World.Phase.DEAD and main.stats.total("car") == 1 and main.stats.total("rush_yds") > 0.0, "whistle records the RB's rushing attempt and gain")],
-		# C04a: U from dead ball, then the one-minute warning at the next whistle.
+		# C04a: T from dead ball, then the one-minute warning at the next whistle.
 		[7950, func():
 			main.configure(3)
 			main.ai.defense_enabled = false
 			main.series.clock.remaining = 60.1
-			_key(KEY_U)
-			check(main.series.clock.timeouts == [1, 2], "U spends a timeout in 3v3")
+			_key(KEY_T)
+			check(main.series.clock.timeouts == [1, 2], "T spends a timeout in 3v3")
 			check(main.pres.overlay.banner.text == "TIMEOUT", "timeout banner appears")
 			_key(KEY_SPACE)],
 		[7970, func():
@@ -266,8 +266,8 @@ func _initialize() -> void:
 			var overlay = main.pres.overlay
 			check(overlay.field_strip.is_visible_in_tree() and overlay.play_clock_l.text == "",
 				"the field strip remains live and the play clock clears on snap")
-			_key(KEY_U)
-			check(main.series.clock.timeouts == [1, 2], "U cannot call timeout during the play")
+			_key(KEY_T)
+			check(main.series.clock.timeouts == [1, 2], "T cannot call timeout during the play")
 			main.world.carrier().position.x = -0.5],
 		[7974, func():
 			check(main.world.phase == main.World.Phase.DEAD and main.pres.overlay.banner.text == "ONE-MINUTE WARNING", "warning appears after the whistle")],
@@ -296,7 +296,7 @@ func _initialize() -> void:
 		[9002, func(): var t: Vector2 = main.Drills.target_list(main.field)[0]["pos"]; main.world.get_athlete(main.my_id).position = t - Vector2(0, 10); main.aim_point = t],
 		[9030, func(): _key(KEY_J); check(main.drill.throws == 1, "practice-field throw with the real throw path")],
 		[9200, func(): check(main.drill.hits == 1 and main.drill.points >= 1, "hit the short target (%s)" % main.drill.last_result); check(main.world.ball.is_held_by(main.my_id), "ball back in your hands"); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.training_path))],
-		# Gridiron controls: POV aim + throw (mouse look), Q/E spin, F dive, wheel/T taunt
+		# Gridiron controls: POV aim + throw (mouse look), Q/E spin, F dive, wheel/C taunt
 		[12400, func(): main.configure(7); main.ai.defense_enabled = false; main.pov_enabled = true],
 		[12402, func(): check(main.pov_active(), "QB presnap: POV aim active"); check(absf(main.aim_yaw) < 0.001, "aim starts downfield"); _key(KEY_SPACE)],
 		[12405, func(): check(main.pov_active(), "POV stays on while the snap is in the air")],
@@ -317,6 +317,13 @@ func _initialize() -> void:
 		[12540, func(): check(main.world.ball.is_held_by(main.controlled_id), "QB has the ball"); _key(KEY_E); check(main.world.get_athlete(main.controlled_id).is_spinning() and main.world.get_athlete(main.controlled_id).spin_dir == 1, "E spins right")],
 		[12543, func(): check(main.views[main.controlled_id].spin_vis_t > 0.0, "spin animates the athlete")],
 		[12640, func(): _key(KEY_Q); check(main.world.get_athlete(main.controlled_id).spin_dir == -1, "Q spins left")],
+		# #138: R dashes only with a charge. Both charges are spent (E, Q): R does nothing.
+		[12670, func():
+			var qb = main.world.get_athlete(main.controlled_id)
+			var c0: float = qb.move_charge
+			check(main.world.phase == main.World.Phase.LIVE and c0 < 1.0 and qb.move_t == 0.0, "both move charges spent (%.2f)" % c0)
+			_key(KEY_R)
+			check(qb.move_t == 0.0 and qb.move_charge == c0, "R without a charge does not dash")],
 		[12680, func(): main.world.get_athlete(main.controlled_id).facing = Vector2(0, 1); _key(KEY_F); check(main.world.get_athlete(main.controlled_id).is_diving(), "F dives with the ball")],
 		[12720, func(): check(main.world.phase == main.World.Phase.DEAD and main.last_whistle == "TACKLE", "carrier dive: down where he lands (%s)" % main.last_whistle)],
 		[12721, func():
@@ -325,9 +332,9 @@ func _initialize() -> void:
 			ev.pressed = true
 			main._unhandled_input(ev)
 			check(main.emote_picker.index == 1 and main.emote_picker.show_t > 0.0, "wheel scrolls the taunt picker")
-			_key(KEY_T)
+			_key(KEY_C)
 			var v = main.views[main.controlled_id]
-			check(v.emote_t > 0.0 and v.emote_id == main.emote_picker.selected() and v.bubble.visible, "T performs the selected taunt (%s)" % v.emote_id)
+			check(v.emote_t > 0.0 and v.emote_id == main.emote_picker.selected() and v.bubble.visible, "C performs the selected taunt (%s)" % v.emote_id)
 			main.ai.defense_enabled = true
 			main.pov_enabled = false],   # later steps aim at a field point
 		# C04c (#89): Q1 runs out on a live play snapped with Space -> after the whistle the
@@ -381,9 +388,12 @@ func _initialize() -> void:
 			check(main.world.phase == main.World.Phase.LIVE, "Space starts the last play of Q1")
 			main.series.clock.remaining = 0.0
 			main.world.carrier().position.x = -0.5],
-		[12228, func(): _key(KEY_R)],
+		[12228, func():
+			_key(KEY_R)
+			check(main.series.clock.quarter == 1 and main.world.phase == main.World.Phase.DEAD, "R (dash) no longer advances the play (#138)")
+			_key(KEY_ENTER)],
 		[12238, func():
-			check(main.series.clock.quarter == 2 and main.series.downs.down == 2 and main.world.offense_team == 0, "R advances to Q2 and preserves the drive")
+			check(main.series.clock.quarter == 2 and main.series.downs.down == 2 and main.world.offense_team == 0, "Enter advances to Q2 and preserves the drive")
 			check(main.pres.overlay.clock_l.text == "Q2 2:00", "scorebug updates to Q2")
 			main.ai.defense_enabled = true],
 		# C06a (#98): forward progress. Space snaps; a linebacker meets the QB and drives him back
