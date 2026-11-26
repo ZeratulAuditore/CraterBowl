@@ -32,14 +32,16 @@ Kick flight is a ballistic solve: `world.kick_velocity(kind, from, target, power
 - `src/sim/match.gd`: toss, `_kickoff`, kick outcomes and spots
 - `src/sim/tuning.gd`: `KICK_*`, `PUNT_*`, `FG_*`, `ONSIDE_*`, `AI_FG_MAX`
 - `src/sim/ai.gd`: `_kick_protect`, `_bot_kick`, `_kick_coverage`, the 4th-down rule
+- `src/sim/stats.gd`: kicking stats (#67): FG made/att/long, XP, punts and gross yards, kick and punt return yards. Rules and display: `progression.md` "Stats"
 - `src/game/main.gd`: K / 1 / 2 handling, instant kick input in `_set_charging()`, distance-based `kick_power()` and arc preview
 - Tests:
   - `tests/test_kicking.gd`: about 30 tests, including a full bot match with kicks
+  - `tests/test_kicking_stats.gd`: kicking stats from real kicks, and a bot match whose FG/XP stats must match the scoreboard; `tests/visual/kicking_stats_test.gd` captures them in the game overview
   - `tests/game_flow.gd`: toss, aimed kickoff + arc + return, K punt, K K field goal
   - The scoring, clock and match-size tests expect live kickoffs
 
 ## Open issues
-- #67 D06 Kicking stats: FG made/att + long, punt avg, kick/punt return yards
+- #172 Kick and punt return touchdowns are credited as defensive TDs
 - #68 D07 Kick meter art: stepped power meter beside the kicker + ball on a tee
 - #69 D08 Fair catch + bot 2-pt decisions
 - #42 C27 Backyard rules / trick plays (onside kick mutator)

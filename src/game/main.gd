@@ -285,7 +285,7 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	_start_series()
 	world.event.connect(_on_world_event)
 	stats = Stats.new()
-	stats.attach(world, owner_name)
+	stats.attach(world, owner_name, series)
 	replay = Replay.new()
 	replay.attach(world)
 	replay.meta = {"size": match_size, "mode": match_mode}
@@ -644,7 +644,7 @@ func _match_contexts(ratings: Dictionary) -> Dictionary:
 		for k in stats.lines:
 			if k.get_slice("|", 0) == nm:
 				for f in stats.lines[k]:
-					line[f] = maxf(line.get(f, 0.0), float(stats.lines[k][f])) if f == "max_td_pts" else line.get(f, 0.0) + float(stats.lines[k][f])
+					line[f] = maxf(line.get(f, 0.0), float(stats.lines[k][f])) if f in Stats.MAX_FIELDS else line.get(f, 0.0) + float(stats.lines[k][f])
 		var t: int = team_of[nm]
 		out[nm] = {"line": line, "won": series.winner() == t, "deficit": series.max_deficit[t],
 			"rating": ratings.get(nm, 0.0), "mode": match_mode}
