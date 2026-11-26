@@ -6,8 +6,10 @@ extends SceneTree
 
 const MMServer := preload("res://src/net/mm_server.gd")
 const MMClient := preload("res://src/net/mm_client.gd")
-const MM_PORT := 24811
-const HOST_PORT := 24812
+# Random per run (override: MENU_MM_PORT): fixed ports made parallel smoke runs from different
+# sessions/worktrees collide ("matchmaker up" failed). Same pattern as net_test.sh / mm_test.sh.
+var MM_PORT := int(OS.get_environment("MENU_MM_PORT")) if OS.get_environment("MENU_MM_PORT") != "" else 26000 + (Time.get_ticks_usec() + OS.get_process_id() * 7) % 1800 * 2
+var HOST_PORT := MM_PORT + 1
 
 class Rec:
 	var opts := {}

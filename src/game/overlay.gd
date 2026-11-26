@@ -38,6 +38,12 @@ var banner_sub: Label
 var banner_t := 0.0
 var hints: Label
 var _prev := {}
+## HUD text/state refresh rate. Nothing on the scorebug changes faster than ~10 Hz, and
+## rebuilding a dozen strings + label layouts every render frame cost ~1 ms/frame
+## (docs/optimization/LOG.md). Animated bits (throw bar, banner) still run per frame.
+const TEXT_HZ := 20.0
+var _text_t := 0.0
+var _was_pre_game := true
 
 func _ready() -> void:
 	layer = 5
@@ -289,7 +295,19 @@ func refresh(main, delta: float) -> void:
 			ls.outline_color = Color(0.02, 0.03, 0.08, 0.9)
 			main.hud.label_settings = ls
 	if pre_game or s == null:
+		_was_pre_game = true
 		return
+	# Per frame: the throw meter (it fills while you hold) and the banner animation.
+	throw_panel.visible = main.charging
+	if main.charging:
+		throw_bar.value = main.charge
+		throw_l.text = "LOB" if main.lob_held() else "THROW"
+	_animate_banner(delta)
+	_text_t -= delta
+	if _text_t > 0.0 and not _was_pre_game:
+		return
+	_text_t = 1.0 / TEXT_HZ
+	_was_pre_game = false
 	for t in 2:
 		(team_tab[t] as ColorRect).color = main.TEAM_COLORS[t]
 		(team_score[t] as Label).text = str(s.score[t])
@@ -305,10 +323,6 @@ func refresh(main, delta: float) -> void:
 	status_l.text = _status_text(main)
 	_refresh_card(main)
 	_refresh_me(main)
-	throw_panel.visible = main.charging
-	if main.charging:
-		throw_bar.value = main.charge
-		throw_l.text = "LOB" if main.lob_held() else "THROW"
 	me_panel.visible = not final
 	card.visible = not final
 	bug.visible = true
@@ -319,7 +333,10 @@ func refresh(main, delta: float) -> void:
 	elif not _prev.is_empty() and _prev["k"][0] != key[0] and _prev["k"][1] == 4 and _prev.get("score", []) == s.score and not final:
 		show_banner("TURNOVER ON DOWNS", "", ALERT, 1.8)
 	_prev = {"k": key, "score": s.score.duplicate()}
-	# Banner animation: punch in, hold, fade.
+	hints.text = _hints(main)
+
+## Banner animation: punch in, hold, fade (every frame).
+func _animate_banner(delta: float) -> void:
 	if banner_t > 0.0:
 		banner_t = maxf(0.0, banner_t - delta)
 		var age := 3.0 - banner_t
@@ -332,7 +349,6 @@ func refresh(main, delta: float) -> void:
 	else:
 		banner.visible = false
 		banner_sub.visible = false
-	hints.text = _hints(main)
 
 func _down_text(main) -> String:
 	var s = main.series
