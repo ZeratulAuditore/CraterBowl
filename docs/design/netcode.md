@@ -9,7 +9,9 @@ see when hosting, joining, queueing) lives in `docs/features/` (online play). La
 
 - **Listen server.** The host runs the authoritative sim and also plays as peer 1 (`main.gd:LOCAL_PLAYER`).
   Clients talk only to the host. `NetSession` (`src/net/net_session.gd`) is a `Node` with its own
-  `SceneMultiplayer`, used only for raw `send_bytes` / `peer_packet` (no RPCs).
+  `SceneMultiplayer`, used only for raw `send_bytes` / `peer_packet` (no RPCs). Why: high-level RPCs and
+  `MultiplayerSynchronizer` tie sim state to scene nodes, which fights the pure sim, while our own snapshot codec
+  keeps bandwidth explicit and testable. Lockstep was rejected as too fragile over the internet with 14 athletes.
 - Game port `NetSession.DEFAULT_PORT = 24565`, `MAX_PEERS = 13` (7v7 minus the host). Queue hosts use
   `main_menu.gd:QUEUE_HOST_PORT = 24566` from the menu, or a random 25000–29999 if `--host-port` isn't given.
 - **Rates:** sim 60 Hz (physics tick); client input sent every tick (60 Hz); snapshots every
@@ -107,6 +109,9 @@ The quarter fields extend the clock array after its four original entries. If th
 
 ## Client prediction (`client_predictor.gd`)
 
+Predict our own athlete, interpolate everyone else. Interpolating ourselves too makes controls lag by the round trip,
+and full rollback of the whole sim is overkill when the host owns every contact.
+
 1. `main.gd:_physics_process` (client): `predictor.record(dir, sprint, dt, block)` → `seq`;
    `net.send_input(..., seq)`; `world.predict_step(me, ...)` moves only the local athlete (stance lock and
    neutral zone apply, `world.gd:predict_step`). A held ball is pinned to the predicted carrier.
@@ -178,7 +183,12 @@ messages are reliable on channel 0.
 - `port_mapper.gd:open_port` (on a `Thread` via `open_port_async`, from `main_menu.gd:_with_port` for host
   and queue): UPnP discover 2 s, map UDP `port→port` for 4 h, query the external IP, reject non-public
   (CGNAT, private) addresses. The launch options carry any failure notice into the host lobby (#47).
-  `close_port` is unused, so the lease expires on its own. Relay support is tracked in #32.
+  Each accepted mapping is kept in `_mapped` with the `UPNP` object that found the gateway, so removal
+  needs no second discovery. `Launch.go_to_menu` calls `release_all_async()` (forget now, delete on a
+  `WorkerThreadPool` task; a port re-mapped before the task runs is skipped), and a `QuitGuard` node under
+  `/root`, installed by the first `open_port_async`, calls `release_all()` on `NOTIFICATION_WM_CLOSE_REQUEST`
+  or `NOTIFICATION_EXIT_TREE`. Release is idempotent; a refused delete is dropped and the 4 h lease is the
+  fallback (#57). `upnp_factory` lets tests inject a fake router. Relay support is tracked in #32.
 
 ## Trust model and known limits
 

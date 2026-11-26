@@ -9,7 +9,7 @@ looped. It's short on purpose: each section links to the doc that owns the detai
 | **What to work on, status, bugs, ideas** | **GitHub issues** (`gh issue list`), rules in `docs/workflow.md` |
 | How a feature plays today (feature level) | `docs/features/<area>.md` |
 | How it's built (design level) | `docs/design/` (architecture, netcode, voice chat) |
-| Vision and pillars, history | `docs/vision.md`, `ITERATIONS.md`, `docs/iterations/` |
+| Vision and pillars, history | `docs/vision.md`; history is merged PRs, closed issues and `git log` |
 | Old ids (`B09`, `C05`…) → issue # | `docs/backlog/legacy-ids.md` |
 | How to test anything without a window | `docs/TESTING.md` |
 | Performance rules, budgets, measuring | `docs/optimization/README.md`, `docs/optimization/LOG.md` |
@@ -61,11 +61,11 @@ or push `main` yourself, and never merge a PR (not even your own, not even when 
 Every unit of work, whether a loop iteration, a bug fix or a perf pass, has the same shape:
 
 1. **Orient.** `git log --oneline -10`, the issue you're on (or `docs/workflow.md` → find work), and `./scripts/check.sh --fast`. If it's red, fixing it is the job (open a `type:bug` issue for it).
-2. **Define done first.** Write acceptance criteria as testable statements (`docs/iterations/NNN-*.md` for loop items).
+2. **Define done first.** Write acceptance criteria as testable statements in the issue (Scope / Accept).
 3. **Smallest complete change.** One item per loop. Rules in `src/sim`, visuals in `src/game`.
 4. **Gate.** `./scripts/check.sh` must print `CHECK PASS`. Add tests for every criterion *before* calling it done.
 5. **Look** at visual changes with `./scripts/shot.sh` and actually view the PNGs.
-6. **Record.** Docs that own what you changed (below), `ITERATIONS.md` (cite the issue), and the issue itself (link the PR or narrow it).
+6. **Record.** Docs that own what you changed (below), the PR description (what, why, tests, follow-up issues), and the issue itself (link the PR or narrow it).
 7. **Ship a PR** (see Shipping above): commit your own files on your branch, check `git show --stat`, push, and `gh pr create`. Never commit to `main` and never merge.
 
 A loop that can't measure its own success isn't done. If an item has no test, perf number or
@@ -120,8 +120,7 @@ The game must feel smooth: frame-time **p99** over mean FPS. Rules (details and 
 
 - **Docs ship in the same commit as the change.** A behavior change without its doc update is unfinished.
 - Changed how to test? Update `docs/TESTING.md`. Changed perf, budgets or rules? Update `docs/optimization/README.md`,
-  and add dated numbers to `docs/optimization/LOG.md`. Loop item? Write `docs/iterations/NNN-*.md`
-  plus an `ITERATIONS.md` entry. Changed player-facing behavior? Update `docs/features/<area>.md`. New subsystem or
+  and add dated numbers to `docs/optimization/LOG.md`. Changed player-facing behavior? Update `docs/features/<area>.md`. New subsystem or
   protocol? Write or update `docs/design/<topic>.md`. Found a bug or idea you're not fixing now? Open a GitHub issue (Work tracking rule 2).
 - One home per fact: link, don't copy. Numbers carry date, machine and mode. Write down what
   **didn't** work; the next agent needs that most.
