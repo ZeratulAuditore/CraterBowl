@@ -88,7 +88,13 @@ const AI_QB_DEPTH_WEIGHT := 0.2
 const AI_QB_PRESSURE := 3.0
 
 # Fumbles / loose ball
-const FUMBLE_BEHIND_DOT := 0.5
+const FUMBLE_BEHIND_DOT := 0.5      # diver.facing . carrier.facing above this counts as "from behind"
+const FUMBLE_HIT_RISK := 0.08       # strip chance of a full-force hit (closing speed DIVE+SPRINT) on a fresh carrier
+const FUMBLE_REAR := 0.25           # extra chance for a jogging carrier hit squarely from behind
+const FUMBLE_REAR_SPRINT := 0.97    # ...and for a sprinting one (readable: don't sprint with a defender on your back)
+const FUMBLE_FRESH_STAMINA := 0.84  # fatigue starts below this stamina
+const FUMBLE_FATIGUE_GAIN := 6.0    # exhausted carrier: chance x(1 + gain)
+const FUMBLE_MAX_RISK := 0.97
 const FUMBLE_KNOCKDOWN := 0.8
 const LOOSE_FRICTION := 6.0       # yd/s^2 rolling deceleration
 const LOOSE_BOUNCE := 0.35        # vertical restitution

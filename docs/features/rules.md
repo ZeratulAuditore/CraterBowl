@@ -53,9 +53,12 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 - **Interception:** a defender squarely at the ball (`INT_RADIUS` 0.6 yd) with no offensive receiver in reach.
   Within normal reach (`CATCH_RADIUS` 1.2 yd) he only breaks it up; a contested ball (defender within
   `CONTEST_MARGIN` 0.35 yd of the receiver's distance) is a breakup. The play stays live for the return.
-- **Fumbles:** a dive tackle can strip the carrier. Risk grows with closing speed and the carrier's fatigue
-  (no fumble while stamina ≥ 84%, except the rear strip); a sprinting carrier hit from behind (`FUMBLE_BEHIND_DOT`) is stripped 97% of
-  the time. The roll is a deterministic hash of the athletes, play tick and impact counter. The ball bounces and rolls
+- **Fumbles:** a dive tackle can strip the carrier. The chance is a hit-quality outcome
+  (`World.fumble_risk`, numbers in `tuning.gd`): a base `FUMBLE_HIT_RISK` (8%) times force² (closing speed along the
+  contact normal over `DIVE_SPEED + SPRINT_SPEED`), so even a fresh carrier can lose it on a big hit; plus a rear term
+  that scales from 0 at `FUMBLE_BEHIND_DOT` to `FUMBLE_REAR` (25%) for a hit squarely from behind, or
+  `FUMBLE_REAR_SPRINT` (97%) if the carrier was sprinting. Fatigue below 84% stamina multiplies the whole chance, up to
+  ×(1 + `FUMBLE_FATIGUE_GAIN`) when exhausted; capped at `FUMBLE_MAX_RISK`. The roll is a deterministic hash of the athletes, play tick and impact counter. The ball bounces and rolls
   (`LOOSE_FRICTION`, `LOOSE_BOUNCE`); the nearest standing player within `RECOVER_RADIUS` (0.8 yd) of a low ball recovers.
   A loose ball out of bounds is dead where it crossed and stays with the team that last had it.
 - After a takeaway the new offense starts at the mirrored spot; downed in its own end zone = touchback at the kickoff spot.
@@ -99,6 +102,9 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 - Quarters are a counter inside the halves, which stay the unit for rules. Reusing halftime at Q1 and Q3 would reset
   the drive and hand out extra timeouts, so those boundaries only reset the clock.
 - The rear strip is near-certain so fumbles stay readable: don't sprint with a defender closing from behind.
+- Fumbles are a hit-quality outcome rather than a fatigue special case (#99): fresh carriers have a small base chance
+  that grows with hit speed, and a hit from behind raises it in proportion to the angle (sprinting or not), so a
+  carrier jogging away from a pursuer is at risk too. Fatigue stays a multiplier, so tired carriers still fumble most.
 
 ## Code and tests
 - `src/sim/match.gd` — series flow: scoring, tries, kickoffs, turnovers, safeties, halves, timeouts.

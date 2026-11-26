@@ -234,3 +234,76 @@ func test_no_bat_at_release() -> void:
 	w.throw(qb.id, qb.position + Vector2(0, 25), 0.9)
 	for i in 6: w.step({}, DT)
 	assert_true(not events.has("breakup") and not events.has("interception"), "not batted at release: %s" % str(events))
+
+# --- #99 fumble variety: hit speed, angle, fatigue ---
+
+func test_fresh_carrier_can_fumble_from_a_big_hit() -> void:
+	var full := T.DIVE_SPEED + T.SPRINT_SPEED
+	assert_true(World.fumble_risk(full, 1.0) > 0.0, "fresh carrier has a base chance")
+	assert_true(World.fumble_risk(full, 1.0) <= T.FUMBLE_HIT_RISK + 0.0001, "fresh base stays small")
+	assert_eq(World.fumble_risk(0.0, 1.0), 0.0, "no closing speed, no fumble")
+
+func test_fumble_risk_sweeps_with_impact_speed() -> void:
+	var prev := -1.0
+	for s in [0.0, 3.0, 6.0, 9.0, 12.0, 15.0, 18.0, 20.5]:
+		var r := World.fumble_risk(s, 1.0)
+		assert_true(r > prev or (s == 0.0 and r == 0.0), "fresh risk rises with impact at %.1f (%.4f)" % [s, r])
+		prev = r
+	assert_near(World.fumble_risk(40.0, 1.0), World.fumble_risk(T.DIVE_SPEED + T.SPRINT_SPEED, 1.0), 0.0001, "force saturates")
+
+func test_fatigue_multiplies_fumble_risk() -> void:
+	var s := 15.0
+	var fresh := World.fumble_risk(s, 1.0)
+	assert_near(World.fumble_risk(s, T.FUMBLE_FRESH_STAMINA), fresh, 0.0001, "no fatigue above the threshold")
+	assert_true(World.fumble_risk(s, 0.5) > fresh, "tired > fresh")
+	assert_near(World.fumble_risk(s, 0.0), fresh * (1.0 + T.FUMBLE_FATIGUE_GAIN), 0.0001, "exhausted = x(1+gain)")
+
+func test_fumble_risk_sweeps_with_hit_angle() -> void:
+	var s := 8.0
+	# Facing dot: -1 head-on, 0 from the side, 1 squarely from behind.
+	var head_on := World.fumble_risk(s, 1.0, -1.0)
+	assert_near(World.fumble_risk(s, 1.0, 0.0), head_on, 0.0001, "side hit: no rear bonus")
+	assert_near(World.fumble_risk(s, 1.0, T.FUMBLE_BEHIND_DOT), head_on, 0.0001, "rear bonus starts past FUMBLE_BEHIND_DOT")
+	var prev := head_on
+	for d in [0.6, 0.7, 0.8, 0.9, 1.0]:
+		var r := World.fumble_risk(s, 1.0, d)
+		assert_true(r > prev, "more behind = riskier at dot %.1f" % d)
+		prev = r
+	assert_true(World.fumble_risk(s, 1.0, 1.0, true) > World.fumble_risk(s, 1.0, 1.0, false), "sprinting carrier riskier from behind")
+	assert_true(World.fumble_risk(s, 1.0, 0.75, true) < T.FUMBLE_REAR_SPRINT, "oblique rear hit is scaled, not flat")
+	assert_true(World.fumble_risk(s, 1.0, 1.0, false) > 0.2, "jogging carrier can be stripped from behind")
+	assert_true(World.fumble_risk(99.0, 0.0, 1.0, true) <= T.FUMBLE_MAX_RISK, "capped")
+
+func test_rear_strip_is_deterministic_and_hits_fresh_joggers() -> void:
+	# Same hit replayed on fresh matches gives the same result (rolls are seeded by the play situation).
+	var results := []
+	var strips := 0
+	for trial in 2:
+		for k in 12:
+			var m := _match()
+			var w := m.world
+			_snap(w)
+			var qb = w.find_role(0, R.QB)
+			var lb = w.find_role(1, R.LB)
+			_clear_field(w, [qb.id, lb.id])
+			qb.position = Vector2(26, 40)
+			qb.stamina = 1.0
+			var inp := {qb.id: {"dir": Vector2(0, 1)}}   # jogging, not sprinting
+			_run(w, 0.3 + k * DT, inp)
+			lb.position = qb.position - Vector2(0, 1.2)
+			lb.facing = Vector2(0, 1)
+			w.tackle(lb.id)
+			for i in 30:
+				w.step(inp, DT)
+				if events.has("fumble") or events.has("tackle"):
+					break
+			var fumbled := events.has("fumble")
+			assert_true(fumbled or events.has("tackle"), "hit resolved: %s" % str(events))
+			if trial == 0:
+				results.append(fumbled)
+				if fumbled:
+					strips += 1
+			else:
+				assert_eq(fumbled, results[k], "deterministic replay %d" % k)
+	assert_true(strips > 0, "a fresh jogging carrier hit from behind fumbles sometimes (%d/12)" % strips)
+	assert_true(strips < 12, "...but not always (%d/12)" % strips)
