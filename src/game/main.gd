@@ -35,6 +35,7 @@ const FieldArt := preload("res://src/game/art/field_art.gd")
 const StadiumArt := preload("res://src/game/art/stadium.gd")
 const ArtMats := preload("res://src/game/art/materials.gd")
 const ArtQuality := preload("res://src/game/art/quality.gd")
+const TrainingArt := preload("res://src/game/art/training_art.gd")
 const ARC_DOTS := 24
 
 const TEAM_COLORS := [Color(0.95, 0.75, 0.15), Color(0.3, 0.8, 0.95)]
@@ -62,6 +63,8 @@ var match_mode := "classic"     # classic | chaosball
 var lobby := Lobby.new()      # server: authoritative; client: mirror
 var debug_playclock := -1.0
 var drill: Drills = null        # offline practice drill (null = normal match)
+var training_path := Drills.DEFAULT_BESTS_PATH   # personal bests (tests pass --training-file)
+var queue_started_ms := 0       # matchmaking: when we queued (warm-up HUD timer)
 var stats: Stats
 var summary_lines: Array = []   # end-of-match summary (server computes; clients receive)
 var leaderboard_path := Leaderboard.DEFAULT_PATH
@@ -119,6 +122,8 @@ func _ready() -> void:
 	if args.has("name"):
 		player_name = str(args["name"]).strip_edges().left(16)
 	ranked_match = args.has("ranked")
+	if args.has("training-file"):
+		training_path = str(args["training-file"])
 	if args.has("replay-dir"):
 		replay_dir = str(args["replay-dir"])
 	if args.has("profile-file"):
@@ -174,6 +179,7 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	drill = null
 	if practice != "":
 		drill = Drills.new()
+		drill.load_bests(training_path)
 		match_size = 7
 	for r in [field_root, athlete_root]:
 		if r:
@@ -195,6 +201,8 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	world.set_ruleset(match_mode)
 	_spawn_teams()
 	_build_field()
+	if drill != null:
+		TrainingArt.build(field_root, drill, field)
 	series = Match.new(world)
 	series.start(0, Drills.LOS if drill != null else -1.0)
 	world.event.connect(_on_world_event)
@@ -570,6 +578,7 @@ func _queue_up(args: Dictionary) -> void:
 	var mode := str(args["queue"])
 	var advertise := str(args.get("advertise", _local_ipv4()))
 	mm_client.host_match.connect(func(m):
+		_end_warmup(args)
 		ranked_match = m.get("mode", "") == "competitive"
 		pending_teams = m.get("teams", {}) if m.get("teams") is Dictionary else {}
 		var port := int(args.get("host-port", 25000 + randi() % 5000))
@@ -579,6 +588,7 @@ func _queue_up(args: Dictionary) -> void:
 		print("QUEUE matched (%s): hosting %s" % [m.get("mode", "?"), code])
 		mm_client.send_hosting(code))
 	mm_client.join_match.connect(func(code):
+		_end_warmup(args)
 		print("QUEUE matched: joining %s" % code)
 		_join_game(code, 0, {"auto_ready": true}))
 	var rk := Ranked.new()
@@ -588,6 +598,24 @@ func _queue_up(args: Dictionary) -> void:
 		str(args.get("party", "")).get_slice(":", 0), int(str(args.get("party", "x:1")).get_slice(":", 1)) if str(args.get("party", "")).find(":") > 0 else 1,
 		"chaosball" if str(args.get("mode", "")) == "chaosball" else "classic")
 	print("QUEUE %s via %s:%d: %s" % [mode, addr, mm_port, error_string(err)])
+	queue_started_ms = Time.get_ticks_msec()
+	# Waiting lobby: warm up on the training ground until the match is found.
+	if not args.has("no-warmup"):
+		start_practice("hub")
+		print("QUEUE warm-up: training ground")
+
+## Match found: leave the training ground and rebuild the queued match's world.
+func _end_warmup(args: Dictionary) -> void:
+	if drill == null:
+		return
+	charging = false
+	configure(MatchConfig.normalize(args.get("size", 7)), "", str(args.get("mode", "classic")))
+	print("QUEUE warm-up over: match found")
+
+## "SEARCHING FOR A CASUAL MATCH  0:42" while queued.
+func queue_text() -> String:
+	var secs := int((Time.get_ticks_msec() - queue_started_ms) / 1000)
+	return "SEARCHING FOR A %s MATCH  %d:%02d" % [str(_cli_args().get("queue", "")).to_upper(), secs / 60, secs % 60]
 
 func _practice_kind() -> String:
 	if _pending_practice != "":
@@ -612,7 +640,7 @@ func _local_ipv4() -> String:
 ## True while the private lobby is open (server) / we haven't been placed yet (client).
 func in_lobby() -> bool:
 	if searching():
-		return true
+		return drill == null   # queued + warming up on the training ground = playable
 	if is_server():
 		return net.lobby_mode and lobby.phase == Lobby.Phase.LOBBY
 	if is_client():
@@ -857,6 +885,9 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		KEY_R:
 			if world.phase == World.Phase.DEAD and not is_client():
 				next_play()
+		KEY_BACKSPACE:
+			if drill != null and net == null:
+				start_practice("hub")   # back to the training ground
 
 func _physics_process(delta: float) -> void:
 	if charging:
@@ -898,6 +929,9 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 			drill.start_rep(world)
 			last_whistle = ""
 			set_controlled(my_id)
+		if drill.portal != "":
+			start_practice(drill.portal)   # walked into a training-ground portal
+			return
 	elif world.phase == World.Phase.DEAD and auto_next and not series.is_final():
 		dead_t += delta
 		if dead_t >= NEXT_PLAY_DELAY:
@@ -918,6 +952,8 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 				Protocol.apply_action(series, pa[1], act)
 	ai.presnap_tick(world, humans, delta, series.downs.down, series.downs.distance())
 	var inputs := ai.think(world, humans)
+	if drill != null:
+		drill.override_inputs(world, inputs)
 	inputs[controlled_id] = my_input
 	if is_server():
 		for aid in net.inputs:
@@ -1051,7 +1087,8 @@ func _disc(p: Vector2, r: float, c: Color, h: float) -> void:
 
 func _process(delta: float) -> void:
 	var target := player.global_position
-	var desired := target + Vector3(0, 6, 9)
+	# Blocking drill: higher, deeper camera so the QB behind you doesn't hide the rush.
+	var desired := target + (Vector3(0, 10, 13) if drill != null and drill.kind == "blocking" else Vector3(0, 6, 9))
 	camera.global_position = camera.global_position.lerp(desired, clampf(delta * 6.0, 0.0, 1.0))
 	camera.look_at(target + Vector3(0, 1, -4))
 	var m = player.athlete
@@ -1071,8 +1108,12 @@ func _process(delta: float) -> void:
 	banner_t = maxf(0.0, banner_t - delta)
 	if banner_t > 0.0:
 		phase_name = banner + "  " + phase_name
-	if searching():
-		hud.text = "SEARCHING FOR A %s MATCH..." % str(_cli_args().get("queue", "")).to_upper()
+	if drill != null and pres and pres.overlay:
+		for b in drill.banners:
+			pres.overlay.show_drill_banner(b)
+		drill.banners.clear()
+	if searching() and drill == null:
+		hud.text = queue_text() + "..."
 		return
 	if replay_active:
 		var p: int = replay.current_play()

@@ -57,3 +57,4 @@ After Phase B, take the first unchecked `C##` item in `docs/gaps/TODO.md` (P0 �
 - [x] D03 Chaosball in matchmaking: queue mode for Chaosball 3v3 — parity G17
 - [ ] D04 Achievements: milestone unlocks (first TD, 300-yd game, pick-six, 7-pt Chaosball TD, …) with profile persistence — parity G23
 - [ ] D05 Stats: return yards after interceptions/fumble recoveries (gap noted in A21)
+- [x] TRN Training ground (user request 2026-11-25): hub with 3 portals (blocking / practice field / catching), leveled drills + personal bests, and the queue waiting lobby (warm up while matchmaking). See docs/TRAINING.md

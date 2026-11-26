@@ -77,7 +77,7 @@ func build() -> void:
 	nav = VBoxContainer.new()
 	nav.add_theme_constant_override("separation", 6)
 	left.add_child(nav)
-	for item in [["online", "Play online"], ["bots", "Play vs bots"], ["practice", "Practice"],
+	for item in [["online", "Play online"], ["bots", "Play vs bots"], ["practice", "Training"],
 			["locker", "Locker"], ["leaders", "Leaderboards"], ["replays", "Replays"],
 			["settings", "Settings"], ["quit", "Quit"]]:
 		var b := Button.new()
@@ -196,17 +196,25 @@ func _screen_bots() -> void:
 	_button("Kick off", func(): launch.start_game({"size": str(pick_size), "mode": pick_mode}))
 
 func _screen_practice() -> void:
-	content.add_child(UITheme.heading("Practice"))
-	var desc := {"passing": "You're the QB. Hit receivers running the playbook.",
-		"catching": "You're the WR against a live corner in man coverage.",
+	content.add_child(UITheme.heading("Training"))
+	var desc := {"hub": "Free-roam field with a portal to each station. It's also where you wait while queued online.",
+		"blocking": "You're the center. Keep the QB clean against up to 3 rushers.",
+		"field": "Throw at 1/2/3-point targets and run a timed 40-yard dash.",
+		"catching": "Jugs drill: a new route every rep, tighter coverage as you streak. Race to 15 catches.",
+		"passing": "You're the QB. Hit receivers running the playbook.",
 		"tackling": "You're the linebacker. Bring down a live runner.",
 		"scrimmage": "Full 7v7 with bots. No clock, no pressure."}
-	for k in Drills.KINDS:
+	var names := {"hub": "Training ground", "field": "Practice field"}
+	var order: Array = ["hub"] + Drills.STATIONS + ["passing", "tackling", "scrimmage"]
+	for i in order.size():
+		var k: String = order[i]
+		if i == 4:
+			content.add_child(UITheme.heading("Classic drills", 18, UITheme.CYAN))
 		var h := HBoxContainer.new()
 		h.add_theme_constant_override("separation", 16)
 		content.add_child(h)
-		var b := _button(k.capitalize(), func(): launch.start_game({"practice": k}), h)
-		b.custom_minimum_size = Vector2(170, 0)
+		var b := _button(names.get(k, k.capitalize()), func(): launch.start_game({"practice": k}), h)
+		b.custom_minimum_size = Vector2(190, 0)
 		_text(desc.get(k, ""), h).size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 func _screen_locker() -> void:
