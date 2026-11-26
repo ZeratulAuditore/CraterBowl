@@ -787,10 +787,16 @@ func _setup_net() -> void:
 		return
 	var port := int(args.get("port", NetSession.DEFAULT_PORT))
 	if args.has("host"):
-		_host_game(port, {"playclock": float(args.get("playclock", -1.0)), "no_lobby": args.has("no-lobby"),
-			"start_when_ready": args.has("start-when-ready"), "advertise": str(args.get("advertise", _local_ipv4()))})
+		_host_game(port, host_options(args))
 	else:
 		_join_game(str(args["join"]), port, {})
+
+## _host_game opts from launch args (CLI flags or the menu's Launch.options). The rules
+## (--mode=chaosball) travel as "game", the key _host_game and matchmade hosts use (#74).
+func host_options(args: Dictionary) -> Dictionary:
+	return {"playclock": float(args.get("playclock", -1.0)), "no_lobby": args.has("no-lobby"),
+		"start_when_ready": args.has("start-when-ready"), "advertise": str(args.get("advertise", _local_ipv4())),
+		"game": "chaosball" if str(args.get("mode", "")) == "chaosball" else "classic"}
 
 func _ensure_net() -> void:
 	if net == null:
