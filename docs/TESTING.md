@@ -14,7 +14,7 @@ Run the full one before every commit that touches code. The pre-commit hook runs
 | Rules/sim logic is right | `./scripts/test.sh` | ~10s |
 | Nothing got slower (render budget + CPU medians) | `./scripts/perf.sh` | ~30s |
 | Scene boots clean + scripted play works | `./scripts/smoke.sh` (also runs net + mm) | ~2–3 min |
-| Networked behavior | `./scripts/net_test.sh` (host + client flow, then a host-loss phase that SIGKILLs a second host, #56), `./scripts/mm_test.sh`; lobby seat cap: `godot --headless --path . -s res://tests/net_capacity.gd` (one process, host + 8 joiners; run by smoke.sh) | ~15s each |
+| Networked behavior | `./scripts/net_test.sh` (host + client flow, then a host-loss phase that SIGKILLs a second host, #56, then a client forced to `--protocol-version=0` that must be refused with the version reason, #165), `./scripts/mm_test.sh`; lobby seat cap: `godot --headless --path . -s res://tests/net_capacity.gd` (one process, host + 8 joiners; run by smoke.sh) | ~15s each |
 | **What it looks like** (visuals, HUD, camera, art) | `./scripts/shot.sh ...` then view the PNGs | ~30s |
 | **What changed visually** (PR evidence) | `./scripts/before_after.sh ...` then `./scripts/pr_evidence.sh <PR#> <out>` | ~1–4 min |
 
