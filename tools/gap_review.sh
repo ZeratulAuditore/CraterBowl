@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Scheduled feature-gap re-evaluation (research docs + GitHub issues). Runs headless Claude Code against
 # docs/research/REEVALUATE.md. Installed in the user's crontab; safe to run by hand.
-# Logs: ~/.local/state/fourth-and-long/gap-review-YYYY-MM-DD.log
+# Logs: ~/.local/state/crater-bowl/gap-review-YYYY-MM-DD.log
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 CLAUDE="${CLAUDE:-$HOME/.local/bin/claude}"
-LOGDIR="$HOME/.local/state/fourth-and-long"
+LOGDIR="$HOME/.local/state/crater-bowl"
 mkdir -p "$LOGDIR"
 LOG="$LOGDIR/gap-review-$(date +%F).log"
 exec 9>"$LOGDIR/gap-review.lock"
