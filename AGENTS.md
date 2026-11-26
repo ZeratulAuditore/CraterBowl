@@ -6,10 +6,26 @@ looped. It's short on purpose: each section links to the doc that owns the detai
 | Need | Read |
 |---|---|
 | Iteration procedure (orient → pick → design → build → check → record → commit) | `LOOP.md` |
-| Vision, backlog, history | `PLAN.md`, `FEATURES.md`, `ITERATIONS.md`, `docs/gaps/` |
+| **What to work on, status, bugs, ideas** | **GitHub issues** (`gh issue list`), rules in `docs/workflow.md` |
+| How a feature plays today (feature level) | `docs/features/<area>.md` |
+| How it's built (design level) | `docs/design/` (architecture, netcode, voice chat) |
+| Vision and pillars, history | `docs/vision.md`, `ITERATIONS.md`, `docs/iterations/` |
+| Old ids (`B09`, `C05`…) → issue # | `docs/backlog/legacy-ids.md` |
 | How to test anything without a window | `docs/TESTING.md` |
 | Performance rules, budgets, measuring | `docs/optimization/README.md`, `docs/optimization/LOG.md` |
-| Menus, brand, distribution | `OUT_OF_GAME.md` |
+| Menus, brand, distribution | `docs/features/out-of-game.md` |
+
+### Work tracking: GitHub issues (always)
+The backlog, bugs, ideas and owner decisions live **only** in GitHub issues on `bpenwell/CraterBowl`,
+not in markdown checklists. Full protocol with `gh` commands: `docs/workflow.md`.
+1. **Keep issues updated.** Claim the issue when you start (`status:in-progress` + a comment naming your
+   session and branch). Comment on material changes. When you ship, close it with SHA, iteration, tests,
+   docs and follow-ups. No issue for your task? Create one first.
+2. **Side findings become new issues immediately.** This covers any bug, gap, improvement, wrong doc,
+   flaky test or owner question you notice that isn't your current objective. Open an issue at the moment
+   you notice, labelled type/priority/area, saying where you saw it. You may still fix it in the same change
+   (then close it with that commit). The point is a traceable history to come back to. List the issues
+   you opened in your report.
 
 ### Committing: commit everything, by default
 When you finish a task (or a loop iteration), commit **everything** in the working tree without
@@ -28,16 +44,29 @@ Code map: `src/sim/` = rules (pure, deterministic, unit-tested), `src/game/` = p
 camera, HUD, art in `src/game/art/`), `src/net/` = netcode, `src/ui/` = menus/settings,
 `tests/` = tests and harnesses, `tools/` = dev/diagnosis scripts, `scripts/` = the commands below.
 
+### Opening pull requests
+
+- Use the headings `### Motivation`, `### Solution`, and `### Testing` in the PR description.
+- Add automated integration coverage for the specific behavior changed. The new test must
+  generate a screenshot or video of the exercised state. Inspect the capture before sharing it.
+- In Testing, name the automated checks that produced the evidence. Upload the relevant
+  test-generated screenshots and embed them inline with `![Descriptive alt text](image-url)`.
+  For video evidence, embed the uploaded video where GitHub supports playback or embed a
+  test-generated screenshot and link to the video. Verify the media displays in the PR.
+  Include the Actions artifact link for the full set of captures and logs.
+- Use a topic branch based on `origin/main` and open the PR after verification. Preserve other
+  sessions' work. The local-main commit instructions above apply to local-only work.
+
 ### Building your own loop
 
 Every unit of work, whether a loop iteration, a bug fix or a perf pass, has the same shape:
 
-1. **Orient.** `git log --oneline -10`, the backlog, and `./scripts/check.sh --fast`. If it's red, fixing it is the job.
+1. **Orient.** `git log --oneline -10`, the issue you're on (or `docs/workflow.md` → find work), and `./scripts/check.sh --fast`. If it's red, fixing it is the job (open a `type:bug` issue for it).
 2. **Define done first.** Write acceptance criteria as testable statements (`docs/iterations/NNN-*.md` for loop items).
 3. **Smallest complete change.** One item per loop. Rules in `src/sim`, visuals in `src/game`.
 4. **Gate.** `./scripts/check.sh` must print `CHECK PASS`. Add tests for every criterion *before* calling it done.
 5. **Look** at visual changes with `./scripts/shot.sh` and actually view the PNGs.
-6. **Record.** Docs that own what you changed (below), `ITERATIONS.md`, and the backlog.
+6. **Record.** Docs that own what you changed (below), `ITERATIONS.md` (cite the issue), and the issue itself (close or narrow it).
 7. **Commit everything** (`git add -A`, see Committing below), then check `git show --stat`.
 
 A loop that can't measure its own success isn't done. If an item has no test, perf number or
@@ -93,7 +122,8 @@ The game must feel smooth: frame-time **p99** over mean FPS. Rules (details and 
 - **Docs ship in the same commit as the change.** A behavior change without its doc update is unfinished.
 - Changed how to test? Update `docs/TESTING.md`. Changed perf, budgets or rules? Update `docs/optimization/README.md`,
   and add dated numbers to `docs/optimization/LOG.md`. Loop item? Write `docs/iterations/NNN-*.md`
-  plus an `ITERATIONS.md` entry. Found a bug you're not fixing now? Add a `D##` under "Discovered" in `FEATURES.md`.
+  plus an `ITERATIONS.md` entry. Changed player-facing behavior? Update `docs/features/<area>.md`. New subsystem or
+  protocol? Write or update `docs/design/<topic>.md`. Found a bug or idea you're not fixing now? Open a GitHub issue (Work tracking rule 2).
 - One home per fact: link, don't copy. Numbers carry date, machine and mode. Write down what
   **didn't** work; the next agent needs that most.
 - If you change a rule here, update the doc it links to as well (and vice versa).
@@ -107,9 +137,10 @@ Several Claude sessions work on this repo at once (game loop, graphics, out-of-g
   and lands on `main` only after `check.sh` passes.
 - Shared checkouts hold other sessions' uncommitted files; per the Committing rule they ride along in your commit (list them in the message).
 - Never `git stash` / `stash pop` bare: the stash is shared across worktrees.
-- Claim backlog items in `FEATURES.md` / `docs/gaps/TODO.md` (`[~] owned by ...`) before starting.
+- Claim work on the GitHub issue (`status:in-progress` + claim comment), never by editing files. `FEATURES.md` and `docs/gaps/TODO.md` are stubs now.
 
 ### Definition of done
 `CHECK PASS`; acceptance criteria covered by tests; visual changes viewed via `shot.sh`;
-perf budgets green (ratcheted if you improved them); owning docs updated; everything committed
-(Committing rule); report ends with a `result:` line.
+perf budgets green (ratcheted if you improved them); owning docs updated (feature doc + design doc where relevant);
+issue closed or narrowed with a summary comment; side findings filed as issues; everything committed
+(Committing rule); report lists issues touched/opened and ends with a `result:` line.

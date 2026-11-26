@@ -1,0 +1,108 @@
+# Rules (classic)
+
+Feature-level doc: how this works for players **today** on `main`. Open work: GitHub issues labelled `area:rules` (listed below).
+
+## Summary
+Classic Crater Bowl is two-way football with four downs to gain 10 yards, a PAT kick or 2-point scrimmage try,
+and two timed halves by default. Private hosts can choose four quarters. Kickoffs, punts and field goals are live kicking plays (iter 035, [kicking.md](kicking.md)). Fields shrink with match size so 3v3 and 5v5 use the same rules engine as 7v7.
+Chaosball changes most of this: see [chaosball.md](chaosball.md).
+
+## How it plays
+
+### Match sizes and field scaling (`src/sim/match_config.gd`, `src/sim/roster.gd`)
+| Size | Slots per team (offense/defense) | Field (length × width) | End zones | Kickoff touchback | Timeouts per half |
+|---|---|---|---|---|---|
+| 3v3 | QB/LB, WR/CB, WR/CB | 60 × 30 | 8 yd | own 15 | 2 (`SMALL_MATCH_TIMEOUTS`) |
+| 5v5 | + RB/S, C/DL | 80 × 40 | 10 yd | own 20 | 3 (`TIMEOUTS_PER_HALF`) |
+| 7v7 | + OL/DL, OL/S | 100 × 53.33 | 10 yd | own 25 | 3 |
+
+- Every athlete plays both ways; roles swap on change of possession. Formation x offsets scale with field width.
+- 3v3 has no center: the QB holds the ball pre-snap and Space goes straight to a live play.
+- The first down (10 yd) and the try distances (3 and 10 yd) do **not** scale with field size.
+- Unknown sizes fall back to 7v7. Host picks 3/5/7 in the private lobby; offline via "Play vs bots".
+
+### Downs and spotting (`src/sim/downs.gd`, `src/sim/match.gd`)
+- 1st & 10 from the spot; "& Goal" when the line to gain would reach the goal line.
+- The ball is spotted where the carrier is at the whistle (tackle or stepping out of bounds), clamped to
+  the 1 and the opponent's 1. An incompletion returns to the line of scrimmage. No forward-progress rule.
+- Four downs; failing on 4th is a turnover on downs, new offense at the mirrored spot (`goal − spot`).
+- Snap: Space by any offensive human. If nobody snaps, the 20 s play clock (`Clock.PLAY_CLOCK`) auto-snaps.
+- Next play starts `NEXT_PLAY_DELAY` (2.0 s) after the whistle; R skips the wait (offline or host only).
+
+### Scoring and tries
+| Event | Points | Then |
+|---|---|---|
+| Touchdown (carrier in bounds in the scoring end zone) | 6 (`TD_POINTS`) | scoring team attempts a try |
+| Try for 1 (PAT kick from the 15, see [kicking.md](kicking.md)) | 1 | kickoff to the other team |
+| Try for 2 (scrimmage snap from the 10) | 2 | kickoff to the other team |
+| Field goal (see [kicking.md](kicking.md)) | 3 | kickoff to the other team |
+| Safety (offense's own carrier downed or out behind its goal line) | 2 to the defense (`SAFETY_POINTS`) | the defense receives |
+
+- During try pre-snap the offense presses **1** for the PAT kick or **2** for the scrimmage try (gamepad D-pad left/right).
+  The PAT is the default. The two-point try scores when the trying team reaches the end zone, and both tries are untimed.
+- A defensive touchdown (return of an INT or fumble) scores 6 for the defense, which then attempts the try.
+
+### Turnovers
+- **Interception:** a defender squarely at the ball (`INT_RADIUS` 0.6 yd) with no offensive receiver in reach.
+  Within normal reach (`CATCH_RADIUS` 1.2 yd) he only breaks it up; a contested ball (defender within
+  `CONTEST_MARGIN` 0.35 yd of the receiver's distance) is a breakup. The play stays live for the return.
+- **Fumbles:** a dive tackle can strip the carrier. Risk grows with closing speed and the carrier's fatigue
+  (no fumble while stamina ≥ 84%, except the rear strip); a sprinting carrier hit from behind (`FUMBLE_BEHIND_DOT`) is stripped 97% of
+  the time. The roll is a deterministic hash of the athletes, play tick and impact counter. The ball bounces and rolls
+  (`LOOSE_FRICTION`, `LOOSE_BOUNCE`); the nearest standing player within `RECOVER_RADIUS` (0.8 yd) of a low ball recovers.
+  A loose ball out of bounds is dead where it crossed and stays with the team that last had it.
+- After a takeaway the new offense starts at the mirrored spot; downed in its own end zone = touchback at the kickoff spot.
+
+### Clock (`src/sim/clock.gd`)
+- Two 5:00 halves by default (`HALF_LENGTH`). In a private lobby, the host presses **Q** to switch formats and
+  **H** to cycle the duration. Halves come in 2, 5 or 8 minutes. Quarters come in 1, 2 or 3 minutes and initially select 2.
+  Everyone sees the selection in the lobby and the active period and time remaining on the scorebug.
+- The game clock runs during live plays. It **keeps running between plays** only after an in-bounds tackle by the
+  original offense short of the line to gain, before 4th down, with no change of possession. Incompletions,
+  sideline stops, first downs, scores, turnovers and tries stop it.
+- **One-minute warning** once per half. In quarters, it applies in Q2 and Q4. A live play finishes first. A crossing
+  between plays stops the clock at 1:00.
+- **Timeouts:** U, outside live play, by either team; the scorebug shows pips. Resets the play clock if pre-snap.
+  Counts reset at halftime. No gamepad binding.
+- A period can end between snaps when the running clock hits 0:00. A play in progress at 0:00 finishes, and a touchdown on it still gets its try.
+- At the end of Q1 and Q3, the next period starts with the same possession, down, spot and remaining timeouts.
+- The coin toss winner chooses to receive or kick the opening kickoff. At halftime after H1 or Q2, the other team receives.
+- After H2 or Q4 the higher score wins. A tie stands.
+
+## Design decisions
+- Offense-frame yards (0 = own goal line, `goal` = field length) keep every rule direction-free; the view mirrors the field.
+- The scrimmage try reuses the regular downs engine. The PAT uses the field goal kick.
+- Play-clock expiry auto-snaps, so an AFK player can't stall a lobby.
+- The clock first ran only during live plays (iteration 009) for predictable pacing; iteration 034 added the running
+  clock after short in-bounds tackles so reaching the sideline matters. Timeouts reuse existing dead-ball phases
+  instead of a separate timeout state.
+- Iteration 014 introduced the rear strip. The current fumble risk also considers stamina and impact, with a near-certain rear strip.
+
+## Code and tests
+- `src/sim/match.gd` — series flow: scoring, tries, kickoffs, turnovers, safeties, halves, timeouts.
+- `src/sim/downs.gd` — downs, line to gain, spot clamping, down & distance label.
+- `src/sim/clock.gd` — game/play clock, one-minute warning, timeout counts.
+- `src/sim/world.gd` — whistles (tackle, out of bounds, touchdown), catches/interceptions, fumbles and loose balls.
+- `src/sim/match_config.gd`, `src/sim/roster.gd`, `src/sim/field.gd` — sizes, slots, field geometry.
+- `src/net/lobby.gd` (size and period settings), `src/net/protocol.gd` (period snapshots and host-validated `try`/`timeout` actions).
+- Tests: `tests/test_downs.gd`, `tests/test_scoring.gd`, `tests/test_match.gd`, `tests/test_clock.gd`,
+  `tests/test_turnovers.gd`, `tests/test_tackling.gd`, `tests/test_match_sizes.gd`, `tests/test_field.gd`, `tests/game_flow.gd`.
+
+## History
+- 007 [Downs](../iterations/007-downs.md)
+- 008 [Scoring](../iterations/008-scoring.md)
+- 009 [Match flow](../iterations/009-match-flow.md)
+- 014 [Interceptions + fumbles](../iterations/014-turnovers.md)
+- 016 [Match sizes](../iterations/016-match-sizes.md)
+- 017 [Private matches](../iterations/017-private-matches.md) (half length setting)
+- 034 [Running clock and timeouts](../iterations/034-clock-management.md)
+- 038 [Four-quarter format](../iterations/038-quarter-format.md)
+
+## Open issues
+- #6 C04c Switching ends, mercy rule and clock actions
+- #7 C05 Competitive rules: eligibility, grounding, blocking zone, QB slowdown
+- #8 C06 Spotting: forward progress, return yards, fumble variety
+- #16 B10 Overtime for tied games
+- #39 B08 Tuning data file editable without code
+- #40 C25 Momentum / "on fire"
+- #42 C27 Backyard rules / trick plays

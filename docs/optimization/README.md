@@ -84,12 +84,12 @@ The renderer's cost is roughly **draw calls x passes** plus **skinned vertices**
 |---|---|---|---|
 | Scene triangles (7v7) | 320k | about 255k (14 athletes = 192k) | `tests/render_budget.gd` |
 | Visible geometry instances | 300 | about 248 | same |
-| Shadow casters | 110 | 92 (was 162 before gear shadows went off) | same |
+| Shadow casters | 106 | 85 (was 162 before gear shadows went off; 125 after the chain crew landed) | same |
 | Distinct materials | 170 | about 137 | same |
 | Skinned meshes | 14 | 14 | same |
 | Sim tick p50 (7v7 bots) | 800 µs | 130–320 µs | `tools/bench.gd` |
 | Scene tick p50 (headless, whole frame) | 8 ms | 2.5–4 ms | same |
-| Object growth over 600 frames | 50 | 0 | same |
+| Object growth (min of two 400-frame windows; first-use allocations excluded) | 50 | about ±5 (a planted per-frame leak reads 405) | same |
 
 The render budgets are counts, not timings. They're identical on every machine, so they never
 flake. The CPU budgets use medians at about 3–5x the measured cost, so a busy machine doesn't

@@ -22,6 +22,9 @@ var down_l: Label
 var play_clock_l: Label
 var status_l: Label
 var mode_l: Label
+var spot_l: Label
+var field_strip: Control
+var field_marks := Vector2(-1, -1)
 var picker: PanelContainer
 var picker_title: Label
 var coaching_text: Label
@@ -59,9 +62,6 @@ func _ready() -> void:
 	_build_me()
 	_build_banner()
 	_build_scoreboard()
-	mode_l = _label(15, Color(0.85, 0.9, 1.0, 0.85), 700)
-	mode_l.position = Vector2(18, 14)
-	root.add_child(mode_l)
 
 # --- builders ---------------------------------------------------------------
 
@@ -100,9 +100,12 @@ func _build_scorebug() -> void:
 	bug.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	bug.position.y = -22
 	root.add_child(bug)
+	var rows := VBoxContainer.new()
+	rows.add_theme_constant_override("separation", 4)
+	bug.add_child(rows)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 14)
-	bug.add_child(row)
+	rows.add_child(row)
 	for t in 2:
 		var cell := HBoxContainer.new()
 		cell.add_theme_constant_override("separation", 8)
@@ -143,11 +146,24 @@ func _build_scorebug() -> void:
 	play_clock_l = _label(22, ACCENT, 800)
 	play_clock_l.custom_minimum_size.x = 36
 	row.add_child(play_clock_l)
+	var details := HBoxContainer.new()
+	details.alignment = BoxContainer.ALIGNMENT_CENTER
+	details.add_theme_constant_override("separation", 16)
+	rows.add_child(details)
+	mode_l = _label(15, ACCENT)
+	details.add_child(mode_l)
+	spot_l = _label(15)
+	details.add_child(spot_l)
+	field_strip = Control.new()
+	field_strip.custom_minimum_size = Vector2(128, 20)
+	field_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	field_strip.draw.connect(_draw_field_strip)
+	details.add_child(field_strip)
 	status_l = _label(17, Color(0.88, 0.92, 1.0, 0.95), 600)
 	status_l.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	status_l.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	status_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	status_l.position.y = -153
+	status_l.position.y = -173
 	root.add_child(status_l)
 
 func _divider() -> ColorRect:
@@ -186,7 +202,7 @@ func _build_me() -> void:
 	me_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	me_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	me_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	me_panel.position.y = -87
+	me_panel.position.y = -107
 	root.add_child(me_panel)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 9)
@@ -324,9 +340,10 @@ func refresh(main, delta: float) -> void:
 	clock_l.text = "FINAL" if final else ("" if main.drill != null else s.clock.label())
 	down_l.text = _down_text(main)
 	var pc := int(ceil(s.clock.play_clock))
-	play_clock_l.text = ":%02d" % pc if int(w.phase) == 0 and main.drill == null else ""
+	play_clock_l.text = "PLAY :%02d" % pc if int(w.phase) == 0 and main.drill == null else ""
 	play_clock_l.label_settings.font_color = ALERT if pc <= 5 else ACCENT
 	mode_l.text = _mode_text(main)
+	_refresh_field_position(main, final)
 	status_l.text = _status_text(main)
 	_refresh_me(main)
 	me_panel.visible = not final
@@ -364,11 +381,45 @@ func _down_text(main) -> String:
 		return main.drill.label()
 	if int(s.state) == 1:
 		return "TRY FOR %d" % s.try_points
+	if int(s.state) == 2:
+		return "KICKOFF"
+	if int(s.state) == 3:
+		return "COIN TOSS"
 	if main.world.is_chaos():
 		return "STREAK %d  ·  TD %d" % [main.world.streak, main.world.streak_points()]
 	var lab: String = s.downs.label()
 	var at := lab.find(" at ")
 	return (lab.substr(0, at) if at > 0 else lab).to_upper()
+
+func _refresh_field_position(main, final: bool) -> void:
+	var s = main.series
+	var d = s.downs
+	var show_spot: bool = not final and main.drill == null and s.state != main.Match.State.TOSS
+	spot_l.visible = show_spot
+	field_strip.visible = show_spot and s.state == main.Match.State.SCRIMMAGE and not main.world.is_chaos()
+	if not show_spot:
+		return
+	var yard := roundi(d.los)
+	var length := roundi(d.goal)
+	var territory: int = d.offense_team if yard * 2 < length else 1 - d.offense_team
+	spot_l.text = "MIDFIELD" if yard * 2 == length else "%s %d" % [TEAM_ABBR[territory], mini(yard, length - yard)]
+	if field_strip.visible:
+		var marks := Vector2(d.los, d.first_down_y) / float(d.goal)
+		if marks != field_marks:
+			field_marks = marks
+			field_strip.queue_redraw()
+
+func _draw_field_strip() -> void:
+	var width := field_strip.size.x
+	var mid := field_strip.size.y * 0.5
+	field_strip.draw_rect(Rect2(0, mid - 6, width, 12), Color(0.14, 0.25, 0.22))
+	for i in range(1, 10):
+		var x := width * i / 10.0
+		field_strip.draw_line(Vector2(x, mid - 4), Vector2(x, mid + 4), Color(1, 1, 1, 0.28))
+	var start := clampf(width * field_marks.x, 1, width - 1)
+	var gain := clampf(width * field_marks.y, 1, width - 1)
+	field_strip.draw_line(Vector2(start, mid - 7), Vector2(start, mid + 7), ACCENT, 2)
+	field_strip.draw_line(Vector2(gain, mid - 7), Vector2(gain, mid + 7), Color(1.0, 0.86, 0.35), 2)
 
 func _mode_text(main) -> String:
 	var m := "CHAOSBALL" if main.match_mode == "chaosball" else "CLASSIC"
@@ -396,12 +447,17 @@ func _status_text(main) -> String:
 		return ""
 	if _training(main):
 		return main.drill.status(w)
-	var lab: String = s.downs.label()
-	var at := lab.find(" at ")
-	var spot := lab.substr(at + 4).to_upper() if at > 0 else ""
 	match int(w.phase):
 		0:
-			return "BALL ON %s" % spot if spot != "" else ""
+			var mine: bool = w.offense_team == w.get_athlete(main.my_id).team
+			if int(s.state) == 3:
+				var won: bool = s.toss_winner == w.get_athlete(main.my_id).team
+				return ("YOU WON THE TOSS  ·  1 RECEIVE  ·  2 KICK" if won else "COIN TOSS  ·  %s CHOOSING" % ("HOME" if s.toss_winner == 0 else "AWAY"))
+			if w.kick_play == "kickoff":
+				return "KICKOFF  ·  " + ("J / CLICK TO KICK" if mine else "RETURN TEAM")
+			if w.kick_play != "" and mine:
+				return ("PUNT" if w.kick_play == "punt" else "FIELD GOAL") + "  ·  K CHANGE"
+			return ""
 		1:
 			if main.world.is_chaos():
 				return "PASS CLOCK %.1f" % maxf(0.0, main.T.PASS_CLOCK - w.hold_t)
@@ -421,7 +477,7 @@ func _refresh_picker(main, final: bool) -> void:
 		coaching_text.text = card[1]
 		route_select.hide()
 		return
-	picker.visible = not final and w.phase == w.Phase.PRESNAP and main.play_picker_open and not main.scoreboard_held and not main.replay_active
+	picker.visible = not final and w.phase == w.Phase.PRESNAP and w.kick_play != "kickoff" and main.play_picker_open and not main.scoreboard_held and not main.replay_active
 	if not picker.visible:
 		return
 	var side := 0 if w.get_athlete(main.my_id).team == w.offense_team else 1

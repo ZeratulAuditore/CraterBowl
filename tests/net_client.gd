@@ -22,6 +22,8 @@ var equipped_number := ""
 var first_team := -1
 var saw_lobby := false
 var lobby_size := 0
+var quarter_lobby_seen := false
+var quarter_clock_seen := false
 var lobby_code := ""
 var lead_samples := 0
 var was_locked := false     # C08d: joiner (defense) started in stance per host snapshot
@@ -49,13 +51,17 @@ func _on_snap(s: Dictionary) -> void:
 		last_server_x = (s["a"] as PackedFloat32Array)[aid * 7]
 	if s.get("dc") == "edge_blitz" and main.world.defensive_call == "edge_blitz":
 		defense_call_seen = true
+	if main.series.clock.label() == "Q1 3:00" and main.series.clock.quarter_length == 180.0:
+		quarter_clock_seen = true
 	if s["ph"] == 1:
 		saw_live = true
 
 func _on_lobby(st: Dictionary) -> void:
 	if not saw_lobby and st.get("phase", 1) == 0:
 		saw_lobby = true
-		lobby_size = int(st.get("settings", {}).get("size", 0))
+		var settings: Dictionary = st.get("settings", {})
+		lobby_size = int(settings.get("size", 0))
+		quarter_lobby_seen = settings.get("quarters") == true and settings.get("quarter_minutes") == 3
 		lobby_code = str(st.get("code", ""))
 		main.lobby_key(KEY_ENTER)   # ready up through the real lobby key path
 
@@ -125,6 +131,7 @@ func _physics_process(_dt: float) -> bool:
 		_test_remote_handoff()
 	if f == 1500 or remote_handoff_confirmed:
 		check(saw_lobby and lobby_size == 5 and lobby_code.length() == 11, "joined by code into the private lobby (5v5, code %s)" % lobby_code)
+		check(quarter_lobby_seen and quarter_clock_seen, "host lobby Q and H select three-minute quarters on both machines")
 		check(aid >= 0, "readied up -> match started -> welcomed with athlete %d" % aid)
 		check(first_team == 1, "joiner initially placed on the opponent team")
 		check(main.match_size == 5 and main.world.athletes.size() == 10, "client adopted host's 5v5 (%d athletes)" % main.world.athletes.size())

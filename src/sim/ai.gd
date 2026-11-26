@@ -6,6 +6,7 @@ const T := preload("res://src/sim/tuning.gd")
 const Athlete := preload("res://src/sim/athlete.gd")
 const Passing := preload("res://src/sim/passing.gd")
 const Routes := preload("res://src/sim/routes.gd")
+const World := preload("res://src/sim/world.gd")
 
 var defense_enabled := true
 var offense_enabled := true
@@ -16,12 +17,15 @@ var _calls := 0           # plays called so far: deterministic variety
 var _man := {}            # defender id -> receiver id (set at snap)
 var _man_ref = null
 
+func reset_presnap() -> void:
+	_presnap_t = 0.0
+	_presnap_called = false
+
 ## Presnap bot behavior: an AI-run offense calls a situational play and snaps.
 ## `down`/`distance` describe the situation (pass downs.down / downs.distance()).
 func presnap_tick(world, human_ids: Array, dt: float, down: int = 1, distance: float = 10.0, snap_delay: float = T.AI_SNAP_DELAY) -> void:
 	if world.phase != world.Phase.PRESNAP:
-		_presnap_t = 0.0
-		_presnap_called = false
+		reset_presnap()
 		return
 	_presnap_t += dt
 	var humans_on_offense := false
@@ -30,15 +34,34 @@ func presnap_tick(world, human_ids: Array, dt: float, down: int = 1, distance: f
 		if h and h.team == world.offense_team:
 			humans_on_offense = true
 	var qb = world.find_role(world.offense_team, Athlete.Role.QB)
+	if world.kick_play == "kickoff":
+		if not humans_on_offense and _presnap_t >= T.AI_SNAP_DELAY and qb and world.ball.is_held_by(qb.id):
+			# Vary depth so some kicks are returnable and some go for touchbacks.
+			var p := 0.74 + 0.04 * float(_calls % 4)
+			var aim := Vector2(world.field.width * (0.5 + 0.12 * float(_calls % 3 - 1)), world.field.length)
+			if world.kick(qb.id, aim, p):
+				_calls += 1
+		return
 	if not _presnap_called and qb and not humans_on_offense:
-		world.call_play(choose_play(down, distance, _calls, world.has_run_back()))
-		if world.play_name == "Outside Sweep":
-			# Sweep across the formation so the back can keep their exchange momentum.
-			world.flip_play()
+		if world.kick_play == "":   # PAT kicks are called by the match
+			world.call_play(choose_play(down, distance, _calls, world.has_run_back()))
+			if world.play_name == "Outside Sweep":
+				# Sweep across the formation so the back can keep their exchange momentum.
+				world.flip_play()
+			if down >= 4:
+				world.call_kick(fourth_down_call(world.los_y, world.field.length, world.field.endzone_depth, distance))
 		_calls += 1
 		_presnap_called = true
 	if not humans_on_offense and _presnap_t >= snap_delay:
 		world.snap()
+
+## 4th down: kick a field goal in range, go for it on short yardage past midfield, else punt.
+static func fourth_down_call(los: float, goal: float, endzone: float, distance: float) -> String:
+	if goal - los + T.FG_HOLD_DEPTH + endzone <= T.AI_FG_MAX:
+		return "fg"
+	if distance <= T.AI_GO_FOR_IT and los >= goal * 0.5:
+		return ""
+	return "punt"
 
 ## Situational play choice: deterministic, rotating through fitting plays so
 ## drives don't repeat (variant = plays called so far).
@@ -73,6 +96,11 @@ func think(world, human_ids: Array) -> Dictionary:
 	var in_air: bool = c == null and world.ball.state == world.ball.State.IN_FLIGHT and world.forward_pass_thrown
 	var pass_phase: bool = c != null and c.team == world.offense_team and c.role == Athlete.Role.QB and c.position.y <= world.los_y and not world.forward_pass_thrown and (not run_call or exchange)
 	var landing := _landing_point(world) if in_air else Vector2.INF
+	if world.kick_live:
+		return _kick_coverage(world, human_ids, landing)
+	var pre_kick: bool = c != null and c.team == world.offense_team and world.kick_play in ["punt", "fg"] and not world.kicked
+	if pre_kick:
+		return _kick_protect(world, human_ids, c)
 	var ball_chasers := _nearest_to(world, landing, 2) if in_air else []
 	for a in world.athletes:
 		if human_ids.has(a.id):
@@ -430,3 +458,63 @@ func _approach_block(world, a, target, lane: Vector2) -> Dictionary:
 	if to.length() < 0.2:
 		to = target.position - a.position  # in position: face the defender
 	return {"dir": to.normalized(), "sprint": false}
+
+## Punt / field goal before the kick: a bot kicker kicks once the snap is in; the
+## line protects; rushers (DL) go for the block; the rest hold their spots.
+func _kick_protect(world, human_ids: Array, k) -> Dictionary:
+	var out := {}
+	if not human_ids.has(k.id) and world.play_time >= T.SNAP_TIME + 0.15:
+		_bot_kick(world, k)
+		if world.kicked:
+			return out
+	for a in world.athletes:
+		if human_ids.has(a.id) or a.id == k.id:
+			continue
+		if a.team == world.offense_team:
+			if not offense_enabled:
+				continue
+			if a.role == Athlete.Role.OL or a.role == Athlete.Role.C:
+				out[a.id] = _protect(world, a, k)
+			elif world.kick_play == "punt":
+				out[a.id] = {"dir": Vector2(0, 1), "sprint": false}   # release into coverage
+		elif defense_enabled and a.role == Athlete.Role.DL:
+			out[a.id] = _pursue(world, a, k)
+	return out
+
+func _bot_kick(world, k) -> void:
+	var cx: float = world.field.width / 2.0
+	if world.kick_play == "fg":
+		var dist: float = world.field.posts_y() - k.position.y
+		var p := clampf(World.kick_power_for("fg", dist + 6.0, T.CROSSBAR_HEIGHT + 2.0, world.gravity()), 0.0, 1.0)
+		world.kick(k.id, Vector2(cx, world.field.posts_y()), p)
+	else:
+		world.kick(k.id, Vector2(cx + (world.los_y - floorf(world.los_y)) * 6.0 - 3.0, k.position.y + 40.0), 0.86)
+
+## Kick in the air: coverage sprints to the landing spot in lanes; the nearest
+## returner settles under it and the rest of the return team forms a wall.
+func _kick_coverage(world, human_ids: Array, landing: Vector2) -> Dictionary:
+	var out := {}
+	if world.kick_play == "fg":
+		return out
+	var cx: float = world.field.width / 2.0
+	var ret = null
+	var rd := INF
+	for a in world.athletes:
+		if a.team != world.offense_team and a.can_act() and a.position.distance_to(landing) < rd:
+			rd = a.position.distance_to(landing)
+			ret = a
+	for a in world.athletes:
+		if human_ids.has(a.id):
+			continue
+		if a.team == world.offense_team:
+			if offense_enabled:
+				var lane := Vector2(landing.x + (a.home_x - cx) * 0.4, landing.y)
+				out[a.id] = {"dir": (lane - a.position).normalized(), "sprint": true}
+		elif defense_enabled:
+			if a == ret:
+				out[a.id] = _arrive(a, landing)
+			else:
+				var wall := Vector2(landing.x + (a.home_x - cx) * 0.5, landing.y - 10.0)
+				out[a.id] = _arrive(a, wall)
+	return out
+

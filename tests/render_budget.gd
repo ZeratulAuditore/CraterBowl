@@ -13,7 +13,7 @@ const RC := preload("res://src/game/render_cache.gd")
 # written reason in docs/optimization/LOG.md.
 const MAX_TRIANGLES := 320000       # measured ~255k (14 Mannequins = 192k of it)
 const MAX_GEOMETRY_INSTANCES := 300 # measured ~248 visible MeshInstance3D/MultiMesh/Label3D
-const MAX_SHADOW_CASTERS := 110     # each one is redrawn per shadow split
+const MAX_SHADOW_CASTERS := 106     # measured 85 (2026-11-25); each one is redrawn per shadow split
 const MAX_MATERIALS := 170          # measured ~137 (per-athlete shader materials for team colors)
 const MAX_SKINNED := 14             # skinned meshes = the expensive part (~8 ms each on WSL d3d12)
 
