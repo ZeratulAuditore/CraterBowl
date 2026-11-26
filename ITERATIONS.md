@@ -223,3 +223,15 @@
 - Calls drive bot man, zone and rush behavior. Presnap turf art shows teammates' coverage landmarks, man tethers, rush lanes, receiver routes and pass protection targets. The local assignment is emphasized.
 - Cover 2 allowed 1 deep completion across 24 matched bot snaps versus 8 with legacy coverage. Deep attempts fell from 10 to 1.
 - Tests: 208 unit (+4) and full smoke passed, including remote recall. Checked offense and defense screenshots offscreen. An initial smoke attempt hit a matchmaker port bind error and passed on retry.
+
+## 033: B09 + C02 Kicking game (2026-11-25)
+- Coin toss (`Match.start_match`): deterministic from a seed (`--toss=N`), winner has 5 s to press 1 receive / 2 kick (bots and no answer = receive), other team receives the 2nd half.
+- Live kickoffs from the 35 (20 after a safety): kicker on the tee, coverage spread, front row + two deep returners. Space/play clock = default kick; J/LMB = aimed kick with the throw meter (arc preview shows the kick). Returns, touchbacks (25), out of bounds (40), rolled/downed spots. Onside recovery exists as an opt-in mutator (`world.onside`, off by default per the gap notes; C27 owns turning it on).
+- K cycles the kick call on any scrimmage down: punt (punter 10 deep, returner drops back; touchback 20, return/downed spots, fake punts play normal downs) or field goal (holder 7 deep; good = between the uprights above the 3.3 yd crossbar at the end line; miss = defense at the kick spot or its 20). 1-pt try = PAT kick from the 15; 2-pt stays scrimmage from the 10.
+- Blocks: a rusher within 1 yd of the ball in its first 5 yd blocks it; the ball pops up live (scoop and score; kicking-team recovery plays downs).
+- Bots: 4th-down rule (FG within 50 yd, go on 4th & ≤2 past midfield, else punt), kick PATs, vary kickoff depth; coverage lanes, a returner under the ball, a return wall.
+- Net: `kick`/`kick_call`/`toss` actions sanitized + routed; snapshots carry the kick call, kicked flag and toss winner. Huddle skipped on kickoffs; play card shows kick instructions.
+- Merged with iter 032 (Codex huddle): kicks go live through `_go_live()` so stance locks release.
+- Test changes: the scoring/clock/size tests now expect live kickoffs and the PAT from the 15; game_flow opens on the toss then resets to a scrimmage for the legacy steps (`opening_kickoff`); net_test host runs `--no-kickoff` (its defense/offense checks assume a scrimmage opener).
+- Tests: 260 unit after the merge (30 new in test_kicking.gd incl. a full bot match with kicks); flow adds toss (2 key), metered kickoff + arc + return, K punt, K K field goal +3. Screenshots checked: toss prompt, kickoff coverage, return.
+- Follow-ups filed: kicking stats, stepped meter/tee art, fair catch + bot 2-pt.
