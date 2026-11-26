@@ -288,3 +288,8 @@
 - The host now drops `act` messages that aren't a Dictionary with a String `a` before they reach its action queue (`Protocol.is_action`). `apply_action` takes an untyped action and rejects junk instead of aborting the caller. `lob`/`spr`/`block` flags are type-checked rather than compared with `== true`.
 - Before the fix, one malformed action raised a script error in `_step_authoritative`. That aborted the host tick and dropped any valid action queued behind it in the same tick.
 - Verified with 4 new unit tests (`test_action_validation.gd`) and a rendered host test (`tests/visual/invalid_actions_test.gd`). Restoring the old `protocol.gd`/`net_session.gd` made both fail: the unit queue test because 16 entries were queued instead of 1, and the visual test because of a script error and a dropped play call. Design notes are in `docs/design/netcode.md` under Validation.
+
+## Fix: Remove the UPnP mapping when hosting ends (#57)
+- `port_mapper.gd` now remembers every mapping the router accepted and deletes it when hosting ends: `Launch.go_to_menu` (Leave match, match end, back to menu) releases on a worker thread, and a quit guard node under `/root` releases on window close or tree exit. Before, `close_port` had no callers, so every hosted or queued game left the forward open for its 4 h lease.
+- Release is idempotent and best effort. A refused delete is forgotten, and a port re-mapped before a pending release runs is kept.
+- Verified with 8 unit tests in `tests/test_port_mapper.gd` that use a fake router covering map then release, double release, async release, re-host during a pending release, refused delete, CGNAT and quit. No real UPnP traffic. Planting the bug (not recording the mapping) failed 5 of them.

@@ -61,7 +61,7 @@ Bots fill every empty slot. Everything runs peer-hosted: there are no dedicated 
 
 ### UPnP (`src/net/port_mapper.gd`)
 - Settings → Online → "Open my router port automatically when hosting (UPnP)", on by default.
-- Before hosting (24565) or queueing (24566, so any queuer can be elected host), the game asks the router to forward the UDP port. The lease is 4 h, and the mapping is not removed on exit.
+- Before hosting (24565) or queueing (24566, so any queuer can be elected host), the game asks the router to forward the UDP port. The lease is 4 h. The game removes the mapping when hosting ends: on any return to the menu (Leave match, match end, queue leave) and when the app closes (window close or Quit to desktop). Removal runs off the main thread on menu return and is best effort; if the router refuses or the game crashes, the lease expires on its own (#57).
 - A private or carrier-grade NAT external IP (100.64/10) counts as a mapping failure. The code uses the LAN address, and the host lobby shows the failure and the UDP port to forward (#47).
 
 ### Disconnects
@@ -85,7 +85,7 @@ Bots fill every empty slot. Everything runs peer-hosted: there are no dedicated 
 - `src/net/lobby_registry.gd`, `src/net/lobby_advertiser.gd`, `src/ui/server_browser.gd`: match browser.
 - `src/net/port_mapper.gd`: UPnP. `src/sim/roster.gd`: slots, auto-assign.
 - `src/game/main.gd` (`_host_game`, `_join_game`, `_queue_up`, `_step_lobby`, `_start_from_lobby`) and `src/ui/main_menu.gd` (`_screen_online`, `_queue`, `host_match`, `_with_port`).
-- Tests: `tests/test_lobby.gd`, `tests/test_matchmaker.gd`, `tests/test_protocol.gd`, `tests/test_roster.gd`, `tests/test_out_of_game.gd` (registry, advertiser, public-IP check), `tests/net_host.gd` + `tests/net_client.gd` via `scripts/net_test.sh`, `scripts/mm_test.sh` (`MODE=casual|competitive|party|chaos`), `tests/menu_flow.gd` (classic and Chaosball private hosts), `tests/visual/private_lobby_chaosball_test.gd` (rendered Chaosball lobby).
+- Tests: `tests/test_lobby.gd`, `tests/test_matchmaker.gd`, `tests/test_protocol.gd`, `tests/test_roster.gd`, `tests/test_out_of_game.gd` (registry, advertiser, public-IP check), `tests/test_port_mapper.gd` (UPnP map/unmap lifetime with a fake router), `tests/net_host.gd` + `tests/net_client.gd` via `scripts/net_test.sh`, `scripts/mm_test.sh` (`MODE=casual|competitive|party|chaos`), `tests/menu_flow.gd` (classic and Chaosball private hosts), `tests/visual/private_lobby_chaosball_test.gd` (rendered Chaosball lobby).
 
 ## History
 - 010 [Networking core](../iterations/010-networking-core.md)
