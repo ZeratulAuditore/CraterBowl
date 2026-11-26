@@ -401,9 +401,7 @@ func _draw_crosshair() -> void:
 		var bar := Rect2(c + Vector2(-50, 44), Vector2(100, 8))
 		crosshair.draw_rect(bar.grow(2.0), shade)
 		crosshair.draw_rect(Rect2(bar.position, Vector2(bar.size.x * charge, bar.size.y)), col.lerp(Color(1.0, 0.45, 0.15), charge))
-	var lbl := "LOFT %d°" % int(round(launch_angle()))
-	crosshair.draw_string_outline(ArtMats.ui_font(600), c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, shade)
-	crosshair.draw_string(ArtMats.ui_font(600), c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, col)
+	# No LOFT N° readout (#131): the view pitch is the loft; the arc dots show the throw.
 
 ## True while the human is the passer: QB before the forward pass (Chaosball: any holder).
 func pov_active() -> bool:

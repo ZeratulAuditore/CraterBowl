@@ -16,11 +16,11 @@ const ACTIONS := [
 	["taunt", "Taunt (wheel picks)", KEY_C],
 	["scoreboard", "Show scoreboard (hold)", KEY_TAB],
 	["next", "Next play", KEY_ENTER], ["replay", "Instant replay", KEY_V],
-	["try1", "Extra point", KEY_1], ["try2", "Two-point try", KEY_2],
+	["try1", "Extra point / toss: receive", KEY_1], ["try2", "Two-point try / toss: kick", KEY_2],
 ]
 const OTHER_CONTROLS := [
 	"Mouse: look live · middle drag: look pre-snap · wheel: pick taunt (C performs)",
-	"QB / passer: mouse aims your view (look up = loft) · hold left click to charge distance, release to throw",
+	"QB / passer: mouse aims your view (look higher to throw higher) · hold left click to charge distance, release to throw",
 	"Hold right click: block",
 	"Gamepad: left stick move · right stick QB aim · A snap · B dive · X / Y spin · R3 handoff · RT pass · LT sprint",
 	"Replay viewer: Space pause · Left / Right seek · [ / ] speed",
