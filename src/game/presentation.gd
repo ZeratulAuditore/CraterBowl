@@ -1,6 +1,6 @@
 extends Node3D
 ## Runtime presentation for a match: football model + spiral + trail, landing
-## marker, controlled-player ring/chevron, sideline chains, tackle dust,
+## marker, controlled-player ground ring, sideline chains, tackle dust,
 ## touchdown fireworks, camera shake, crowd excitement, jumbotron, overlay.
 ## Runs as a child of main (after main's _process). Reads state; owns no rules.
 
@@ -16,7 +16,6 @@ var main: Node3D
 var stadium: RefCounted
 var overlay: Overlay
 var ring: MeshInstance3D
-var chevron: MeshInstance3D
 var carrier_glow: MeshInstance3D
 var landing: MeshInstance3D
 var trail_mesh := ImmediateMesh.new()
@@ -44,15 +43,6 @@ func _ready() -> void:
 	landing = _ground_quad("LandingMarker", 2.0, "res://src/game/art/ring.gdshader")
 	(landing.material_override as ShaderMaterial).set_shader_parameter("color", Color(1.0, 0.95, 0.4, 0.85))
 	(landing.material_override as ShaderMaterial).set_shader_parameter("pulse", 1.0)
-	chevron = MeshInstance3D.new()
-	chevron.name = "Chevron"
-	var pm := PrismMesh.new()
-	pm.size = Vector3(0.45, 0.4, 0.12)
-	chevron.mesh = pm
-	chevron.rotation.z = PI
-	chevron.material_override = Mats.emissive(Color(0.36, 0.88, 1.0), 2.5)
-	chevron.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(chevron)
 	trail = MeshInstance3D.new()
 	trail.name = "BallTrail"
 	trail.mesh = trail_mesh
@@ -430,8 +420,6 @@ func _update_rings(w) -> void:
 		if pv.athlete.team != _ring_team:
 			_ring_team = pv.athlete.team
 			(ring.material_override as ShaderMaterial).set_shader_parameter("color", Color(tc.r, tc.g, tc.b, 0.9))
-		chevron.position = pv.global_position + Vector3(0, 2.75 + sin(Time.get_ticks_msec() * 0.005) * 0.12, 0)
-		chevron.rotation.y += 0.04
 	var b = w.ball
 	var hv = main.views[b.holder_id] if int(b.state) == 0 and b.holder_id >= 0 and b.holder_id < main.views.size() else null
 	carrier_glow.visible = hv != null and hv != pv and int(w.phase) == 1
