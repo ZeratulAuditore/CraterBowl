@@ -111,7 +111,7 @@ func _ready() -> void:
 	number_back = _number_label(chest, -0.205)
 	set_opponent(is_opponent)
 	add_child(_blob_shadow())
-	var shield_mesh := SphereMesh.new()
+	var shield_mesh := RC.sphere(0.5, 1.0)
 	var shield_mat := Mats.emissive(Color(0.3, 0.8, 1.0, 0.35), 0.9)
 	shield_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	block_shield = _part(self, shield_mesh, shield_mat, Vector3(0, 0.95, -0.66))

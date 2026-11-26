@@ -1,0 +1,56 @@
+# Presentation (graphics, camera, HUD, audio)
+
+Feature-level doc: how a match looks and sounds for players **today** on `main`. Performance rules and budgets: `../optimization/README.md`. Layering (presentation reads sim state and owns no rules): `../design/architecture.md`. Open work: GitHub issues labelled `area:presentation` and `area:audio` (listed below).
+
+## Summary
+Matches are played in **Crater Bowl**, an original lunar stadium built inside a crater. Rigged CC0 athletes, a broadcast-style overlay and event effects (camera shake, tackle dust, touchdown fireworks) sit on top of a sim that knows nothing about them. The menus have a licensed music soundtrack. Matches have no sound effects yet.
+
+## How it looks and plays
+| Piece | What the player sees | Owner |
+|---|---|---|
+| Stadium | Bowl seating with an instanced crowd, LED ribbon boards, light towers, dome arches, jumbotrons, crater rim and regolith | `src/game/art/stadium.gd` |
+| Field | Turf, lines, end zones, line-of-scrimmage barrier (see `defense.md`), sideline chains | `src/game/art/field_art.gd`, `los_barrier.gd`, `presentation.gd` |
+| Athletes | Quaternius rig. Your team wears the CC0 mannequin and helmet, and opponents wear a custom uniform. Jersey numbers are `Label3D` on chest and back. Cosmetics are view-only. | `src/game/player.gd`, `art/character_art.gd`, `art/football_uniforms.gd` |
+| Ball | Leather spheroid with laces, spiral, flight trail and a landing marker | `src/game/presentation.gd` |
+| You | A ring and chevron mark the controlled player | `presentation.gd` |
+| Camera | Follow camera behind your player. The mouse moves the aim range on the turf. | `src/game/main.gd` `_update_camera`, `_camera_target_yaw` |
+| Effects | Camera shake on big events, tackle dust, touchdown fireworks, crowd excitement, jumbotron | `presentation.gd` |
+| Overlay | Scorebug (score, clock, down and distance, timeout pips), play clock, status line, play-call picker, movement meters, hold-Tab scoreboard, event banners | `src/game/overlay.gd` |
+| Play art | Routes, run paths, blocking targets and coverage drawn on the turf before the snap | `offense.md`, `defense.md` |
+| Quality | `--gfx=low\|medium\|high`. Software rasterizers (llvmpipe etc.) auto-select `low`. | `src/game/art/quality.gd` |
+
+**Audio today:** only the menu soundtrack. It plays `assets/music/tracks.json` in order, loops the playlist, and has a "now playing" widget (prev / pause / next). Credits are in `assets/music/CREDITS.md`. Volume follows the music and master settings. A match plays no SFX, crowd or whistle (#22).
+
+## Design decisions
+- **Original look only.** It's a sci-fi lunar dome, never Gridiron's art or UI. Assets must be CC0 or compatible-license, logged in `ASSETS.md`.
+- **Presentation never owns rules.** Views mirror sim state and are interpolated per render frame, so the sim stays deterministic and testable headless.
+- **Rigged athletes are the most expensive thing on screen** (about 8 ms each on WSL's GL path). Measure before adding bones or characters. Details: `../optimization/README.md`.
+- **HUD text refreshes at about 10 Hz.** Rebuilding scorebug strings every frame cost ~1 ms/frame (`../optimization/LOG.md`). Animated parts (throw bar, banners) still run per frame.
+
+## Code and tests
+- `src/game/presentation.gd`: ball, markers, effects, crowd, jumbotron
+- `src/game/overlay.gd`: scorebug and HUD
+- `src/game/player.gd`: athlete views
+- `src/game/art/`: stadium, field, materials, shaders, quality presets
+- `src/game/render_cache.gd`: shared low-poly meshes and materials (lint forbids default-tessellation meshes)
+- `src/ui/music_player.gd`: menu soundtrack
+- Tests:
+  - `tests/render_budget.gd` and `tests/test_render_perf.gd` cap tris, instances, shadows, materials and skinned meshes (`./scripts/perf.sh`)
+  - Visuals are verified with `./scripts/shot.sh` PNGs (`../TESTING.md`)
+  - The overlay is exercised by `tests/game_flow.gd`
+
+## History
+- A26 presentation: built by the graphics session (branch `graphics-overhaul`), merged before the A28 audit (iter 031, `../../ITERATIONS.md`)
+- Perf pass `871417c`: shared render cache, interpolated rendering, quality presets (`../optimization/LOG.md`)
+- [032 Pre-snap defensive roam + LOS barrier](../iterations/032-presnap-defense-roam.md)
+
+## Open issues
+- #10 C10 Throw readability: landing marker, aim-zoom
+- #12 C31 Who's who on the field: nameplates, rings, "you" marker
+- #13 Scorebug: show the full remaster-style checklist in one compact strip
+- #22 C16 Audio foundation + live play feed
+- #31 Team voice chat (team-only, host-relayed)
+- #34 C33 Team identity: names, colors, field branding, "ball on <TEAM> 19"
+- #38 B06 Juice: hit-stop, screenshake, crowd stingers
+- #43 C28 Commentary barks
+- #44 C29 Events and variety: weather, time of day, rotating modes
