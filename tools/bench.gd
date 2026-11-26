@@ -19,13 +19,12 @@ const DT := 1.0 / 60.0
 
 var _args := {}
 var _main: Node
-const WARMUP_FRAMES := 180
-
 var _frame := 0
 var _frames := 600
 var _frame_us: Array = []
 var _last_us := 0
 var _objects0 := 0
+var _objects1 := 0
 
 func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -39,7 +38,6 @@ func _initialize() -> void:
 		return
 	_main = load("res://scenes/main.tscn").instantiate()
 	_main.set("auto_next", true)
-	_main.set("opening_kickoff", false)
 	root.add_child(_main)
 	process_frame.connect(_on_frame)
 
@@ -85,20 +83,25 @@ func _bench_sim(minutes: float, size: int) -> void:
 
 func _on_frame() -> void:
 	_frame += 1
-	if _frame == WARMUP_FRAMES:
+	# Leak check: features allocate lazily on first use (first tackle FX, caches, ...), which
+	# lands in ONE window. A leak keeps growing, so it shows in BOTH thirds-windows.
+	# Reported growth = the smaller of the two windows.
+	if _frame == 30 + _frames / 3:
 		_objects0 = int(Performance.get_monitor(Performance.OBJECT_COUNT))
+	if _frame == 30 + 2 * _frames / 3:
+		_objects1 = int(Performance.get_monitor(Performance.OBJECT_COUNT))
 	var now := Time.get_ticks_usec()
-	if _frame > WARMUP_FRAMES:  # allow the play picker and scene resources to warm up
+	if _frame > 30:  # skip warm-up (scene build, first imports)
 		_frame_us.append(now - _last_us)
 	_last_us = now
 	# Keep plays flowing so the scene exercises LIVE/DEAD/PRESNAP, not just presnap.
 	if _main.world.phase == World.Phase.PRESNAP and _frame % 90 == 0:
 		_main.world.snap()
-	if _frame >= _frames + WARMUP_FRAMES:
+	if _frame >= _frames + 30:
 		_report("scene_frame", _frame_us)
 		var objs := int(Performance.get_monitor(Performance.OBJECT_COUNT))
 		print("BENCH scene_nodes=%d" % int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))
-		print("BENCH scene_object_growth=%d" % (objs - _objects0))
+		print("BENCH scene_object_growth=%d" % mini(_objects1 - _objects0, objs - _objects1))
 		print("BENCH static_mem_mb=%.1f" % (Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0))
 		quit()
 

@@ -26,6 +26,7 @@ static func build(root: Node3D, field, team_colors: Array) -> void:
 	tm.set_shader_parameter("grass_tex", load("res://assets/textures/grass/Grass004_1K-JPG_Color.jpg"))
 	tm.set_shader_parameter("grass_nrm", load("res://assets/textures/grass/Grass004_1K-JPG_NormalGL.jpg"))
 	turf.material_override = tm
+	turf.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF   # flat ground never casts
 	root.add_child(turf)
 	_yard_numbers(root, w, L)
 	_end_zone_names(root, w, L, ez, team_colors)

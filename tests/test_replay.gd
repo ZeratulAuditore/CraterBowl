@@ -91,3 +91,109 @@ func test_save_load_and_size() -> void:
 	assert_eq(r2.frames[100], r.frames[100])
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	print("    replay: %d frames, %d plays, %d bytes" % [r.frames.size(), r.plays.size(), bytes])
+
+# --- B04a: play summaries, highlights, clip controls ---
+func _play(w: World, r: Replay, frames: int) -> void:
+	for i in frames:
+		w.step({}, DT)
+		r.capture(w)
+
+func test_play_summary_yards_and_context() -> void:
+	var s := _rec()
+	var w: World = s[0]
+	var r: Replay = s[2]
+	r.context = "H1 2:00, 1st & 10 at OWN 25"
+	_play(w, r, 4)
+	var los := w.los_y
+	w.snap()
+	_play(w, r, 20)
+	w.event.emit("tackle", {"carrier": 99, "team": w.offense_team, "spot": Vector2(20, los + 6.4)})
+	var p: Dictionary = r.plays[0]
+	assert_near(p["yards"], 6.4, 0.01)
+	assert_eq(p["summary"], "run for 6 yd")
+	assert_true(not (p["highlight"]), "short run is not a highlight")
+	assert_eq(p["label"], "Play 1 (H1 2:00, 1st & 10 at OWN 25): run for 6 yd")
+
+func test_highlight_tags() -> void:
+	var s := _rec()
+	var w: World = s[0]
+	var r: Replay = s[2]
+	var los := w.los_y
+	# 1: long pass gain
+	w.snap(); _play(w, r, 10)
+	w.event.emit("throw", {"by": 1}); _play(w, r, 10)
+	w.event.emit("tackle", {"carrier": 5, "team": w.offense_team, "spot": Vector2(20, los + 31.0)})
+	# 2: touchdown
+	w.event.emit("snap", {"qb": 1}); _play(w, r, 10)
+	w.event.emit("touchdown", {"carrier": 5, "team": w.offense_team, "spot": Vector2(20, w.field.goal_line_b() + 3.0)})
+	# 3: interception
+	w.event.emit("snap", {"qb": 1}); _play(w, r, 10)
+	w.event.emit("throw", {"by": 1}); w.event.emit("interception", {"by": 9, "team": 1 - w.offense_team})
+	_play(w, r, 10)
+	w.event.emit("tackle", {"carrier": 9, "team": 1 - w.offense_team, "spot": Vector2(20, los + 10.0)})
+	# 4: sack (QB tackled behind the line, no throw)
+	w.event.emit("snap", {"qb": 1}); _play(w, r, 10)
+	var qb: int = 1
+	w.event.emit("tackle", {"carrier": qb, "team": w.offense_team, "spot": Vector2(20, los - 7.0)})
+	# 5: incomplete
+	w.event.emit("snap", {"qb": 1}); _play(w, r, 10)
+	w.event.emit("incomplete", {})
+	assert_eq(r.plays.size(), 5)
+	assert_eq(r.plays[0]["summary"], "pass for 31 yd")
+	assert_true(r.plays[0]["highlight"], "20+ yd play is a highlight")
+	assert_true(r.plays[1]["summary"].begins_with("TOUCHDOWN"), r.plays[1]["summary"])
+	assert_near(r.plays[1]["yards"], w.field.goal_line_b() - los, 0.01, "TD yards stop at the goal line")
+	assert_true(r.plays[2]["summary"].begins_with("INTERCEPTION"), r.plays[2]["summary"])
+	assert_eq(r.plays[3]["summary"], "SACK: loss of 7")
+	assert_true(not (r.plays[4]["highlight"]))
+	assert_true(r.plays[4]["label"].ends_with("incomplete"))
+	assert_eq(r.highlights(), [0, 1, 2, 3])
+	r.time = float(r.plays[1]["start"])
+	assert_eq(r.next_highlight(), 2, "next highlight after the current play")
+	r.time = float(r.plays[4]["start"])
+	assert_eq(r.next_highlight(), 0, "wraps")
+
+func _synthetic() -> Replay:
+	var r := Replay.new()
+	for i in 200:
+		r.frames.append(PackedFloat32Array([1, 0, 0, 0, float(i), 0.0, 0.0]))
+	r.plays = [{"start": 0, "end": 90, "label": "a", "highlight": true},
+		{"start": 100, "end": 140, "label": "b"}, {"start": 150, "end": 199, "label": "c", "highlight": true}]
+	return r
+
+func test_highlight_clip_slowmo_and_reel() -> void:
+	var r := _synthetic()
+	assert_true(r.clip_play(0, 1.0, true))
+	assert_near(r.slowmo_from, 30.0, 0.001, "last 2 s are slow motion")
+	assert_near(r.effective_speed(), 1.0, 0.001)
+	r.time = 40.0
+	assert_near(r.effective_speed(), Replay.SLOWMO_SPEED, 0.001, "slow-mo tail")
+	assert_true(r.start_reel(r.highlights()))
+	assert_near(r.time, 0.0)
+	assert_eq(r.reel, [2])
+	r.advance(100.0)
+	assert_true(r.ended())
+	assert_true(r.next_in_reel(), "reel moves to the next highlight")
+	assert_near(r.time, 150.0)
+	r.advance(100.0)
+	assert_true(not (r.next_in_reel()), "reel done")
+	assert_true(not (r.clip_play(7)), "bad index refused")
+
+func test_frame_step_progress_and_old_files() -> void:
+	var r := _synthetic()
+	r.clip_play(1, 0.5)
+	r.step_frames(-5)
+	assert_near(r.time, 100.0, 0.001, "frame-step clamps to the clip start")
+	r.step_frames(3)
+	assert_near(r.time, 103.0, 0.001)
+	r.step_frames(1000)
+	assert_near(r.time, 140.0, 0.001, "and to the clip end")
+	assert_near(r.progress(), 1.0, 0.001)
+	r.time = 120.0
+	assert_near(r.progress(), 0.5, 0.001)
+	assert_true(r.clip_play(2, -1.0))
+	assert_near(r.speed, 0.5, 0.001, "spd <= 0 keeps the current speed")
+	# Pre-B04 files: plays have no highlight key.
+	r.plays = [{"start": 0, "end": 10, "label": "Play 1 - tackle"}]
+	assert_eq(r.highlights(), [])
+	assert_eq(r.next_highlight(), -1)

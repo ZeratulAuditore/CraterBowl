@@ -4,6 +4,7 @@ extends Node3D
 ## touchdown fireworks, camera shake, crowd excitement, jumbotron, overlay.
 ## Runs as a child of main (after main's _process). Reads state; owns no rules.
 
+const RC := preload("res://src/game/render_cache.gd")
 const Mats := preload("res://src/game/art/materials.gd")
 const Stadium := preload("res://src/game/art/stadium.gd")
 const Overlay := preload("res://src/game/overlay.gd")
@@ -183,7 +184,9 @@ func _crew_member(parent: Node3D) -> void:
 	crew.name = "ChainCrew"
 	crew.position.x = 0.5
 	parent.add_child(crew)
-	_crew_part(crew, Vector3(0, 1.24, 0), Vector3(0.31, 0.53, 0.47), uniform)
+	# Only the torso casts: 13 casters per crew member blew the shadow budget (each caster is
+	# redrawn per shadow split) and the limbs' shadows are invisible at the sideline.
+	_crew_part(crew, Vector3(0, 1.24, 0), Vector3(0.31, 0.53, 0.47), uniform).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	_crew_part(crew, Vector3(-0.005, 1.16, 0), Vector3(0.32, 0.055, 0.48), reflective)
 	_crew_part(crew, Vector3(0, 1.63, 0), Vector3(0.24, 0.28, 0.26), skin)
 	_crew_part(crew, Vector3(0, 1.78, 0), Vector3(0.27, 0.11, 0.29), shoes)
@@ -199,12 +202,9 @@ func _crew_member(parent: Node3D) -> void:
 
 func _crew_part(parent: Node3D, at: Vector3, dimensions: Vector3, material: Material) -> MeshInstance3D:
 	var part := MeshInstance3D.new()
-	var mesh := SphereMesh.new()
-	mesh.radial_segments = 12
-	mesh.rings = 6
-	part.mesh = mesh
-	part.material_override = material
+	part.mesh = RC.sphere(0.5, 1.0, 12, 6)   # shared (was one SphereMesh per part)
 	part.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	part.material_override = material
 	part.scale = dimensions
 	part.position = at
 	parent.add_child(part)

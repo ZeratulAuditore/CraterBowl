@@ -27,6 +27,7 @@ const Leaderboard := preload("res://src/sim/leaderboard.gd")
 const Ranked := preload("res://src/sim/ranked.gd")
 const Cosmetics := preload("res://src/sim/cosmetics.gd")
 const Replay := preload("res://src/sim/replay.gd")
+const ReplayOverlay := preload("res://src/game/replay_overlay.gd")
 const Achievements := preload("res://src/sim/achievements.gd")
 const MMServer := preload("res://src/net/mm_server.gd")
 const MMClient := preload("res://src/net/mm_client.gd")
@@ -91,6 +92,19 @@ var replay_active := false      # views show replay frames instead of the live s
 var replay_viewer := false      # --replay=FILE standalone viewer
 var replay_dir := "user://replays"
 var saved_replay := ""
+## B04 highlights: offline, big plays (TD, turnover, sack, 20+ yd) replay on their own
+## shortly after the whistle. V/Enter skips. --auto-replay=0 turns it off.
+const AUTO_REPLAY_DELAY := 1.0
+const REPLAY_CAMS := ["Broadcast", "End zone", "Sky", "Player"]
+var auto_replay := true
+var replay_auto := false        # the clip on screen is an automatic highlight
+var replay_reel := false        # the highlight reel (V at FINAL) is playing
+var replay_shown := -1          # last play index already replayed (manual or auto)
+var replay_cam := 0             # index into REPLAY_CAMS
+var replay_overlay: CanvasLayer
+var _replay_cam_cut := true     # next replay camera frame cuts instead of easing
+var _was_replaying := false
+var whistle_t := 0.0            # seconds since the ball went dead (offline auto replay)
 var my_ranks := ""
 var potg: Array = []            # players of the game (server picks; clients receive)
 var team_totals: Array = []     # per-team box score for the lobby's game overview
@@ -145,6 +159,8 @@ func _ready() -> void:
 		training_path = str(args["training-file"])
 	if args.has("replay-dir"):
 		replay_dir = str(args["replay-dir"])
+	if args.has("auto-replay"):
+		auto_replay = str(args["auto-replay"]) not in ["0", "false", "off"]
 	if args.has("profile-file"):
 		profile_path = str(args["profile-file"])
 	profile.load_file(profile_path)
@@ -189,6 +205,8 @@ func _ready() -> void:
 	var layer := CanvasLayer.new()
 	layer.add_child(hud)
 	add_child(layer)
+	replay_overlay = ReplayOverlay.new(self)
+	add_child(replay_overlay)
 
 ## (Re)build the whole match for a size: field, roster, sim, views. Used at start,
 ## and on clients when the host's size differs.
@@ -234,6 +252,8 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	replay.attach(world)
 	replay.meta = {"size": match_size, "mode": match_mode}
 	replay_active = false
+	replay_auto = false
+	replay_shown = -1
 	summary_lines = []
 	if postgame != null:
 		postgame.get_parent().queue_free()
@@ -535,6 +555,8 @@ func _on_match_event(n: String, data: Dictionary) -> void:
 				net.broadcast_event("awards", {"xp": awards, "ctx": ctx})
 		summary_lines = stats.summary_lines()
 		print("MATCH SUMMARY:\n  " + "\n  ".join(summary_lines))
+		if replay_auto and not replay_viewer:   # the final whistle beats a highlight (V replays it in the reel)
+			stop_replay()
 		if drill == null and not is_client():
 			potg = _decorate_potg(Potg.pick(stats.athletes, series.winner()))
 			team_totals = Potg.team_totals(stats.athletes)
@@ -1063,15 +1085,8 @@ func _unhandled_key_input(e: InputEvent) -> void:
 	if e.keycode == KEY_V:
 		toggle_replay()
 		return
-	if replay_viewer:
-		match e.keycode:
-			KEY_SPACE: replay.paused = not replay.paused
-			KEY_RIGHT: replay.seek_play(replay.current_play() + 1)
-			KEY_LEFT: replay.seek_play(replay.current_play() - 1)
-			KEY_BRACKETRIGHT: replay.speed = minf(2.0, replay.speed * 2.0)
-			KEY_BRACKETLEFT: replay.speed = maxf(0.25, replay.speed / 2.0)
-		return
 	if replay_active:
+		replay_key(e.keycode)
 		return
 	match e.keycode:
 		KEY_SPACE:
@@ -1119,7 +1134,7 @@ func _physics_process(delta: float) -> void:
 		return
 	if replay_active:
 		replay.advance(delta)
-		if replay.ended() and not replay_viewer:
+		if replay.ended() and not replay_viewer and not replay.paused and not replay.next_in_reel():
 			stop_replay()
 		elif net != null and not is_client():
 			_step_authoritative(delta, my_input)   # host keeps the match running
@@ -1141,6 +1156,9 @@ func _physics_process(delta: float) -> void:
 	_render()
 
 func _step_authoritative(delta: float, my_input: Dictionary) -> void:
+	whistle_t = whistle_t + delta if world.phase == World.Phase.DEAD else 0.0
+	if maybe_auto_replay():
+		return
 	if drill == null:
 		series.tick(delta)          # practice never runs the clocks
 	if drill != null and drill.kind != "scrimmage":
@@ -1164,6 +1182,8 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 				_sync_looks()
 			else:
 				Protocol.apply_action(series, pa[1], act)
+	if world.phase == World.Phase.PRESNAP:
+		replay.context = "%s, %s" % [series.clock.label(), series.downs.label()]
 	var snap_delay := T.AI_SNAP_DELAY
 	if drill == null and not world.is_chaos() and not humans.is_empty():
 		snap_delay = T.HUDDLE_SECONDS
@@ -1181,21 +1201,88 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 		if net_tick % SNAPSHOT_EVERY == 0:
 			net.broadcast_snapshot(Protocol.encode_snapshot(series, net_tick, net.acks()))
 
-## Instant replay of the last play at half speed (V). Offline the match pauses.
+## Instant replay of the last play at half speed (V). At FINAL, V plays the highlight
+## reel instead. Offline the match pauses; online only your view changes.
 func toggle_replay() -> bool:
 	if replay_active:
 		stop_replay()
 		return true
-	var p := replay.last_play()
-	if p.is_empty() or world.phase == World.Phase.LIVE:
+	if world.phase == World.Phase.LIVE:
 		return false
-	replay.play_range(p["start"], p["end"], 0.5)
+	if series.is_final() and replay.start_reel(replay.highlights()):
+		replay_active = true
+		replay_reel = true
+		return true
+	var i := replay.last_play_index()
+	if i < 0:
+		return false
+	replay.clip_play(i, 0.5)
+	replay_shown = i
 	replay_active = true
 	return true
+
+## Offline: a highlight play replays itself once, AUTO_REPLAY_DELAY after the whistle.
+func maybe_auto_replay() -> bool:
+	if not auto_replay or net != null or drill != null or replay_active or series.is_final():
+		return false
+	if world.phase != World.Phase.DEAD or whistle_t < AUTO_REPLAY_DELAY:
+		return false
+	var i := replay.last_play_index()
+	if i < 0 or i == replay_shown or not replay.plays[i].get("highlight", false):
+		return false
+	replay_shown = i
+	replay.clip_play(i, 1.0, true)
+	replay_active = true
+	replay_auto = true
+	return true
+
+## Replay transport keys (in-match instant replay and the saved-replay viewer).
+func replay_key(code: int) -> void:
+	match code:
+		KEY_ENTER, KEY_KP_ENTER:
+			if not replay_viewer:
+				stop_replay()
+		KEY_SPACE:
+			replay.paused = not replay.paused
+		KEY_RIGHT, KEY_LEFT:
+			var to := replay.current_play() + (1 if code == KEY_RIGHT else -1)
+			if replay_viewer:
+				replay.seek_play(to)
+			elif replay.clip_play(to, -1.0):
+				replay.reel = []
+				replay_auto = false
+				replay_reel = false
+		KEY_H:
+			var h := replay.next_highlight()
+			if h >= 0:
+				if replay_viewer:
+					replay.seek_play(h)
+				else:
+					replay.clip_play(h, -1.0)
+					replay_auto = false
+		KEY_PERIOD:
+			replay.paused = true
+			replay.step_frames(1)
+		KEY_COMMA:
+			replay.paused = true
+			replay.step_frames(-1)
+		KEY_HOME:
+			replay.step_frames(-1_000_000)
+		KEY_BRACKETRIGHT:
+			replay.speed = minf(2.0, replay.speed * 2.0)
+		KEY_BRACKETLEFT:
+			replay.speed = maxf(0.25, replay.speed / 2.0)
+		KEY_C:
+			replay_cam = (replay_cam + 1) % REPLAY_CAMS.size()
+			_replay_cam_cut = true
 
 func stop_replay() -> void:
 	replay_active = false
 	replay_viewer = false
+	replay_auto = false
+	replay_reel = false
+	replay.reel = []
+	replay.paused = false
 
 ## Standalone viewer for a saved replay file.
 func open_replay(path: String) -> bool:
@@ -1215,6 +1302,40 @@ func _save_replay() -> String:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(replay_dir))
 	var path := "%s/%s.replay" % [replay_dir, Time.get_datetime_string_from_system().replace(":", "-")]
 	return path if replay.save(path) else ""
+
+## Ball-tracking replay cameras. Field (x, y) maps to view (x, 0, -y); offense attacks -z.
+## Returns [position, look-at target, fov]; the zoom keeps cameras off the field.
+func replay_camera_pose() -> Array:
+	var t := ball_view.position
+	t.y = maxf(t.y, 0.5)
+	match REPLAY_CAMS[replay_cam]:
+		"End zone":
+			return [Vector3(field.width / 2.0 + (t.x - field.width / 2.0) * 0.4, 8.0, t.z + 20.0), t, 48.0]
+		"Sky":
+			return [Vector3(t.x, 30.0, t.z + 7.0), t, 55.0]
+		_:   # Broadcast: high on the near sideline, zoomed, panning with the ball
+			return [Vector3(-12.0, 10.0, t.z + 2.0), t, 34.0]
+
+func _replay_camera(delta: float) -> void:
+	var pose := replay_camera_pose()
+	var k := 1.0 if _replay_cam_cut else 1.0 - exp(-4.0 * delta)
+	_replay_cam_cut = false
+	camera.global_position = camera.global_position.lerp(pose[0], k)
+	camera.look_at(pose[1])
+	camera.fov = lerpf(camera.fov, pose[2], k)
+
+func replay_hud_text() -> String:
+	var p: int = replay.current_play()
+	var lbl: String = str(replay.plays[p].get("label", "")) if p < replay.plays.size() else ""
+	var bar := ""
+	for k in 20:
+		bar += "#" if float(k) < replay.progress() * 20.0 else "-"
+	var title := "HIGHLIGHT REEL" if replay_reel else ("HIGHLIGHT" if replay_auto else "REPLAY")
+	var slow := "  SLOW-MO" if replay.effective_speed() < replay.speed else ""
+	var hs := replay.highlights().size()
+	return "%s %sx%s  %s%s\n[%s]  cam: %s\n[V/Enter %s  Space pause  , . frame  Left/Right play  H highlight (%d)  [ ] speed  C camera]" % [
+		title, str(replay.speed), slow, lbl, "  (paused)" if replay.paused else "", bar, REPLAY_CAMS[replay_cam],
+		"exit" if replay_viewer else ("skip" if replay_auto else "back to game"), hs]
 
 ## Views read replay frames (view-only; the sim is untouched).
 func _render_replay() -> void:
@@ -1384,7 +1505,8 @@ func _disc(p: Vector2, r: float, c: Color, h: float, depth_scale: float = 1.0) -
 
 func _process(delta: float) -> void:
 	_render_frame()
-	_tick_postgame(delta)
+	if not replay_active:   # the postgame show waits for the highlight reel
+		_tick_postgame(delta)
 	var launch := get_node_or_null("/root/Launch")
 	var menu_open: bool = launch != null and launch.menu_open()
 	if DisplayServer.get_name() != "headless":
@@ -1394,7 +1516,14 @@ func _process(delta: float) -> void:
 			Input.mouse_mode = mode
 	if menu_open:
 		scoreboard_held = false
-	_update_camera(delta)
+	if replay_active != _was_replaying:   # TV-style cut into and out of replays
+		_was_replaying = replay_active
+		_replay_cam_cut = true
+	if replay_active and replay_cam != REPLAY_CAMS.find("Player"):
+		_replay_camera(delta)
+	else:
+		_update_camera(delta)
+		camera.fov = 65
 	var m = player.athlete
 	var my_team: int = m.team
 	var side := "OFFENSE | PLAY: %s" % world.play_name if world.offense_team == my_team else "DEFENSE"
@@ -1425,10 +1554,7 @@ func _process(delta: float) -> void:
 		hud.text = queue_text() + "..."
 		return
 	if replay_active:
-		var p: int = replay.current_play()
-		var lbl: String = replay.plays[p]["label"] if p < replay.plays.size() else ""
-		hud.text = "REPLAY %sx  %s%s  [V exit%s]" % [str(replay.speed), lbl, "  (paused)" if replay.paused else "",
-			", Space pause, Left/Right play, [ ] speed" if replay_viewer else ""]
+		hud.text = replay_hud_text()
 		return
 	if in_lobby():
 		var who := "host: [3/5/7] size, [M] mode, [H] half length, " if is_server() else ""

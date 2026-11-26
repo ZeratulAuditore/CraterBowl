@@ -16,6 +16,7 @@ var slant_x := 0.0
 var picked := false
 var xp0 := 0
 var frozen_y := 0.0
+var auto_replay_default := false
 var wr_id := -1
 var kick_events: Array = []
 
@@ -37,6 +38,8 @@ func _initialize() -> void:
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 	main.auto_next = false
+	auto_replay_default = main.auto_replay
+	main.auto_replay = false   # scripted timings assume the offline sim never pauses; B04a steps turn it on
 	# scripted steps drive play changes; auto-advance checked at the end
 	steps = [
 		[2, func(): _connect_listeners(); _isolate_user_files()],  # world/series are (re)built in main._ready -> connect after
@@ -182,7 +185,7 @@ func _initialize() -> void:
 				carrier.position.x = -1.0],
 		[6799, func(): main.leaderboard_path = "user://test_flow_leaderboard.json"; DirAccess.remove_absolute(ProjectSettings.globalize_path(main.leaderboard_path))],
 		[6800, func(): check(main.stats.total("att") >= 1 and main.stats.total("comp") >= 1, "stats tracked the completion (%d/%d)" % [main.stats.total("comp"), main.stats.total("att")]); _force_dead_if_live(); main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.next_play(); main.ai.defense_enabled = true],
-		[6802, func(): check(main.series.is_final(), "final"); check(main.hud.text.find("You QB: 1/1") >= 0, "HUD summary shows your QB line")],
+		[6802, func(): check(main.series.is_final(), "final"); check(main.hud.text.find("You QB: 1/1") >= 0, "HUD summary shows your QB line"); check(not main.replay_active, "final whistle ends an auto highlight replay")],
 		# A22: match recorded to the leaderboard file; HUD shows your rank
 		[6803, func(): var lb = main.Leaderboard.new(); lb.load_file(main.leaderboard_path); check(lb.rank_of("You", "QB") == 1, "leaderboard file has You|QB at #1"); check(main.hud.text.find("YOUR RANKS: QB #1") >= 0, "HUD shows your rank"); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.leaderboard_path))],
 		# Post-game: players of the game picked at final -> presentation beats -> overview data
@@ -264,6 +267,20 @@ func _initialize() -> void:
 			main.world.carrier().position.x = -0.5],
 		[7974, func():
 			check(main.world.phase == main.World.Phase.DEAD and main.pres.overlay.banner.text == "ONE-MINUTE WARNING", "warning appears after the whistle")],
+		# B04a: auto highlight replay, replay camera + transport keys, highlight reel at FINAL
+		[8000, func(): check(auto_replay_default, "auto replay on by default"); main.auto_replay = true; main.configure(7); main.ai.defense_enabled = false],
+		[8001, func(): _key(KEY_SPACE)],
+		[8100, func(): main.world.carrier().position = Vector2(26, 101.0)],
+		[8105, func(): check(main.world.phase == main.World.Phase.DEAD and not main.replay_active, "TD: no replay before the delay"); check(main.replay.last_play().get("highlight", false), "TD tagged as highlight (%s)" % main.replay.last_play().get("label", ""))],
+		[8170, func(): check(main.replay_active and main.replay_auto, "TD replays itself after the whistle"); check(main.hud.text.find("HIGHLIGHT") >= 0 and main.hud.text.find("TOUCHDOWN") >= 0, "HUD: HIGHLIGHT + play label"); check(main.replay_overlay.root.visible and main.replay_overlay.badge_l.text == "HIGHLIGHT" and main.replay_overlay.summary_l.text.begins_with("TOUCHDOWN"), "replay overlay shows HIGHLIGHT + summary (%s)" % main.replay_overlay.summary_l.text); frozen_y = main.world.athletes[0].position.y; _key(KEY_C); check(main.hud.text.find("cam: End zone") >= 0 or main.replay_cam == 1, "C cycles replay camera")],
+		[8200, func(): var pose = main.replay_camera_pose(); check(main.camera.global_position.distance_to(pose[0]) < 1.5, "camera follows the end-zone replay pose (%.1f m off)" % main.camera.global_position.distance_to(pose[0])); check(absf(main.world.athletes[0].position.y - frozen_y) < 0.001, "sim frozen during auto replay")],
+		[8201, func(): var t0 = main.replay.time; _key(KEY_PERIOD); check(main.replay.paused and absf(main.replay.time - (floor(t0) + 1.0)) < 0.001, ". pauses and steps one frame")],
+		[8210, func(): var t0 = main.replay.time; _key(KEY_COMMA); check(absf(main.replay.time - (t0 - 1.0)) < 0.001 and main.hud.text.find("(paused)") >= 0, ", steps back while paused"); _key(KEY_SPACE); check(not main.replay.paused, "Space resumes")],
+		[8211, func(): _key(KEY_ENTER); check(not main.replay_active, "Enter skips the highlight")],
+		[8250, func(): check(not main.replay_active and main.world.phase == main.World.Phase.DEAD, "a skipped highlight does not replay again"); var o = main.pres.overlay if main.pres else null; check(o == null or o.mode_l.visible, "live overlay widgets restored after replay")],
+		[8251, func(): main.series.clock.half = 2; main.series.clock.remaining = 0.0; main.series.last_result = {"type": "incomplete"}; main.next_play()],
+		[8252, func(): check(main.series.is_final(), "final"); _key(KEY_V); check(main.replay_active and main.replay_reel, "V at FINAL plays the highlight reel")],
+		[8254, func(): check(main.hud.text.find("HIGHLIGHT REEL") >= 0, "HUD: HIGHLIGHT REEL"); check(main.postgame == null, "postgame show waits while the reel plays"); _key(KEY_V); check(not main.replay_active, "V exits the reel"); main.auto_replay = false; main.ai.defense_enabled = true; for f in DirAccess.get_files_at(ProjectSettings.globalize_path("user://test_flow_replays")): DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_flow_replays/" + f))],
 		# Training ground: hub portals, blocking station, Backspace home, practice-field targets
 		[8600, func(): main.training_path = "user://test_flow_training.json"; DirAccess.remove_absolute(ProjectSettings.globalize_path(main.training_path)); main.start_practice("hub")],
 		[8602, func(): check(main.drill.kind == "hub" and main.world.phase == main.World.Phase.LIVE, "training ground: free roam with the ball"); check(main.field_root.get_node_or_null("TrainingArt") != null and main.field_root.get_node("TrainingArt").get_children().filter(func(n): return n.name.begins_with("Portal_")).size() == 3, "three portals built"); check(main.pres.overlay.picker_title.text == "PICK A STATION", "overlay coaching card (%s)" % main.pres.overlay.picker_title.text); check(main.pres.overlay.mode_l.text == "TRAINING GROUND", "overlay title")],
