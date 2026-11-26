@@ -20,7 +20,7 @@ func _setup() -> Array:
 	var m := Match.new(w)
 	m.start(0, 25.0)
 	var s := Stats.new()
-	s.attach(w, func(aid): return owners.get(aid, "Bot"), func(aid): return player_ids.get(aid, -1))
+	s.attach(w, func(aid): return owners.get(aid, "Bot"), null, func(aid): return player_ids.get(aid, -1))
 	return [w, m, s]
 
 func _ids(w) -> Dictionary:

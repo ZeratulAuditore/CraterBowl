@@ -5,7 +5,10 @@ const Athlete := preload("res://src/sim/athlete.gd")
 const ROLE := {0: "QB", 1: "C", 2: "WR", 3: "RB", 4: "LB", 5: "CB", 6: "S", 7: "OL", 8: "DL"}
 const FIELDS := ["att", "comp", "pass_yds", "pass_td", "int_thrown", "rec", "rec_yds", "rec_td",
 	"car", "rush_yds", "rush_td", "tkl", "sack", "int", "pbu", "ff", "fr", "pts", "blk", "def_td", "max_td_pts",
-	"int_ret_yds", "fr_ret_yds"]
+	"int_ret_yds", "fr_ret_yds",
+	"fg_made", "fg_att", "fg_long", "xp_made", "xp_att", "punts", "punt_yds", "kr", "kr_yds", "pr", "pr_yds"]
+## Best-of fields: a new value replaces the old one only when larger (never summed).
+const MAX_FIELDS := ["max_td_pts", "fg_long"]
 
 var world
 var owner_fn: Callable     # athlete_id -> owner name ("Bot" for AI)
@@ -23,10 +26,15 @@ var _rushing_fumble := false
 var _returner := -1
 var _ret_from := 0.0
 var _ret_field := ""
+## Kick in progress (#67): "fg", "xp" (a PAT try), "punt" or "kickoff", and the kicker.
+var _kick_kind := ""
+var _kicker := -1
+var match_ref = null       # optional Match: tells a PAT try from a field goal
 
-func attach(w, owner: Callable, player: Callable = Callable()) -> void:
+func attach(w, owner: Callable, m = null, player: Callable = Callable()) -> void:
 	world = w
 	owner_fn = owner
+	match_ref = m
 	player_fn = player
 	w.event.connect(_on_event)
 
@@ -54,7 +62,7 @@ func _add(aid: int, field: String, v: float = 1.0) -> void:
 
 static func _add_field(line: Dictionary, field: String, value: float) -> void:
 	var previous: float = line.get(field, 0.0)
-	line[field] = maxf(previous, value) if field == "max_td_pts" else previous + value
+	line[field] = maxf(previous, value) if field in MAX_FIELDS else previous + value
 
 ## Same stat, keyed by the athlete itself. The owner is the last human who
 ## controlled it (a bot that a human took over is credited to the human).
@@ -79,6 +87,25 @@ func _on_event(n: String, d: Dictionary) -> void:
 			_handoff_runner = -1
 			_rushing_fumble = false
 			_returner = -1
+			_kick_kind = ""
+			_kicker = -1
+		"kick":
+			_on_kick(d)
+		"field_goal":
+			_on_field_goal(d)
+		"kick_catch":
+			var kind := _kick_kind
+			_end_punt(d["at"].y)
+			if kind == "kickoff" or kind == "punt":
+				var f := "kr" if kind == "kickoff" else "pr"
+				_add(d["by"], f)
+				_start_return(d["by"], d["at"].y, f + "_yds")
+		"kick_blocked":
+			_end_punt(_los)   # a blocked punt counts as a punt for 0 yards
+		"kick_downed", "kick_out_of_bounds":
+			_end_punt(d["spot"].y)
+		"touchback":
+			_end_punt(world.field.length)   # punt yardage on a touchback runs to the goal line
 		"handoff":
 			_handoff_runner = d["to"]
 		"throw":
@@ -142,7 +169,7 @@ func _end_play(n: String, d: Dictionary) -> void:
 			_add(carrier, "pts", d.get("points", 6))
 			_add(carrier, "def_td")
 			_note_td_points(carrier, d.get("points", 6))
-		return   # kick returns aren't tracked yet (#67); takeaway returns are credited above
+		return   # returns (kick, punt, takeaway) are credited above
 	if _receiver >= 0 and carrier == _receiver:
 		_add(_passer, "pass_yds", gain)
 		_add(_receiver, "rec_yds", gain)
@@ -176,6 +203,37 @@ func _credit_return(end_y: float) -> void:
 func _note_td_points(aid: int, pts) -> void:
 	_add(aid, "max_td_pts", float(pts))
 
+## A kick is away (#67). Field goals and PATs count the attempt now (a blocked kick is a miss);
+## a punt counts now and gets its yards when the ball is fielded or dies.
+func _on_kick(d: Dictionary) -> void:
+	_kicker = d["by"]
+	_kick_kind = str(d.get("kind", ""))
+	if _kick_kind == "fg" and match_ref != null and match_ref.state == match_ref.State.TRY:
+		_kick_kind = "xp"
+	match _kick_kind:
+		"fg":
+			_add(_kicker, "fg_att")
+		"xp":
+			_add(_kicker, "xp_att")
+		"punt":
+			_add(_kicker, "punts")
+
+func _on_field_goal(d: Dictionary) -> void:
+	if not d.get("good", false) or _kicker < 0:
+		return
+	if _kick_kind == "xp":
+		_add(_kicker, "xp_made")
+	elif _kick_kind == "fg":
+		_add(_kicker, "fg_made")
+		_add(_kicker, "fg_long", roundf(float(d.get("distance", 0.0))))
+
+## Gross punt yards: line of scrimmage to where the punt is fielded or dies. Credited once.
+func _end_punt(end_y: float) -> void:
+	if _kick_kind != "punt" or _kicker < 0:
+		return
+	_add(_kicker, "punt_yds", end_y - _los)
+	_kick_kind = "punt_done"
+
 func get_line(owner: String, pos: String) -> Dictionary:
 	return lines.get("%s|%s" % [owner, pos], {})
 
@@ -205,6 +263,13 @@ func summary_lines() -> Array:
 		for f in [["int_ret_yds", "int ret"], ["fr_ret_yds", "fum ret"]]:
 			if roundi(l[f[0]]) != 0: dfn.append("%dyd %s" % [roundi(l[f[0]]), f[1]])
 		if not dfn.is_empty(): parts.append(", ".join(dfn))
+		var st := []
+		if l["fg_att"] > 0: st.append("%d/%d FG" % [l["fg_made"], l["fg_att"]] + (" long %d" % l["fg_long"] if l["fg_made"] > 0 else ""))
+		if l["xp_att"] > 0: st.append("%d/%d XP" % [l["xp_made"], l["xp_att"]])
+		if l["punts"] > 0: st.append("%d punt %.1f avg" % [l["punts"], l["punt_yds"] / l["punts"]])
+		for f in [["kr", "kick ret"], ["pr", "punt ret"]]:
+			if l[f[0]] > 0: st.append("%d %s %dyd" % [l[f[0]], f[1], roundi(l[f[0] + "_yds"])])
+		if not st.is_empty(): parts.append(", ".join(st))
 		if parts.is_empty():
 			continue
 		out.append("%s %s: %s" % [k.get_slice("|", 0), k.get_slice("|", 1), " | ".join(parts)])

@@ -47,6 +47,7 @@ func _initialize() -> void:
 	auto_replay_default = main.auto_replay
 	main.auto_replay = false   # scripted timings assume the offline sim never pauses; B04a steps turn it on
 	# scripted steps drive play changes; auto-advance checked at the end
+	var held := {}   # #142 step: the offense's pre-snap spot
 	steps = [
 		[2, func(): _connect_listeners(); _isolate_user_files(); main.pov_enabled = false],   # legacy target-aim steps; POV steps re-enable it  # world/series are (re)built in main._ready -> connect after
 		# Random toss at boot: a human winner gets the choice; a bot winner takes the ball at once.
@@ -161,13 +162,28 @@ func _initialize() -> void:
 		[4607, func(): check(main.player.athlete.move_charge == 1.0, "R consumes one dash charge")],
 		[4625, func(): _key(KEY_E)],
 		[4626, func(): check(main.player.athlete.is_spinning() and main.player.athlete.move_charge < 1.0, "E (spin right) consumes one spin charge")],
-		# Defense Space unlocks a stance without snapping.
+		# Defense Space double-tap unlocks a stance without snapping; one press does nothing (#142).
 		[4650, func(): main.series.start(1, 25.0)],
 		[4651, func():
 			var me = main.world.get_athlete(main.my_id)
 			check(me.set_lock and main.pres.barrier.visible, "defender starts in stance")
 			_key(KEY_SPACE)
-			check(main.world.phase == main.World.Phase.PRESNAP and not me.set_lock, "Space breaks stance without snapping")],
+			check(main.world.phase == main.World.Phase.PRESNAP and me.set_lock, "one Space press keeps the defender set")
+			_key(KEY_SPACE)
+			check(main.world.phase == main.World.Phase.PRESNAP and not me.set_lock, "Space double-tap breaks stance without snapping")],
+		# #142: the whole offense is frozen until the snap, the human included.
+		[4660, func(): main.series.start(0, 25.0); main.input_override = Vector2(1, 0); main.sprint_override = true],
+		[4662, func():
+			for a in main.world.athletes:
+				if a.team == main.world.offense_team:
+					held[a.id] = a.position],
+		[4690, func():
+			var moved := 0.0
+			for id in held:
+				moved = maxf(moved, main.world.get_athlete(id).position.distance_to(held[id]))
+			check(main.world.phase == main.World.Phase.PRESNAP and held.has(main.controlled_id) and moved < 0.01, "no offensive athlete moves pre-snap, human input included (%.3f yd)" % moved)
+			main.input_override = null
+			main.sprint_override = null],
 		# A17: practice drills through the real game
 		[4700, func(): main.start_practice("passing"); check(main.drill != null and main.world.athletes.size() == 4, "passing drill: 4 athletes")],
 		[4702, func(): check(main.hud.text.find("PRACTICE: Passing") >= 0, "HUD shows drill"); _key(KEY_SPACE)],
@@ -293,7 +309,7 @@ func _initialize() -> void:
 		[8201, func(): var t0 = main.replay.time; _key(KEY_PERIOD); check(main.replay.paused and absf(main.replay.time - (floor(t0) + 1.0)) < 0.001, ". pauses and steps one frame")],
 		[8210, func(): var t0 = main.replay.time; _key(KEY_COMMA); check(absf(main.replay.time - (t0 - 1.0)) < 0.001 and main.hud.text.find("(paused)") >= 0, ", steps back while paused"); _key(KEY_SPACE); check(not main.replay.paused, "Space resumes")],
 		[8211, func(): _key(KEY_ENTER); check(not main.replay_active, "Enter skips the highlight")],
-		[8250, func(): check(not main.replay_active and main.world.phase == main.World.Phase.DEAD, "a skipped highlight does not replay again"); var o = main.pres.overlay if main.pres else null; check(o == null or o.mode_l.visible, "live overlay widgets restored after replay")],
+		[8250, func(): check(not main.replay_active and main.world.phase == main.World.Phase.DEAD, "a skipped highlight does not replay again"); var o = main.pres.overlay if main.pres else null; check(o == null or o.bug.is_visible_in_tree(), "live overlay widgets restored after replay")],
 		[8251, func(): main.series.clock.quarter = 4; main.series.clock.remaining = 0.0; main.series.last_result = {"type": "incomplete"}; main.next_play()],
 		[8252, func(): check(main.series.is_final(), "final"); _key(KEY_V); check(main.replay_active and main.replay_reel, "V at FINAL plays the highlight reel")],
 		[8254, func(): check(main.hud.text.find("HIGHLIGHT REEL") >= 0, "HUD: HIGHLIGHT REEL"); check(main.postgame == null, "postgame show waits while the reel plays"); _key(KEY_V); check(not main.replay_active, "V exits the reel"); main.auto_replay = false; main.ai.defense_enabled = true; for f in DirAccess.get_files_at(ProjectSettings.globalize_path("user://test_flow_replays")): DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_flow_replays/" + f))],
@@ -370,7 +386,7 @@ func _initialize() -> void:
 			check(main.pres.overlay.banner.visible and main.pres.overlay.banner.text == "SWITCH ENDS", "SWITCH ENDS banner (%s)" % main.pres.overlay.banner.text)],
 		# B09/C02: coin toss with the real keys -> live kickoff aimed like a pass (J) -> return
 		[9500, func(): main.opening_kickoff = true; main.toss_seed = 0; main.configure(7); kick_events.clear(); main.world.event.connect(func(n, _d): kick_events.append(n))],
-		[9502, func(): check(main.series.state == main.Match.State.TOSS and main.series.toss_winner == 0, "home won the toss"); check(main.hud.text.find("COIN TOSS: HOME wins") >= 0, "HUD offers the choice"); check(main.pres.overlay.status_l.text.begins_with("YOU WON THE TOSS"), "status line offers the choice (%s)" % main.pres.overlay.status_l.text); _key(KEY_2)],
+		[9502, func(): check(main.series.state == main.Match.State.TOSS and main.series.toss_winner == 0, "home won the toss"); check(main.hud.text.find("COIN TOSS: HOME wins") >= 0, "HUD offers the choice"); check(main.pres.overlay.status_l.text == "YOU WON THE TOSS" and main.pres.overlay.down_l.text == "", "toss pill names the winner, no key hints or COIN TOSS chip (#131) (%s)" % main.pres.overlay.status_l.text); _key(KEY_2)],
 		[9503, func(): check(main.series.state == main.Match.State.KICKOFF and main.world.offense_team == 0, "2 key: home kicks"); check(main.world.ball.is_held_by(main.controlled_id), "you are the kicker"); main.aim_point = Vector2(main.field.width / 2.0, 92.0)],
 		[9505, func(): check(main.can_kick() and main.arc_dots[0].visible, "kick arc preview on the tee"); check(main.hud.text.find("KICKOFF") >= 0, "HUD: kickoff"); check(not main.pres.overlay.picker.visible, "no play picker on a kickoff")],
 		[9506, func(): _key(KEY_J); check(main.world.kicked and kick_events.has("kick"), "J kicks off at the aim point")],

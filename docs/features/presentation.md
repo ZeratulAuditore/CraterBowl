@@ -18,15 +18,17 @@ match starts, the screens show the score and the configured game clock.
 | You | A team-colored ground ring marks the athlete you control. Nothing floats above your head. | `presentation.gd` |
 | Camera | Follow camera behind your player. The mouse moves the aim range on the turf. Your ground ring always stays above the scorebug (#128). While you're the passer, an over-the-shoulder POV that keeps the line and backs in frame. | `src/game/main.gd` `_update_camera`, `_framed_look`, `_camera_target_yaw` |
 | Effects | Camera shake on big events, tackle dust, touchdown fireworks, crowd excitement, jumbotron | `presentation.gd` |
-| Overlay | Scorebug (possession, score, period and game clock, play clock, down and distance, timeout pips, ball spot, mode and mini field), status line, play-call picker, movement meters, hold-Tab scoreboard, event banners | `src/game/overlay.gd` |
+| Overlay | Scorebug (possession, score, period and game clock, play clock, down and distance, timeout pips, ball spot and mini field), status line, play-call picker, movement meters, hold-Tab scoreboard (with the match mode and size), event banners | `src/game/overlay.gd` |
 | Play art | Routes, run paths, blocking targets and coverage drawn on the turf before the snap | `offense.md`, `defense.md` |
 | Quality | `--gfx=low\|medium\|high`. Software rasterizers (llvmpipe etc.) auto-select `low`. | `src/game/art/quality.gd` |
 
 **Scorebug.** The ball spot names the team whose territory contains the ball. The mini field reads
 from the offense’s end toward the goal it attacks. Its cyan marker is the line of scrimmage and
-its gold marker is the line to gain. The mini field appears during Classic scrimmage. Kickoffs and
-conversion attempts have distinct labels. The period label follows the match rules, which use
-halves today.
+its gold marker is the line to gain. The mini field appears during Classic scrimmage. Conversion
+attempts read `TRY FOR N`. Kickoffs and the coin toss leave the down cell empty: they have no down
+(#131). The period label follows the match rules, which use halves today. The play clock turns
+orange-red at 5 s only when your team has the ball (#168). Training and practice show their drill
+title under the bug, and the queue search shows there while you warm up.
 
 **HUD layout (#116).** The scorebug sits on the bottom edge at one fixed width: down & distance
 takes the slack, so the bug doesn't jump when the play-clock cell hides at the snap. The movement
@@ -47,6 +49,13 @@ player stands on stage while their stat card is up, and the hint is a backed pil
 - **The camera frames you above the HUD; the HUD doesn't move (#128).** The follow camera looks at the aim point (your player + aim range downfield), so a long aim range, a dead-ball whistle or backpedalling toward the lagging camera used to drop your ring to y≈630–760 of 720, behind the scorebug (top ≈623). `_framed_look` now pitches the look down just enough that the ring's near edge sits no lower than `FRAME_FEET_MAX` (0.80 of the screen height, ~576 px at 720p, clear of the status pill). It's exact geometry from the camera's real position, so it holds for any `FOLLOW_CAM_OFFSET` (a #140 zoom only has to scale it), FOV and follow lag, and it's a no-op when the look already frames you. Rejected: moving or shrinking the scorebug (the #116 layout is the fix for the HUD side; #176/#216 edit it), and raising the follow camera (changes the stands-safety distance #140 depends on, and a far aim range still pushes you down).
 - **POV sits back 5.4 yd, 2.8 high (#128).** At 4.2 back / 2.6 high the near back (#13, 4 yd across) was cut at the bottom-right edge. Wideouts 18 yd out are outside the POV frame on purpose; you find them by turning the aim. The passer's own ring stays below the HUD in POV: getting it up there means pitching the view down, and the POV pitch is the throw's launch angle, so the follow-camera rule doesn't apply (#228).
 - **HUD text refreshes at about 10 Hz.** Rebuilding scorebug strings every frame cost ~1 ms/frame (`../optimization/LOG.md`). Animated parts (throw bar, banners) still run per frame.
+- **The live HUD carries only what you play by (#131).** The owner asked to drop everything else from the in-match HUD:
+  - **No mode line** (`5V5 CLASSIC  ·  RANKED`) under the scorebug. You picked the mode before the match, so it moved to the top line of the hold-Tab scoreboard. Drill titles and the queue search still show there because they change what you're doing.
+  - **No phase words in the down cell.** `KICKOFF` and `COIN TOSS` used to fill it. The cell is down & distance, and a kickoff has none, so it stays empty and the bug keeps its width. The Tab board still names the phase.
+  - **The toss pill has no key hints.** It reads `YOU WON THE TOSS` or `<TEAM> IS CHOOSING`. The owner disliked `PRESS 1 TO RECEIVE OR 2 TO KICK` on the HUD. Removing it can't strand anyone: no answer in `TOSS_WINDOW` (5 s) means receive, the usual pick. The choice stays discoverable in the controls list (`1` "Extra point / toss: receive", `2` "Two-point try / toss: kick"). The coin-toss cutscene (#129) will own the toss moment and its choice. We rejected keeping the hints until #129 lands: the owner asked for them gone now.
+  - **The kicker keeps `PRESS J OR CLICK TO KICK`, and an offense with a kick called keeps `PUNT · PRESS K TO CHANGE`.** These pills are the only place a new player learns to kick, and they show only for the player who has to act. The kick meter (#68) is meant to take them over. The return team's `GET READY TO RETURN` was narration with nothing to do, so it's gone.
+  - **No `LOFT N°` readout** beside the QB crosshair. The view pitch is the loft, and the arc dots and landing reticle already show where the throw goes.
+  - **The play clock only alarms on your own snap (#168).** Against bots it counts their 5 s huddle (#136), so the old "red at 5 s" rule painted it red for the whole presnap on defense. Red now means "your clock is running out".
 
 ## Code and tests
 - `src/game/presentation.gd`: ball, markers, effects, crowd, jumbotron
@@ -61,6 +70,7 @@ player stands on stage while their stat card is up, and the hint is a backed pil
   - `tests/game_flow.gd` exercises the live overlay. `./scripts/visual_test.sh` checks and captures the scorebug in scrimmage, kickoff and conversion states, and `tests/visual/you_marker_test.gd` checks the ground ring (and no floating chevron) in a match, an instant replay and the training ground.
   - `tests/visual/camera_framing_test.gd` (#128) projects your ring to the screen and asserts it sits above the scorebug pre-snap on defense, every frame of a backpedal at max aim range, and at a sack's whistle; and that every offensive teammate within 8 yd of the QB is whole in the pre-snap POV. `tests/test_main_scene.gd` checks `_framed_look` across camera distances, FOVs, aim ranges and lag.
   - `tests/visual/hud_polish_test.gd` asserts the fixed scorebug width (presnap, live, whistle), the dead-ball summary, the status pill clearing the scorebug, the themed picker pinned top-right and the meters beside the bug.
+  - `tests/visual/hud_declutter_test.gd` (#131) asserts a live match shows no mode line while the Tab board does, the toss and kickoff show no phase words or toss key hints (the kicker keeps the kick hint), a bot huddle's play clock isn't red, and no `LOFT` text is drawn beside the QB crosshair.
 
 ## Open issues
 - #10 C10 Throw readability: landing marker, aim-zoom
