@@ -40,6 +40,7 @@ Chaosball) the mouse is captured and steers an over-the-shoulder camera:
 - **Direction** is where you look.
 - **Height** comes from looking up or down. Launch angle = view pitch + 10°, clamped −10°…70°. The crosshair shows `LOFT`.
 - **Distance** comes from holding the throw: charge sets the ball's speed. The bar under the crosshair fills to full power in 0.9 s.
+- **Aim-zoom:** while you hold, the camera zooms in with the charge (FOV 65° → 45° at full power) and eases back on release.
 - The landing reticle and arc preview show where it will come down.
 
 Everyone else uses the orbit camera: mouse X orbits, mouse Y sets how far ahead it looks
