@@ -13,7 +13,8 @@
 #   OUT/before/<name>.png  OUT/after/<name>.png  OUT/compare/<name>.png  (before left, after right)
 # and it prints "PAIR <name> changed=<pct>%" per pair. A pair you meant to change that says
 # UNCHANGED means the capture missed your change: pick other frames/screens. The percent is a
-# hint, not proof: menus idle-animate (~2-3% noise). Look at compare/*.png.
+# hint, not proof: menu players sway and the music bar moves, so untouched menu screens
+# still show ~2-3%. Look at compare/*.png.
 # Sides run one after the other (PARALLEL=1 halves the time but adds timing drift).
 # Publish with ./scripts/pr_evidence.sh <PR#> OUT. Guide: docs/TESTING.md "Before/after screenshots".
 set -uo pipefail

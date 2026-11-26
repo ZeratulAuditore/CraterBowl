@@ -110,18 +110,18 @@ page and check that every image displays.
 **Rules**
 - **Same capture on both sides.** Never pair a fresh "after" with an old screenshot from a
   different run, frame or resolution. `before_after.sh` guarantees this; hand-made pairs don't.
-- **Show the change, not everything.** Publish the pairs that show the change (usually 2–6). Add one
-  pair of a screen you expected *not* to change when the risk is a regression elsewhere.
-- **Captions say what to look at** ("panel is opaque: no lobby player or INVITE pin behind the
-  text"), not the file name. They become the alt text and the first column.
+- **Show the change, not everything.** Publish the pairs that show the change (usually 2–6). Also include
+  one screen your change should *not* affect, to show nothing else broke.
+- **Captions say what to look at, in plain words** ("panel is opaque: no lobby player or INVITE pin
+  behind the text"), not the file name or jargon. They become the alt text and the first column.
 - **New screen or new test?** `before_after.sh` copies a capture script or `tests/visual` case that
   only exists on your branch into the base tree, so the base is photographed with the same test.
   Its `check()`s may fail on the base; that is expected and reported, not an error. A screen that
   exists on only one side shows as `_(new screen)_` / `_(removed)_` in the table.
 - **Read `changed=` as a hint.** `before_after.sh` prints the percent of pixels that differ per
   pair and flags `UNCHANGED` at 0.0%: a pair you meant to change that says UNCHANGED missed your
-  change (wrong frame or screen). Menus idle-animate on wall-clock time, so untouched menu screens
-  show ~2–3%. The image is the evidence, not the number.
+  change (wrong frame or screen). On menus the players sway and the music bar moves, so even a
+  screen you didn't touch shows ~2–3%. The image is the evidence, not the number.
 - **Sides run one after the other** (about 3–4 min for `menu`). `PARALLEL=1` halves that, but two
   llvmpipe renders at once load the CPU enough that time-driven motion drifts: an untouched
   `scorebug` frame measured 39% changed in parallel and 0.4% serial (2026-11-25, WSL, 1280x720).
