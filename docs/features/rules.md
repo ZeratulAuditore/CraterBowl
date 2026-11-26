@@ -4,7 +4,7 @@ Feature-level doc: how this works for players **today** on `main`. Open work: Gi
 
 ## Summary
 Classic Crater Bowl is two-way football with four downs to gain 10 yards, a PAT kick or 2-point scrimmage try,
-and two timed halves by default. Private hosts can choose four quarters. Kickoffs, punts and field goals are live kicking plays (iter 035, [kicking.md](kicking.md)). Fields shrink with match size so 3v3 and 5v5 use the same rules engine as 7v7.
+and two timed halves by default. Private hosts can choose four quarters. Kickoffs, punts and field goals are live kicking plays ([kicking.md](kicking.md)). Fields shrink with match size so 3v3 and 5v5 use the same rules engine as 7v7.
 Chaosball changes most of this: see [chaosball.md](chaosball.md).
 
 ## How it plays
@@ -25,7 +25,7 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 - 1st & 10 from the spot; "& Goal" when the line to gain would reach the goal line.
 - The ball is spotted where the carrier is at the whistle (tackle or stepping out of bounds), clamped to
   the 1 and the opponent's 1. An incompletion returns to the line of scrimmage.
-- **Forward progress** (#98, iter 041): a tackle is spotted at the furthest point the carrier reached
+- **Forward progress** (#98): a tackle is spotted at the furthest point the carrier reached
   while in contact with an opponent (within 1.0 yd, window held 0.3 s after contact breaks), but only
   as far as opposing bodies actually pushed him back. Driven back = credited; retreating on your own
   (a QB drifting back with a rusher on him) = spotted where you are. The dead carrier is moved to the
@@ -80,10 +80,16 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 - Offense-frame yards (0 = own goal line, `goal` = field length) keep every rule direction-free; the view mirrors the field.
 - The scrimmage try reuses the regular downs engine. The PAT uses the field goal kick.
 - Play-clock expiry auto-snaps, so an AFK player can't stall a lobby.
-- The clock first ran only during live plays (iteration 009) for predictable pacing; iteration 034 added the running
-  clock after short in-bounds tackles so reaching the sideline matters. Timeouts reuse existing dead-ball phases
-  instead of a separate timeout state.
-- Iteration 014 introduced the rear strip. The current fumble risk also considers stamina and impact, with a near-certain rear strip.
+- Forward progress is the furthest point in contact, capped by how far opponents pushed the carrier. Whistling on
+  first contact was rejected because it kills the contact game (spins, breaking a lean, the dive). The uncapped
+  furthest point was rejected because a QB drifting back with a rusher on him would get the yards back on a sack.
+- Fields scale with match size so 3v3 isn't played on a lonely 100-yard field.
+- The clock once ran only during live plays, for predictable pacing. It now also runs after short in-bounds tackles
+  so reaching the sideline matters. Timeouts reuse existing dead-ball phases instead of a separate timeout state,
+  which would be one more state for every client.
+- Quarters are a counter inside the halves, which stay the unit for rules. Reusing halftime at Q1 and Q3 would reset
+  the drive and hand out extra timeouts, so those boundaries only reset the clock.
+- The rear strip is near-certain so fumbles stay readable: don't sprint with a defender closing from behind.
 
 ## Code and tests
 - `src/sim/match.gd` — series flow: scoring, tries, kickoffs, turnovers, safeties, halves, timeouts.
@@ -94,16 +100,6 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 - `src/net/lobby.gd` (size and period settings), `src/net/protocol.gd` (period snapshots and host-validated `try`/`timeout` actions).
 - Tests: `tests/test_downs.gd`, `tests/test_scoring.gd`, `tests/test_match.gd`, `tests/test_clock.gd`,
   `tests/test_turnovers.gd`, `tests/test_tackling.gd`, `tests/test_match_sizes.gd`, `tests/test_field.gd`, `tests/game_flow.gd`.
-
-## History
-- 007 [Downs](../iterations/007-downs.md)
-- 008 [Scoring](../iterations/008-scoring.md)
-- 009 [Match flow](../iterations/009-match-flow.md)
-- 014 [Interceptions + fumbles](../iterations/014-turnovers.md)
-- 016 [Match sizes](../iterations/016-match-sizes.md)
-- 017 [Private matches](../iterations/017-private-matches.md) (half length setting)
-- 034 [Running clock and timeouts](../iterations/034-clock-management.md)
-- 038 [Four-quarter format](../iterations/038-quarter-format.md)
 
 ## Open issues
 - #6 C04c Switching ends, mercy rule and clock actions

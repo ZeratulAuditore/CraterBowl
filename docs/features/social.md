@@ -39,11 +39,6 @@ The social features that do ship sit around a match: names, invite codes, partie
 - No communication code exists yet. Name handling: `src/ui/settings_store.gd` (`clean_name`), `src/net/lobby.gd` (`set_name`).
 - Parties, lobby and browser code and tests: see [online.md](online.md#code-and-tests).
 
-## History
-- 017 [Private matches](../iterations/017-private-matches.md) (lobby names and ready-up)
-- 024 [Ranked](../iterations/024-ranked.md) (names flow through queue and lobby)
-- 028 [Party queue](../iterations/028-party-queue.md)
-
 ## Open issues
 - #19 C13 Communication: quick-chat wheel, pings, text chat
 - #20 C14 Spectators

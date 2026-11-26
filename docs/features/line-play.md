@@ -48,10 +48,10 @@ holding right mouse (a "shield"). Rushers beat blocks by waiting out the hold or
 - A bot QB drifts away from any rusher within 4 yd (never past the LOS) and throws early under `AI_QB_PRESSURE` (3 yd).
 
 ## Design decisions
-- Sim circles plus engagement pairs (006) over Godot physics (non-deterministic) or a rock-paper-scissors minigame
+- Sim circles plus engagement pairs over Godot physics (non-deterministic) or a rock-paper-scissors minigame
   (that is #15).
 - A timed shed plus immunity makes a block buy a fixed, readable amount of time.
-- The beaten-blocker cooldown is longer than the defender's immunity because a lone C could re-block one LB forever (006).
+- The beaten-blocker cooldown is longer than the defender's immunity because a lone C could re-block one LB forever.
 - Receivers don't auto-block during a pass play, so they run routes instead of locking onto the nearest defender.
 - Human shield and spin/dash shedding came with the live-controls rework (commit `ec09b1e`); before that blocking was
   automatic for everyone.
@@ -65,13 +65,6 @@ holding right mouse (a "shield"). Rushers beat blocks by waiting out the hold or
 - Tests: `tests/test_blocking.gd`, `tests/test_live_controls.gd` (shield, spin shed), `tests/test_run_game.gd`
   (run-block targets), `tests/test_training.gd` (blocking station), `tests/visual/peer_human_block_test.gd`
   (host flags a joined peer's lineman as human).
-
-## History
-- 006 [Blocking](../iterations/006-blocking.md)
-- 014 [Interceptions + fumbles](../iterations/014-turnovers.md) (return blocking)
-- 033 [Run game](../iterations/033-run-game.md) (run-block assignments)
-- Commit `ec09b1e` "Rework live football controls and possession" (no iteration doc): shield and move-based sheds.
-- Training blocking station: [training.md](training.md).
 
 ## Open issues
 - #15 B01 Line play minigame (leverage / hand-fighting timing, shield resource)
