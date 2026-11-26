@@ -44,7 +44,8 @@ func _run() -> void:
 	check(near >= 4, "POV: %d nearby teammates checked (line + backs)" % near)
 	await capture("camera-framing-pov-presnap")
 
-	# Pre-snap on defense: follow camera looking back at the offense (yaw PI).
+	# Pre-snap on defense: follow camera looking back at the offense (yaw PI). The bot
+	# offense huddles ~5 s (#136) and the camera settles in ~1.3 s, so this is pre-snap.
 	_new_play(1, 30.0)
 	await _settle()
 	check(game.world.phase == game.World.Phase.PRESNAP and not game.pov_active() and game.player.athlete.team != game.world.offense_team, "pre-snap on defense: follow camera")
