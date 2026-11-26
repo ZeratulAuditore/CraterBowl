@@ -33,6 +33,13 @@ var last_possession := 0
 var dead_ball_team := 0
 var play_time := 0.0
 var _impact_rolls := 0   # deterministic per-match counter for fumble rolls (no RNG in the sim)
+# Forward progress (#98): contact window on the current carrier, in attack-direction yards.
+var _fp_carrier := -1
+var _fp_open := false
+var _fp_best := 0.0      # furthest forward point reached during the window
+var _fp_pushed := 0.0    # net yards opponents' bodies pushed the carrier back during the window
+var _fp_grace := 0.0
+var _fp_frame_push := 0.0
 var play_name := "Verticals"
 var run_flipped := false
 var run_blocks := {}    # blocker id -> defender id (set at snap)
@@ -480,6 +487,8 @@ func step_athlete(a: Athlete, dir: Vector2, sprint: bool, dt: float, block := fa
 
 func _go_live() -> void:
 	phase = Phase.LIVE
+	_fp_carrier = -1
+	_fp_open = false
 	for a in athletes:
 		a.set_lock = false
 
@@ -704,6 +713,7 @@ func step(inputs: Dictionary, dt: float) -> void:
 		_step_loose(dt)
 	_sync_ball()
 	if phase == Phase.LIVE:
+		_track_progress(dt)
 		_check_tackles()
 	if phase == Phase.LIVE and is_chaos():
 		_step_pass_clock(dt)
@@ -770,6 +780,8 @@ func _release_block(d: Athlete, b: Athlete) -> void:
 
 func _resolve_collisions() -> void:
 	var min_d := T.BODY_RADIUS * 2.0
+	_fp_frame_push = 0.0
+	var c := carrier()
 	for i in athletes.size():
 		var a: Athlete = athletes[i]
 		if a.is_grounded():
@@ -785,6 +797,10 @@ func _resolve_collisions() -> void:
 				var push := (min_d - d) * 0.5
 				a.position -= n * push
 				o.position += n * push
+				if c and a.team != o.team and (a == c or o == c):
+					# Opponent body contact moving the carrier; + = toward his own goal (driven back).
+					var moved: float = (-n.y if a == c else n.y) * push
+					_fp_frame_push -= moved * attack_sign(c.team)
 
 func _check_tackles() -> void:
 	var c := carrier()
@@ -810,6 +826,52 @@ func _check_tackles() -> void:
 			else:
 				_whistle("tackle", {"by": a.id, "carrier": c.id, "team": c.team})
 			return
+
+## +1 if `team` attacks +y (the world offense, incl. the kicking team), -1 for the other team.
+func attack_sign(team: int) -> float:
+	return 1.0 if team == offense_team else -1.0
+
+## Forward progress (#98): while an opponent is within CONTACT_REACH of the carrier (plus a short
+## grace after contact breaks), track the furthest point he reached and how far opposing bodies
+## pushed him back. A carrier who retreats on his own (a QB drifting back with a rusher on him)
+## isn't credited; one driven back by contact is.
+func _track_progress(dt: float) -> void:
+	var c := carrier()
+	if c == null:
+		_fp_carrier = -1
+		_fp_open = false
+		return
+	if c.id != _fp_carrier:
+		_fp_carrier = c.id
+		_fp_open = false
+	var s := attack_sign(c.team)
+	var touching := false
+	for a in athletes:
+		if a.team != c.team and a.position.distance_to(c.position) <= T.CONTACT_REACH:
+			touching = true
+			break
+	var y := s * c.position.y
+	if touching and not _fp_open:
+		_fp_open = true
+		_fp_best = y + maxf(0.0, _fp_frame_push)   # where he was before this frame's push
+		_fp_pushed = _fp_frame_push
+	elif _fp_open:
+		_fp_best = maxf(_fp_best, y)
+		_fp_pushed += _fp_frame_push
+	if touching:
+		_fp_grace = T.FORWARD_PROGRESS_GRACE
+	elif _fp_open:
+		_fp_grace -= dt
+		if _fp_grace <= 0.0:
+			_fp_open = false
+
+## Yards the spot moves forward of the carrier's current position under forward progress (>= 0).
+func forward_progress_credit() -> float:
+	var c := carrier()
+	if c == null or not _fp_open or c.id != _fp_carrier:
+		return 0.0
+	var y := attack_sign(c.team) * c.position.y
+	return maxf(0.0, minf(_fp_best, y + maxf(0.0, _fp_pushed)) - y)
 
 ## Impact uses the closing speed along the contact normal. A sprinting
 ## carrier hit in the back also gets a strip penalty.
@@ -890,6 +952,11 @@ func _step_loose(dt: float) -> void:
 func _whistle(reason: String, data: Dictionary) -> void:
 	var c := carrier()
 	dead_ball_spot = c.position
+	if reason == "tackle":
+		var credit := forward_progress_credit()
+		dead_ball_spot.y += credit * attack_sign(c.team)
+		c.position = dead_ball_spot   # the dead ball (and its carrier) sits at the spot
+		data["progress"] = credit
 	dead_ball_team = c.team
 	data["spot"] = dead_ball_spot
 	c.velocity = Vector2.ZERO

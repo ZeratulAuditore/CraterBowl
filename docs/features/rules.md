@@ -24,7 +24,14 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 ### Downs and spotting (`src/sim/downs.gd`, `src/sim/match.gd`)
 - 1st & 10 from the spot; "& Goal" when the line to gain would reach the goal line.
 - The ball is spotted where the carrier is at the whistle (tackle or stepping out of bounds), clamped to
-  the 1 and the opponent's 1. An incompletion returns to the line of scrimmage. No forward-progress rule.
+  the 1 and the opponent's 1. An incompletion returns to the line of scrimmage.
+- **Forward progress** (#98): a tackle is spotted at the furthest point the carrier reached
+  while in contact with an opponent (within 1.0 yd, window held 0.3 s after contact breaks), but only
+  as far as opposing bodies actually pushed him back. Driven back = credited; retreating on your own
+  (a QB drifting back with a rusher on him) = spotted where you are. The dead carrier is moved to the
+  spot, and the overlay shows "FORWARD PROGRESS +N YD" when it gives back 0.5 yd or more. Out of
+  bounds and touchdowns are unchanged. Numbers: `CONTACT_REACH`, `FORWARD_PROGRESS_GRACE`,
+  `FORWARD_PROGRESS_BANNER` in `src/sim/tuning.gd`.
 - Four downs; failing on 4th is a turnover on downs, new offense at the mirrored spot (`goal − spot`).
 - Snap: Space by any offensive human. If nobody snaps, the 20 s play clock (`Clock.PLAY_CLOCK`) auto-snaps.
 - Next play starts `NEXT_PLAY_DELAY` (2.0 s) after the whistle; R skips the wait (offline or host only).
@@ -73,6 +80,9 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 - Offense-frame yards (0 = own goal line, `goal` = field length) keep every rule direction-free; the view mirrors the field.
 - The scrimmage try reuses the regular downs engine. The PAT uses the field goal kick.
 - Play-clock expiry auto-snaps, so an AFK player can't stall a lobby.
+- Forward progress is the furthest point in contact, capped by how far opponents pushed the carrier. Whistling on
+  first contact was rejected because it kills the contact game (spins, breaking a lean, the dive). The uncapped
+  furthest point was rejected because a QB drifting back with a rusher on him would get the yards back on a sack.
 - Fields scale with match size so 3v3 isn't played on a lonely 100-yard field.
 - The clock once ran only during live plays, for predictable pacing. It now also runs after short in-bounds tackles
   so reaching the sideline matters. Timeouts reuse existing dead-ball phases instead of a separate timeout state,

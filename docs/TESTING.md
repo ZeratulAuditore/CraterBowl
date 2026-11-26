@@ -128,6 +128,10 @@ legible, does the new art read.
 Input rule (from LOOP.md): player-facing input must be exercised through the real key handler.
 In game_flow that's `_key()`; in shot.sh that's `--press`.
 
+Scripted contact: to make one body push another, place the pusher at a fixed overlap each frame
+(e.g. 0.75 yd). Moving it a fixed step per frame lets it pass through the other body on the software-GL
+path, so the push never happens (`tests/visual/forward_progress_test.gd`).
+
 ## When the user has to look
 
 Only for things software rendering can't show: real-GPU frame rate, feel and timing, audio. In
