@@ -18,6 +18,8 @@ catch rules). There is one difficulty level. A player who disconnects frees thei
 - Bots don't move pre-snap; bot defenders stay set (they never break stance).
 - When **no human is on offense**, the bot QB calls a play and snaps:
   - after `AI_SNAP_DELAY` (2.5 s), or `HUDDLE_SECONDS` (5.0 s) in a classic match that has a human, so humans can see the call.
+  - In a match that huddle is the play clock the scorebug shows, and the bots snap when it reads 0 (#136,
+    [rules.md](rules.md)); `AI.snaps_on_clock` turns off the bots' own timer. Drills and bare-`World` tests keep it.
   - The 20 s play clock still auto-snaps for a human offense that doesn't.
 - `AI.choose_play(down, distance, variant, can_run)` rotates through fitting plays so drives don't repeat:
 
