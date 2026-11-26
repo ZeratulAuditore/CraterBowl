@@ -104,14 +104,14 @@ func _ready() -> void:
 
 	trim_mat = Mats.cloth(Color.WHITE)
 	var chest := _attach(skel, "spine_03")
-	var head_b := _attach(skel, "Head")
+	var head_bone := _bone(skel, "Head")
 	hand_r = _attach(skel, "hand_r")
 	_open_gear = Node3D.new()
 	chest.add_child(_open_gear)
 	var pads := _part(_open_gear, RC.sphere(0.5, 1.0), Mats.cloth(color), Vector3(0, 0.1, -0.01))
 	pads.scale = Vector3(0.46, 0.15, 0.27)
 	_part(_open_gear, _cyl(0.085, 0.05), trim_mat, Vector3(0, 0.2, 0.0))
-	_open_helmet = Uniforms.open_helmet(head_b)
+	_open_helmet = Uniforms.open_helmet(head_bone)
 	_opponent_mesh = Uniforms.opponent_mesh(mesh_i)
 	number_front = _number_label(chest, 0.205)
 	number_back = _number_label(chest, -0.205)
@@ -137,20 +137,28 @@ func _set_uniform(n: String, v) -> void:
 	if mesh_i and mesh_i.material_override is ShaderMaterial:
 		(mesh_i.material_override as ShaderMaterial).set_shader_parameter(n, v)
 
+## Gear sized in yards: a child of the bone that undoes the model scale.
 func _attach(skel: Skeleton3D, bone: String) -> Node3D:
+	var ba := _bone(skel, bone)
+	if not ba is BoneAttachment3D:
+		return ba
+	var holder := Node3D.new()
+	holder.scale = Vector3.ONE / MODEL_SCALE
+	ba.add_child(holder)
+	return holder
+
+## A node that follows `bone`, in the rig's own (bone-space) units.
+func _bone(skel: Skeleton3D, bone: String) -> Node3D:
 	if skel == null or skel.find_bone(bone) < 0:
 		var n := Node3D.new()
 		n.position.y = {"Head": 1.7, "spine_03": 1.35, "hand_r": 1.0}.get(bone, 1.0)
 		body.add_child(n)
 		return n
 	var ba := BoneAttachment3D.new()
+	ba.name = bone + "Bone"
 	ba.bone_name = bone
 	skel.add_child(ba)
-	# Undo the model scale so gear sizes are authored in yards.
-	var holder := Node3D.new()
-	holder.scale = Vector3.ONE / MODEL_SCALE
-	ba.add_child(holder)
-	return holder
+	return ba
 
 func _part(parent: Node3D, mesh: Mesh, mat: Material, at: Vector3) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
