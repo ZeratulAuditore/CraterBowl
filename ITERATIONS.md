@@ -224,7 +224,19 @@
 - Cover 2 allowed 1 deep completion across 24 matched bot snaps versus 8 with legacy coverage. Deep attempts fell from 10 to 1.
 - Tests: 208 unit (+4) and full smoke passed, including remote recall. Checked offense and defense screenshots offscreen. An initial smoke attempt hit a matchmaker port bind error and passed on retry.
 
-## 033: B04a Play replays (2026-11-25)
+## 033: C01 Run game (2026-11-25)
+- Added Inside Zone and Outside Sweep for classic 5v5 and 7v7. The huddle and turf show the RB path and linemen's targets. X mirrors the run.
+- The QB uses G or gamepad R3 to hand off to an adjacent RB behind the line. The host validates the exchange and its cooldown. Offline control follows the RB. Online players keep their assigned slots.
+- Bots mix runs with passes and block for the chosen lane. The RB gets the carry and yards at the whistle or fumble spot. The two-minute bot match finished 0–2 with 12 handoffs and 33 throws.
+- Verified 238 unit tests and full headless smoke, including a remote QB handoff. Viewed offscreen captures of the sweep, the exchange prompt and the controlled RB. The smoke guard now checks the active XDG data directory so other checkouts' replay files cannot invalidate an isolated run.
+
+## 034: C04a Running clock and team timeouts (2026-11-25)
+- The game clock runs between plays after a short in-bounds tackle. First downs, possession changes, sideline stops, incompletions and scores stop the clock. Tries are untimed.
+- Each half has a one-minute warning. A live play can finish before the warning. A half can also end between snaps.
+- U spends a team timeout between plays. The scorebug shows three per team, or two in 3v3. The host validates the caller, and halftime restores the counts.
+- Verified 245 unit tests and full headless smoke, including a remote timeout. Viewed offscreen captures of the timeout banner and visible pips before and after the snap. Quarters and the mercy rule remain in C04b.
+
+## 035: B04a Play replays (2026-11-25)
 - `replay.gd`: per-play summaries from sim events (yards from LOS, pass/run, TOUCHDOWN / INTERCEPTION / FUMBLE LOST / SACK tags, 20+ yd = highlight, clock + down context in the label). Highlight clips run at 1x and finish with a 2 s slow-mo. Also adds a highlight reel, next-highlight, frame-step and progress. Files from before this change still load; the save version is now 2.
 - Main: offline highlights auto-replay 1 s after the whistle (once; V/Enter skips; `--auto-replay=0`). In-match and viewer transport: Space, `,` `.`, ←/→, H, `[ ]`, C. Ball-tracking replay cameras (Broadcast / End zone / Sky / Player) cut in, then track. V at FINAL plays the highlight reel.
 - `src/game/replay_overlay.gd`: broadcast REPLAY / HIGHLIGHT / REEL bug, summary, context, progress bar, hints. It hides the live overlay widgets during the replay and restores them; `overlay.gd` (A26) is untouched.

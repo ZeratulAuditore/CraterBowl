@@ -23,8 +23,9 @@ static func encode_snapshot(m, tick: int, acks: Dictionary = {}) -> Dictionary:
 		"d": PackedFloat32Array([m.downs.offense_team, m.downs.down, m.downs.los, m.downs.first_down_y]),
 		"s": PackedInt32Array(m.score),
 		"c": PackedFloat32Array([m.clock.half, m.clock.remaining, m.clock.play_clock, 1.0 if m.clock.final else 0.0]),
+		"to": PackedInt32Array(m.clock.timeouts),
 		"ms": m.state, "tp": m.try_points, "ack": acks, "pl": w.play_name, "rt": _routes_array(w),
-		"dc": w.defensive_call,
+		"dc": w.defensive_call, "rf": w.run_flipped, "hc": w.handoff_cooldown,
 		"cs": PackedFloat32Array([w.streak, w.hold_t]),
 	}
 
@@ -72,10 +73,14 @@ static func apply_snapshot(m, s: Dictionary) -> void:
 	m.clock.remaining = c[1]
 	m.clock.play_clock = c[2]
 	m.clock.final = c[3] > 0.5
+	if s.has("to"):
+		m.clock.timeouts = Array(s["to"])
 	m.state = s["ms"]
 	m.try_points = s["tp"]
 	w.play_name = str(s.get("pl", w.play_name))
 	w.defensive_call = s.get("dc", "")
+	w.run_flipped = s.get("rf", false)
+	w.handoff_cooldown = s.get("hc", 0.0)
 	var cs: PackedFloat32Array = s.get("cs", PackedFloat32Array([0, 0]))
 	w.streak = int(cs[0])
 	w.hold_t = cs[1]
@@ -104,7 +109,7 @@ static func sanitize_action(act) -> Dictionary:
 	if not (act is Dictionary):
 		return {}
 	match act.get("a", ""):
-		"snap", "tackle", "recall_call", "flip_play":
+		"snap", "tackle", "recall_call", "flip_play", "handoff", "timeout":
 			return {"a": act["a"]}
 		"throw":
 			var t = act.get("t", Vector2.ZERO)
@@ -117,7 +122,7 @@ static func sanitize_action(act) -> Dictionary:
 			return {"a": "try", "n": n} if n is int and (n == 1 or n == 2) else {}
 		"play":
 			var p = act.get("p", "")
-			return {"a": "play", "p": p} if p is String and Routes.PLAYBOOK.has(p) else {}
+			return {"a": "play", "p": p} if p is String and (Routes.PLAYBOOK.has(p) or Routes.RUN_PLAYS.has(p)) else {}
 		"defense":
 			var id = act.get("p", "")
 			return {"a": "defense", "p": id} if id is String and DefensivePlaybook.CALLS.has(id) else {}
@@ -145,6 +150,10 @@ static func apply_action(m, athlete_id: int, action: Dictionary) -> bool:
 			return w.tackle(athlete_id)
 		"throw":
 			return w.throw(athlete_id, act["t"], act["p"], act["lob"])
+		"handoff":
+			return w.handoff(athlete_id)
+		"timeout":
+			return m.call_timeout(ath.team)
 		"try":
 			return ath.team == w.offense_team and m.choose_try(act["n"])
 		"play":
