@@ -260,3 +260,8 @@
 - Tests: 208 unit (+4); flow 116 checks (+19, real keys). Verified visually with shot.sh: sack highlight on the Broadcast cam, then on the End zone cam in slow-mo.
 - Merging origin/main: the final whistle now ends an auto highlight (the summary and postgame take over; the reel still has it), and the postgame waits while a replay plays. The replay overlay looks up match-overlay widgets by name (the controls rework removed `card` and `hints`). origin/main itself fails `lint` (player.gd shield_mesh, world.gd `_impact_rng`, from ec09b1e) and the perf render budget (shadow_casters 125/110 from the team models); both are identical with or without this branch. Landed after the kicking merge: game_flow turns auto replay off by default (scripted timings assume the offline sim never pauses) and on only for the B04a steps. Unit 305 and smoke (flow 187) pass.
 - Remaining scope stays on #36: online auto replay needs a skip vote (MVP card is covered by the Players of the Game postgame); free-cam theater; clip export; no Settings toggle for auto replay yet (CLI flag only). An `mm_test` competitive run failed once under load from 14 Godot processes run by other sessions; it passed 3/3 alone.
+
+## 037: Compact scorebug (2026-11-25)
+
+- [#13](https://github.com/bpenwell/CraterBowl/issues/13) groups the mode, ball spot and mini field with the existing score, possession, clocks, timeouts and down state.
+- The rendered integration test checks these details and captures scrimmage, kickoff and conversion states.

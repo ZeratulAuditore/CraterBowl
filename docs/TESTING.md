@@ -62,6 +62,22 @@ ride along in your commit and would block it. Turn it on for a solo clone or CI-
 
 `--write-movie` and other in-engine capture need a real renderer too, so they also need mode 2.
 
+## Automated screenshots for pull requests
+
+Run `./scripts/visual_test.sh` to execute rendered integration tests on a private Xvfb display.
+It prints the output directory, and `VISUAL_OUTPUT=/absolute/path` lets you choose the directory.
+Each test gets its own output subdirectory and the run uses isolated Godot save data.
+
+Add a `tests/visual/<scenario>_test.gd` script extending `tests/visual/harness.gd`. Exercise the
+production scene, assert the relevant behavior with `check()`, then `await capture("state-name")`
+while that state is visible. Finish with `finish()` so failed checks fail the run. Inspect the PNG
+before opening the PR. The PR tests workflow uploads the captures and test logs as
+`visual-test-evidence`. Download the relevant captures, upload them, and embed them under
+Testing with Markdown image syntax and descriptive alt text. Include a link to the Actions
+artifact for all captures and logs. Use GitHub attachments when available. For this public
+repository, a dedicated `pr-evidence/<number>` branch with commit-pinned raw image URLs also works.
+Verify the images display in the PR.
+
 ## Screenshots: `scripts/shot.sh`
 
 ```bash

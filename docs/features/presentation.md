@@ -15,9 +15,15 @@ Matches are played in **Crater Bowl**, an original lunar stadium built inside a 
 | You | A ring and chevron mark the controlled player | `presentation.gd` |
 | Camera | Follow camera behind your player. The mouse moves the aim range on the turf. | `src/game/main.gd` `_update_camera`, `_camera_target_yaw` |
 | Effects | Camera shake on big events, tackle dust, touchdown fireworks, crowd excitement, jumbotron | `presentation.gd` |
-| Overlay | Scorebug (score, clock, down and distance, timeout pips), play clock, status line, play-call picker, movement meters, hold-Tab scoreboard, event banners | `src/game/overlay.gd` |
+| Overlay | Scorebug (possession, score, period and game clock, play clock, down and distance, timeout pips, ball spot, mode and mini field), status line, play-call picker, movement meters, hold-Tab scoreboard, event banners | `src/game/overlay.gd` |
 | Play art | Routes, run paths, blocking targets and coverage drawn on the turf before the snap | `offense.md`, `defense.md` |
 | Quality | `--gfx=low\|medium\|high`. Software rasterizers (llvmpipe etc.) auto-select `low`. | `src/game/art/quality.gd` |
+
+**Scorebug.** The ball spot names the team whose territory contains the ball. The mini field reads
+from the offense’s end toward the goal it attacks. Its cyan marker is the line of scrimmage and
+its gold marker is the line to gain. The mini field appears during Classic scrimmage. Kickoffs and
+conversion attempts have distinct labels. The period label follows the match rules, which use
+halves today.
 
 **Audio today:** only the menu soundtrack. It plays `assets/music/tracks.json` in order, loops the playlist, and has a "now playing" widget (prev / pause / next). Credits are in `assets/music/CREDITS.md`. Volume follows the music and master settings. A match plays no SFX, crowd or whistle (#22).
 
@@ -37,9 +43,10 @@ Matches are played in **Crater Bowl**, an original lunar stadium built inside a 
 - Tests:
   - `tests/render_budget.gd` and `tests/test_render_perf.gd` cap tris, instances, shadows, materials and skinned meshes (`./scripts/perf.sh`)
   - Visuals are verified with `./scripts/shot.sh` PNGs (`../TESTING.md`)
-  - The overlay is exercised by `tests/game_flow.gd`
+  - `tests/game_flow.gd` exercises the live overlay. `./scripts/visual_test.sh` checks and captures the scorebug in scrimmage, kickoff and conversion states.
 
 ## History
+- Iteration 037 (#13): grouped the spot, mode and mini field with the rest of the scorebug.
 - A26 presentation: built by the graphics session (branch `graphics-overhaul`), merged before the A28 audit (iter 031, `../../ITERATIONS.md`)
 - Perf pass `871417c`: shared render cache, interpolated rendering, quality presets (`../optimization/LOG.md`)
 - [032 Pre-snap defensive roam + LOS barrier](../iterations/032-presnap-defense-roam.md)
@@ -47,7 +54,6 @@ Matches are played in **Crater Bowl**, an original lunar stadium built inside a 
 ## Open issues
 - #10 C10 Throw readability: landing marker, aim-zoom
 - #12 C31 Who's who on the field: nameplates, rings, "you" marker
-- #13 Scorebug: show the full remaster-style checklist in one compact strip
 - #22 C16 Audio foundation + live play feed
 - #31 Team voice chat (team-only, host-relayed)
 - #34 C33 Team identity: names, colors, field branding, "ball on <TEAM> 19"
