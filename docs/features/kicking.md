@@ -8,7 +8,7 @@ Every classic match opens with a coin toss. Kickoffs are live plays with coverag
 ## How it plays
 | Situation | What happens |
 |---|---|
-| Coin toss | Deterministic from a seed (`--toss=N`). The winner has 5 s to press **1** (receive) or **2** (kick). Bots, or no answer, choose receive. The other team receives the second half. |
+| Coin toss | Deterministic from a seed (`--toss=N`). The winner has 5 s to press **1** (receive) or **2** (kick). Bots, or no answer, choose receive. The HUD pill says only `YOU WON THE TOSS` (no key hints, #131); the keys are in the controls list until the toss cutscene (#129). The other team receives the second half. |
 | Kickoff | From your own 35 (`KICKOFF_SPOT_FRACTION`), or the 20 after a safety. The kicker is on the tee, coverage spreads out, and the receivers form a front row plus two deep returners (`KICKOFF_RETURNER_DEPTH`, their own 10). **Space** or the play clock gives a default kick (`KICKOFF_DEFAULT_POWER` 0.85). **J**/LMB fires an aimed kick on press. The arc previews the kick before you fire. |
 | Kickoff results | Return, touchback → own 25 (`KICKOFF_FRACTION`), out of bounds → own 40 (`KICKOFF_OOB_FRACTION`), or a rolled/downed spot. An unfielded ball that stops for `KICK_REST_TIME` is downed. |
 | Onside | Recovery past `ONSIDE_MIN_TRAVEL` (10 yd) exists as the `world.onside` mutator, **off by default**. Turning it on belongs to #42. |
