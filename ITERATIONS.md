@@ -261,7 +261,12 @@
 - Merging origin/main: the final whistle now ends an auto highlight (the summary and postgame take over; the reel still has it), and the postgame waits while a replay plays. The replay overlay looks up match-overlay widgets by name (the controls rework removed `card` and `hints`). origin/main itself fails `lint` (player.gd shield_mesh, world.gd `_impact_rng`, from ec09b1e) and the perf render budget (shadow_casters 125/110 from the team models); both are identical with or without this branch. Landed after the kicking merge: game_flow turns auto replay off by default (scripted timings assume the offline sim never pauses) and on only for the B04a steps. Unit 305 and smoke (flow 187) pass.
 - Remaining scope stays on #36: online auto replay needs a skip vote (MVP card is covered by the Players of the Game postgame); free-cam theater; clip export; no Settings toggle for auto replay yet (CLI flag only). An `mm_test` competitive run failed once under load from 14 Godot processes run by other sessions; it passed 3/3 alone.
 
-## 037: C04b Four-quarter format (2026-11-25, #4)
+## 037: Compact scorebug (2026-11-25)
+
+- [#13](https://github.com/bpenwell/CraterBowl/issues/13) groups the mode, ball spot and mini field with the existing score, possession, clocks, timeouts and down state.
+- The rendered integration test checks these details and captures scrimmage, kickoff and conversion states.
+
+## 038: C04b Four-quarter format (2026-11-25, #4)
 
 - Private hosts press Q to switch between halves and quarters, and H to select the duration. Halves remain the default. The lobby and snapshots carry the selected format and the scorebug displays the current period.
 - Q1 and Q3 preserve the drive and timeouts. A live play and its try can finish at 0:00. Q2 ends with the halftime kickoff and timeout reset, and Q4 ends the match. The one-minute warning still occurs once per half.

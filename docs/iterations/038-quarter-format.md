@@ -1,6 +1,6 @@
 Issue: #4
 
-# 037 Four-quarter format
+# 038 Four-quarter format
 
 Private hosts can select four short quarters. Gridiron offered configurable quarter lengths, and the remaster displayed a quarter clock. The documented default remains two halves.
 

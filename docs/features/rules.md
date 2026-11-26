@@ -96,7 +96,7 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 - 016 [Match sizes](../iterations/016-match-sizes.md)
 - 017 [Private matches](../iterations/017-private-matches.md) (half length setting)
 - 034 [Running clock and timeouts](../iterations/034-clock-management.md)
-- 037 [Four-quarter format](../iterations/037-quarter-format.md)
+- 038 [Four-quarter format](../iterations/038-quarter-format.md)
 
 ## Open issues
 - #6 C04c Switching ends, mercy rule and clock actions
