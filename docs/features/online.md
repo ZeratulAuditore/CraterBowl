@@ -77,6 +77,9 @@ Bots fill every empty slot, so a 1v1 friend game or a two-player casual queue st
 - **Queue matches start only with the full matched group** (`Lobby.expected`), so no one is seated by a bot because they joined late.
 - **No team or position changes online.** The old team/slot requests are rejected rather than kept as an online position-selection API ahead of #18.
 - Teams come from the party-aware `unit_teams`.
+- **Remote movement inputs are buffered.** The host preserves short bursts of commands so rapid cuts
+  survive uneven packet delivery. The queue has a fixed limit to keep corrections responsive. See
+  [client prediction](../design/netcode.md#client-prediction-client_predictorgd).
 
 ## Code and tests
 - `src/net/net_session.gd`: ENet host/join, seat assignment, lobby relay, disconnect → release.

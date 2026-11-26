@@ -12,6 +12,7 @@ const NEXT_PLAY_DELAY := 2.0
 const NetSession := preload("res://src/net/net_session.gd")
 const Protocol := preload("res://src/net/protocol.gd")
 const SNAPSHOT_EVERY := 2   # physics ticks (60 Hz -> 30 Hz snapshots)
+const REMOTE_IDLE_INPUT := {World.HUMAN: true}
 const Predictor := preload("res://src/net/client_predictor.gd")
 const Interp := preload("res://src/net/interpolator.gd")
 const INTERP_DELAY := 0.1   # seconds others render in the past
@@ -1402,10 +1403,13 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 		drill.override_inputs(world, inputs)
 	inputs[controlled_id] = my_input
 	if is_server():
-		for aid in net.inputs:
-			var inp: Dictionary = net.inputs[aid]
-			inp[World.HUMAN] = true   # the host decides who is human, never the wire
-			inputs[aid] = inp
+		for aid in net.human_athletes():
+			var inp := net.take_input(aid)
+			if inp.is_empty():
+				inputs[aid] = REMOTE_IDLE_INPUT
+			else:
+				inp[World.HUMAN] = true   # the host decides who is human, never the wire
+				inputs[aid] = inp
 	world.step(inputs, delta)
 	if is_server():
 		net_tick += 1

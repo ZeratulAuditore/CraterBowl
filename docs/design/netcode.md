@@ -45,7 +45,7 @@ see when hosting, joining, queueing) lives in `docs/features/` (online play). La
 
 | `k` | Direction | Delivery | Payload | Receiver checks |
 |---|---|---|---|---|
-| `in` | C→S | unreliable-ordered, ch 1, every tick | `dir`, `spr`, `seq`, `block` | sender has an athlete; `P.sanitize_input`; `seq` must not go backwards |
+| `in` | C→S | unreliable-ordered, ch 1, every tick | `dir`, `spr`, `seq`, `block` | sender has an athlete; `P.sanitize_input`; `seq` must exceed the last queued or consumed sequence |
 | `act` | C→S | reliable, ch 0 | `act` (action dict) | sender has an athlete; `P.is_action(act)` (Dictionary with a String `a`, else dropped); queued as `[peer, aid, act]`, fields validated when applied |
 | `lact` | C→S | reliable, ch 0 | `act` = `{"a":"ready"}` / `{"a":"name","n":…}` / `{"a":"seat","s":…}` (queue matches, #59) | sender is in `lobby.players`; `act` is a Dictionary |
 | `refused` | S→C | reliable, ch 0 | `why` (reason text) | from peer 1; cut to 120 chars. Client stores `refused_reason`, emits `refused`, closes its peer and ignores later packets |
@@ -103,7 +103,7 @@ The host re-broadcasts every world event from `main.gd:_on_world_event`, plus ma
 | `d`, `s`, `c`, `to` | downs (offense, down, los, first-down y), score, clock (half, remaining, play clock, final, quarter, quarter length in seconds), timeouts |
 | `ph`, `off`, `los`, `fpt`, `pt`, `ms`, `tp` | world phase, offense team, LOS, forward pass thrown, last possession, match state, try points |
 | `pl`, `rt`, `dc`, `rf`, `hc`, `cs` | play name, route index per athlete (-1 none), defensive call, run flipped, handoff cooldown, Chaosball streak/hold |
-| `ack` | athlete id → last input `seq` the server stored (`NetSession.acks()`) |
+| `ack` | athlete id → last input `seq` the server consumed (`NetSession.acks()`) |
 
 Each message contains a full snapshot. Before advancing its last accepted tick, the client validates
 the payload types, array lengths for the advertised match size, finite numeric fields and input
@@ -124,9 +124,10 @@ and full rollback of the whole sim is overkill when the host owns every contact.
 2. `main.gd:_on_snapshot`: `apply_snapshot` overwrites everything (including our athlete), then
    `predictor.reconcile(me, ack[my_id], world)` drops acked inputs and replays the rest. `pending` is
    capped at `MAX_PENDING = 240` (4 s).
-3. Server side, `NetSession.inputs[aid]` holds only the **latest** input; `world.step` reuses it every
-   tick until a newer one arrives. If two inputs land in one server tick, the first is acked but never
-   simulated; with none, the last repeats. Prediction and server agree only when inputs arrive one per tick.
+3. The host buffers up to six commands per remote athlete and applies one per sim tick in sequence
+   order. It uses neutral human controls when the queue is empty. Overflow evicts the oldest command
+   to cap the delay, and disconnect or reassignment clears the queue and acknowledgement. Snapshots
+   acknowledge the last consumed sequence, so the client replays only newer commands.
 4. Prediction ignores collisions, blocks, tackles and other athletes; those corrections show up as
    snaps on reconcile (#45).
 
@@ -226,7 +227,6 @@ messages are reliable on channel 0.
 - #18 C12 Position assignment: QB vote, role preferences
 - #20 C14 Spectators
 - #26 C20 Rematch and keep-the-lobby
-- #53 Host keeps only the newest client input per tick
 - #55 No rate limits on client actions or matchmaker messages
 - #56 Client doesn't detect losing the host
 - #57 UPnP port mapping is never removed after hosting
