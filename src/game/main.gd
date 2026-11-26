@@ -73,6 +73,11 @@ const POV_PITCH_MIN := deg_to_rad(-25.0)
 const POV_PITCH_MAX := deg_to_rad(60.0)
 const POV_PITCH_START := deg_to_rad(10.0)
 const POV_ANGLE_OFFSET := 10.0      # launch angle = view pitch + this (deg): level view = a line drive
+## Aim-zoom (#109, Gridiron 1.0.4.24): holding the throw narrows the FOV with the
+## charge (charge = distance), so a long throw zooms in furthest; eases back on release.
+const CAMERA_FOV := 65.0
+const AIM_ZOOM_FOV := 45.0          # FOV at full charge
+const AIM_ZOOM_RATE := 8.0          # 1/s easing rate (frame-rate independent)
 var pov_enabled := true             # tests/bots that aim at a field point turn this off
 var aim_yaw := 0.0                  # 0 = straight downfield (+y), + = right
 var aim_pitch := POV_PITCH_START
@@ -202,8 +207,8 @@ func _ready() -> void:
 		return
 	configure(MatchConfig.normalize(args.get("size", 7)), str(args.get("practice", "")) if args.has("practice") else "",
 		str(args.get("mode", "classic")))
-	var quarter_minutes := int(args.get("quarter-minutes", 0))
-	if drill == null and Lobby.QUARTER_MINUTES.has(quarter_minutes):
+	var quarter_minutes := str(args.get("quarter-minutes", "0")).to_float()
+	if drill == null and Lobby.valid_quarter_minutes(quarter_minutes):
 		series.clock.quarter_length = quarter_minutes * 60.0
 		series.clock.reset()
 	_setup_net()
@@ -225,7 +230,7 @@ func _ready() -> void:
 		v.sync()
 	camera = Camera3D.new()
 	camera.name = "FollowCamera"
-	camera.fov = 65
+	camera.fov = CAMERA_FOV
 	add_child(camera)
 	camera.make_current()
 	hud = Label.new()
@@ -397,8 +402,8 @@ func _draw_crosshair() -> void:
 		crosshair.draw_rect(bar.grow(2.0), shade)
 		crosshair.draw_rect(Rect2(bar.position, Vector2(bar.size.x * charge, bar.size.y)), col.lerp(Color(1.0, 0.45, 0.15), charge))
 	var lbl := "LOFT %d°" % int(round(launch_angle()))
-	crosshair.draw_string_outline(ThemeDB.fallback_font, c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, shade)
-	crosshair.draw_string(ThemeDB.fallback_font, c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, col)
+	crosshair.draw_string_outline(ArtMats.ui_font(600), c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, shade)
+	crosshair.draw_string(ArtMats.ui_font(600), c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, col)
 
 ## True while the human is the passer: QB before the forward pass (Chaosball: any holder).
 func pov_active() -> bool:
@@ -863,9 +868,9 @@ func _host_game(port: int, opts: Dictionary) -> String:
 	lobby.host_id = LOCAL_PLAYER
 	lobby.add(LOCAL_PLAYER, player_name if player_name != "You" else "Host")
 	lobby.settings["size"] = MatchConfig.normalize(opts.get("size", match_size))
-	if series.clock.uses_quarters():
-		lobby.settings["quarters"] = true
-		lobby.settings["quarter_minutes"] = int(series.clock.quarter_length / 60.0)
+	var quarter_minutes := series.clock.quarter_length / 60.0   # e.g. from --quarter-minutes
+	if Lobby.valid_quarter_minutes(quarter_minutes):
+		lobby.settings["quarter_minutes"] = quarter_minutes
 	if opts.get("game", "classic") == "chaosball":
 		lobby.settings["mode"] = "chaosball"
 		lobby.settings["size"] = 3
@@ -910,6 +915,7 @@ func _join_game(target: String, port: int, opts: Dictionary) -> void:
 	net.snapshot_received.connect(_on_snapshot)
 	net.event_received.connect(_on_world_event)
 	net.host_lost.connect(_on_host_lost)
+	add_child(preload("res://src/game/link_banner.gd").new(net))   # #86: "Connection to host lost…"
 
 const HOST_LOST_STATUS := "Host disconnected"
 const HOST_UNREACHABLE_STATUS := "Couldn't reach the host"
@@ -957,7 +963,7 @@ func _queue_up(args: Dictionary) -> void:
 		var port := int(args.get("host-port", 25000 + randi() % 5000))
 		var code := _host_game(port, {"start_when_ready": true, "expected": int(m.get("expected", 2)),
 			"size": int(m.get("size", 7)), "advertise": advertise, "game": str(m.get("game", "classic"))})
-		lobby.settings["half_minutes"] = 5
+		lobby.settings["quarter_minutes"] = Lobby.DEFAULT_QUARTER_MINUTES
 		print("QUEUE matched (%s): hosting %s" % [m.get("mode", "?"), code])
 		mm_client.send_hosting(code))
 	mm_client.join_match.connect(func(code):
@@ -977,6 +983,7 @@ func _queue_up(args: Dictionary) -> void:
 		_show_connection_failure.call_deferred(MATCHMAKER_UNREACHABLE_STATUS)
 		return
 	mm_client.failed.connect(_show_connection_failure.bind(MATCHMAKER_UNREACHABLE_STATUS), CONNECT_DEFERRED)
+	mm_client.refused.connect(_show_connection_failure, CONNECT_DEFERRED)   # #165: version mismatch -> menu says why
 	queue_started_ms = Time.get_ticks_msec()
 	# Waiting lobby: warm up on the training ground until the match is found.
 	if not args.has("no-warmup"):
@@ -1025,7 +1032,7 @@ func in_lobby() -> bool:
 		return net.my_athlete < 0
 	return false
 
-## Lobby input: Enter = ready. The host can select the format and period length.
+## Lobby input: Enter = ready. The host can select size, mode and quarter length (#130: always quarters).
 func lobby_key(keycode: int) -> void:
 	if is_client():
 		if keycode == KEY_ENTER:
@@ -1039,14 +1046,10 @@ func lobby_key(keycode: int) -> void:
 		KEY_7: changed = lobby.set_setting(LOCAL_PLAYER, "size", 7)
 		KEY_M:
 			changed = lobby.set_setting(LOCAL_PLAYER, "mode", "chaosball" if lobby.settings.get("mode", "classic") == "classic" else "classic")
-		KEY_Q:
-			changed = lobby.set_setting(LOCAL_PLAYER, "quarters", not lobby.settings["quarters"])
 		KEY_H:
-			var quarters: bool = lobby.settings["quarters"]
-			var choices := Lobby.QUARTER_MINUTES if quarters else Lobby.HALF_MINUTES
-			var setting := "quarter_minutes" if quarters else "half_minutes"
-			var i := (choices.find(lobby.settings[setting]) + 1) % choices.size()
-			changed = lobby.set_setting(LOCAL_PLAYER, setting, choices[i])
+			var choices := Lobby.QUARTER_MINUTES
+			var i := (choices.find(lobby.settings["quarter_minutes"]) + 1) % choices.size()
+			changed = lobby.set_setting(LOCAL_PLAYER, "quarter_minutes", choices[i])
 	if changed:
 		net.broadcast_lobby(lobby.to_dict())
 
@@ -1070,8 +1073,7 @@ func _start_from_lobby() -> void:
 	if not lobby.start():
 		return
 	configure(lobby.settings["size"], "", lobby.settings.get("mode", "classic"))
-	series.clock.half_length = lobby.settings["half_minutes"] * 60.0
-	series.clock.quarter_length = lobby.settings["quarter_minutes"] * 60.0 if lobby.settings["quarters"] else 0.0
+	series.clock.quarter_length = lobby.settings["quarter_minutes"] * 60.0
 	series.clock.reset()
 	if debug_playclock > 0.0:
 		series.clock.play_clock = debug_playclock
@@ -1176,7 +1178,7 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 		pres.on_event(n, d)
 	if n == "incomplete" and last_whistle == "":
 		last_whistle = "INCOMPLETE"
-	if n in ["tackle", "out_of_bounds", "breakup", "touchdown", "explode", "touchback", "kick_out_of_bounds", "kick_downed"]:
+	if n in ["tackle", "out_of_bounds", "breakup", "touchdown", "explode", "touchback", "kick_out_of_bounds", "kick_downed", "fair_catch"]:
 		last_whistle = n.replace("kick_", "").replace("_", " ").to_upper()
 	if n == "field_goal":
 		last_whistle = "FIELD GOAL GOOD" if d.get("good", false) else "FIELD GOAL NO GOOD"
@@ -1303,6 +1305,15 @@ func _update_camera(delta: float) -> void:
 	camera.global_position = follow_pos.lerp(pov_pos, pov_w)
 	camera.look_at(follow_look.lerp(pov_look, pov_w))
 
+## Target FOV for the follow/POV camera: narrows with the charge while the passer winds up.
+func aim_zoom_fov() -> float:
+	return lerpf(CAMERA_FOV, AIM_ZOOM_FOV, charge) if charging and pov_active() else CAMERA_FOV
+
+func _update_fov(delta: float) -> void:
+	var k := 1.0 if _replay_cam_cut else 1.0 - exp(-AIM_ZOOM_RATE * delta)   # cut out of replays
+	_replay_cam_cut = false
+	camera.fov = lerpf(camera.fov, aim_zoom_fov(), k)
+
 func can_pass() -> bool:
 	return world.can_throw(my_id)
 
@@ -1346,7 +1357,7 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			do_action({"a": "toss", "c": "receive"} if series.state == Match.State.TOSS else {"a": "try", "n": 1})
 		KEY_2:
 			do_action({"a": "toss", "c": "kick"} if series.state == Match.State.TOSS else {"a": "try", "n": 2})
-		# Live play: Q/E spin, F dive, C dash. Before the snap: Q play picker, F cycle route.
+		# Live play: Q/E spin, F dive, R dash. Before the snap: Q play picker, F cycle route.
 		KEY_F:
 			if world.phase == World.Phase.LIVE:
 				do_action({"a": "tackle"})      # dive: tackle on defense, dive for yards with the ball
@@ -1365,9 +1376,9 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			do_action({"a": "spin", "s": 1})
 		KEY_G:
 			do_action({"a": "handoff"})
-		KEY_T:
+		KEY_C:
 			taunt()
-		KEY_U:
+		KEY_T:
 			if drill == null:
 				do_action({"a": "timeout"})
 		KEY_J:
@@ -1375,9 +1386,9 @@ func _unhandled_key_input(e: InputEvent) -> void:
 				_set_charging(true)
 			else:
 				throw_pass()
-		KEY_C:
-			do_action({"a": "dash", "dir": read_input()})
 		KEY_R:
+			do_action({"a": "dash", "dir": read_input()})   # no-op unless live with a charge (HUD circles)
+		KEY_ENTER, KEY_KP_ENTER:
 			if world.phase == World.Phase.DEAD and not is_client():
 				next_play()
 		KEY_BACKSPACE:
@@ -1430,7 +1441,7 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 	if maybe_auto_replay():
 		return
 	if drill == null:
-		series.tick(delta)          # practice never runs the clocks
+		series.tick(delta, _clock_snap)   # practice never runs the clocks
 	if drill != null and drill.kind != "scrimmage":
 		if drill.tick(world, delta):
 			drill.start_rep(world)
@@ -1457,6 +1468,10 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 	var snap_delay := T.AI_SNAP_DELAY
 	if drill == null and not world.is_chaos() and not humans.is_empty():
 		snap_delay = T.HUDDLE_SECONDS
+	# #136: in a match the play clock is the bots' snap timer too (one shown countdown).
+	ai.snaps_on_clock = drill == null
+	if drill == null and AI.offense_is_bot(world, humans):
+		series.huddle(AI.huddle_seconds(world, snap_delay))
 	ai.presnap_tick(world, humans, delta, series.downs.down, series.downs.distance(), snap_delay)
 	var inputs := ai.think(world, humans)
 	if drill != null:
@@ -1475,6 +1490,13 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 		net_tick += 1
 		if net_tick % SNAPSHOT_EVERY == 0:
 			net.broadcast_snapshot(Protocol.encode_snapshot(series, net_tick, net.acks()))
+
+## Play clock ran out: a bot offense snaps its own way (kickoff depth), a human one gets
+## the default snap / kick.
+func _clock_snap() -> bool:
+	if AI.offense_is_bot(world, [controlled_id] + roster.humans()):
+		return ai.snap(world)
+	return world.snap()
 
 ## Instant replay of the last play at half speed (V). At FINAL, V plays the highlight
 ## reel instead. Offline the match pauses; online only your view changes.
@@ -1812,7 +1834,7 @@ func _process(delta: float) -> void:
 		_replay_camera(delta)
 	else:
 		_update_camera(delta)
-		camera.fov = 65
+		_update_fov(delta)
 	var m = player.athlete
 	var my_team: int = m.team
 	var side := "OFFENSE | PLAY: %s" % world.play_name if world.offense_team == my_team else "DEFENSE"
@@ -1847,9 +1869,9 @@ func _process(delta: float) -> void:
 		return
 	if in_lobby():
 		if is_client() and net.refused_reason != "":
-			hud.text = "COULDN'T JOIN THE MATCH\n%s\n\nAsk the host for a bigger match, or try again later." % net.refused_reason
+			hud.text = "COULDN'T JOIN THE MATCH\n%s%s" % [net.refused_reason, "" if net.version_refused else "\n\nAsk the host for a bigger match, or try again later."]
 			return
-		var host_keys := "\nHost: [3/5/7] size   [M] mode   [Q] halves/quarters   [H] period length" if is_server() else ""
+		var host_keys := "\nHost: [3/5/7] size   [M] mode   [H] quarter length" if is_server() else ""
 		var lobby_text := "PRIVATE MATCH LOBBY   Invite code: %s\n%s\n[Enter] ready. Starts when everyone is ready.%s" % [lobby.code, lobby.summary(), host_keys]
 		if is_server() and lobby.notice != "":
 			lobby_text += "\n" + lobby.notice
@@ -1862,8 +1884,8 @@ func _process(delta: float) -> void:
 		clock_txt += " | STREAK %d -> TD %d | BALL %.1fs" % [world.streak, world.streak_points(), maxf(0.0, T.PASS_CLOCK - world.hold_t)]
 	if drill != null:
 		clock_txt = drill.label()
-	if world.phase == World.Phase.PRESNAP:
-		clock_txt += " | PLAY %d" % int(ceil(series.clock.play_clock))
+	if series.play_clock_shown() >= 0 and drill == null:
+		clock_txt += " | PLAY %d" % series.play_clock_shown()
 	if series.is_final():
 		var w := series.winner()
 		phase_name = "FINAL: HOME %d - AWAY %d  %s\n%s" % [series.score[0], series.score[1], "TIE" if w < 0 else ("HOME WINS" if w == 0 else "AWAY WINS"),

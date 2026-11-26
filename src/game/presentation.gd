@@ -1,6 +1,6 @@
 extends Node3D
 ## Runtime presentation for a match: football model + spiral + trail, landing
-## marker, controlled-player ring/chevron, sideline chains, tackle dust,
+## marker, controlled-player ground ring, sideline chains, tackle dust,
 ## touchdown fireworks, camera shake, crowd excitement, jumbotron, overlay.
 ## Runs as a child of main (after main's _process). Reads state; owns no rules.
 
@@ -16,11 +16,6 @@ var main: Node3D
 var stadium: RefCounted
 var overlay: Overlay
 var ring: MeshInstance3D
-var chevron: MeshInstance3D
-const CHEVRON_COLOR := Color(0.36, 0.88, 1.0, 0.9)
-## Camera distance (m) where the chevron starts fading / is gone: close cameras (third
-## person, QB POV) already show who you are, and the marker would sit in the aim line.
-const CHEVRON_FADE := Vector2(9.0, 5.0)
 var carrier_glow: MeshInstance3D
 var landing: MeshInstance3D
 var trail_mesh := ImmediateMesh.new()
@@ -48,17 +43,6 @@ func _ready() -> void:
 	landing = _ground_quad("LandingMarker", 2.0, "res://src/game/art/ring.gdshader")
 	(landing.material_override as ShaderMaterial).set_shader_parameter("color", Color(1.0, 0.95, 0.4, 0.85))
 	(landing.material_override as ShaderMaterial).set_shader_parameter("pulse", 1.0)
-	chevron = MeshInstance3D.new()
-	chevron.name = "Chevron"
-	var pm := PrismMesh.new()
-	pm.size = Vector3(0.32, 0.28, 0.08)
-	chevron.mesh = pm
-	chevron.rotation.z = PI
-	# Unshaded + alpha (#116): emissive 2.5 bloomed to a white triangle in the QB's aim
-	# line. Flat cyan reads as "you", and _update_rings fades it when the camera is close.
-	chevron.material_override = Mats.flat(CHEVRON_COLOR)
-	chevron.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(chevron)
 	trail = MeshInstance3D.new()
 	trail.name = "BallTrail"
 	trail.mesh = trail_mesh
@@ -362,7 +346,7 @@ func _update_ends(s, w) -> void:
 	var period: int = s.clock.period()
 	if period != _period:
 		if period > _period and not s.is_final() and main.drill == null:
-			overlay.show_banner("SWITCH ENDS", "START OF " + s.clock.label().get_slice(" ", 0), overlay.ACCENT, 2.4)
+			overlay.show_banner("SWITCH ENDS", s.clock.label().get_slice(" ", 0), overlay.ACCENT, 2.4)
 		_period = period
 
 func _update_ball(delta: float, w) -> void:
@@ -439,13 +423,6 @@ func _update_rings(w) -> void:
 		if pv.athlete.team != _ring_team:
 			_ring_team = pv.athlete.team
 			(ring.material_override as ShaderMaterial).set_shader_parameter("color", Color(tc.r, tc.g, tc.b, 0.9))
-		chevron.position = pv.global_position + Vector3(0, 2.45 + sin(Time.get_ticks_msec() * 0.005) * 0.08, 0)
-		chevron.rotation.y += 0.04
-		var cam: Camera3D = main.camera
-		var dist := cam.global_position.distance_to(chevron.position) if cam else 99.0
-		var a := clampf(inverse_lerp(CHEVRON_FADE.y, CHEVRON_FADE.x, dist), 0.0, 1.0)
-		chevron.visible = a > 0.01
-		(chevron.material_override as StandardMaterial3D).albedo_color.a = CHEVRON_COLOR.a * a
 	var b = w.ball
 	var hv = main.views[b.holder_id] if int(b.state) == 0 and b.holder_id >= 0 and b.holder_id < main.views.size() else null
 	carrier_glow.visible = hv != null and hv != pv and int(w.phase) == 1

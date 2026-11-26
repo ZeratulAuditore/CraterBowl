@@ -102,7 +102,7 @@ func test_play_summary_yards_and_context() -> void:
 	var s := _rec()
 	var w: World = s[0]
 	var r: Replay = s[2]
-	r.context = "H1 2:00, 1st & 10 at OWN 25"
+	r.context = "Q1 2:00, 1st & 10 at OWN 25"
 	_play(w, r, 4)
 	var los := w.los_y
 	w.snap()
@@ -112,7 +112,7 @@ func test_play_summary_yards_and_context() -> void:
 	assert_near(p["yards"], 6.4, 0.01)
 	assert_eq(p["summary"], "run for 6 yd")
 	assert_true(not (p["highlight"]), "short run is not a highlight")
-	assert_eq(p["label"], "Play 1 (H1 2:00, 1st & 10 at OWN 25): run for 6 yd")
+	assert_eq(p["label"], "Play 1 (Q1 2:00, 1st & 10 at OWN 25): run for 6 yd")
 
 func test_highlight_tags() -> void:
 	var s := _rec()
