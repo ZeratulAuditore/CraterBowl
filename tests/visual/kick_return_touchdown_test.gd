@@ -36,7 +36,7 @@ func _run() -> void:
 	# A stronger passing line gives the returner a category title on the second card.
 	game.stats.athletes[kicker.id] = {"team": 1, "pos": "QB", "owner": "Bot", "att": 10,
 		"comp": 7, "pass_yds": 200, "pass_td": 1}
-	game.series.clock.half = 2
+	game.series.clock.quarter = 4
 	game.series.clock.remaining = 0.0
 	game.series.last_result = {"type": "incomplete"}
 	world.phase = game.World.Phase.DEAD
@@ -45,6 +45,7 @@ func _run() -> void:
 	check(game.profile.achievements == ["first_td"], "return unlocks First Touchdown")
 
 	var launch = root.get_node("Launch")
+	launch.settings_path = "user://test_return_td_settings.cfg"   # never leak the name into later cases
 	launch.settings.player_name = "Ace"
 	launch.go_to_menu("", game.match_overview())
 	for frame in 5:
