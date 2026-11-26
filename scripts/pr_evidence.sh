@@ -4,7 +4,7 @@
 #   ./scripts/pr_evidence.sh <PR#> <OUT> [name ...]
 #
 # OUT is a ./scripts/before_after.sh output dir. Names (file names without .png, shell globs ok)
-# pick which pairs to publish; default is every pair. Pick the ones that show the change.
+# pick which pairs to publish, in table order; default is every pair. Pick the ones that show the change.
 # Captions come from OUT/captions.txt, one "name: what the reviewer should notice" per line;
 # a name without a caption gets its file name as alt text, so write captions.
 #
@@ -27,21 +27,21 @@ if [[ -f "$OUT/captions.txt" ]]; then
   done < "$OUT/captions.txt"
 fi
 
-want() {  # want <name>: true when no filter given or a filter glob matches
-  [[ ${#FILTERS[@]} -eq 0 ]] && return 0
-  local f; for f in "${FILTERS[@]}"; do [[ "$1" == $f ]] && return 0; done; return 1
-}
-FILTERS=("$@")
-
-names=()
+# Pairs in the order the names were given (globs expand alphabetically); default: all, sorted.
+all=()
 for f in "$OUT"/after/*.png "$OUT"/before/*.png; do
   [[ -e "$f" ]] || continue
   n="$(basename "$f" .png)"
-  want "$n" || continue
-  [[ " ${names[*]-} " == *" $n "* ]] || names+=("$n")
+  [[ " ${all[*]-} " == *" $n "* ]] || all+=("$n")
+done
+IFS=$'\n' all=($(sort <<<"${all[*]-}")); unset IFS
+names=()
+for pat in "${@:-*}"; do
+  for n in "${all[@]}"; do
+    [[ "$n" == $pat && " ${names[*]-} " != *" $n "* ]] && names+=("$n")
+  done
 done
 [[ ${#names[@]} -gt 0 ]] || { echo "no PNGs matched in $OUT"; exit 1; }
-IFS=$'\n' names=($(sort <<<"${names[*]}")); unset IFS
 
 entries=""
 for n in "${names[@]}"; do
@@ -57,7 +57,7 @@ if tip="$(git ls-remote --heads origin "$BRANCH" | cut -f1)" && [[ -n "$tip" ]];
 fi
 base_note="$(cat "$OUT/base.txt" 2>/dev/null || echo "base")"
 commit="$(echo "Before/after screenshots for #$PR (before: $base_note)" | git commit-tree "$tree" "${parent[@]}")"
-git push -q origin "$commit:refs/heads/$BRANCH"
+git push -q origin "$commit:refs/heads/$BRANCH" 2>&1 | grep -v "^remote:" || true
 
 raw="https://raw.githubusercontent.com/$REPO/$commit"
 echo
