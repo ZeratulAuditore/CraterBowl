@@ -16,6 +16,7 @@ Run the full one before every commit that touches code. The pre-commit hook runs
 | Scene boots clean + scripted play works | `./scripts/smoke.sh` (also runs net + mm) | ~2–3 min |
 | Networked behavior | `./scripts/net_test.sh` (host + client flow, then a host-loss phase that SIGKILLs a second host, #56), `./scripts/mm_test.sh`; lobby seat cap: `godot --headless --path . -s res://tests/net_capacity.gd` (one process, host + 8 joiners; run by smoke.sh) | ~15s each |
 | **What it looks like** (visuals, HUD, camera, art) | `./scripts/shot.sh ...` then view the PNGs | ~30s |
+| **What changed visually** (PR evidence) | `./scripts/before_after.sh ...` then `./scripts/pr_evidence.sh <PR#> <out>` | ~1–4 min |
 
 ## The gate tiers (`scripts/check.sh`)
 
@@ -79,11 +80,53 @@ Add a `tests/visual/<scenario>_test.gd` script extending `tests/visual/harness.g
 production scene, assert the relevant behavior with `check()`, then `await capture("state-name")`
 while that state is visible. Finish with `finish()` so failed checks fail the run. Inspect the PNG
 before opening the PR. The PR tests workflow uploads the captures and test logs as
-`visual-test-evidence`. Download the relevant captures, upload them, and embed them under
-Testing with Markdown image syntax and descriptive alt text. Include a link to the Actions
-artifact for all captures and logs. Use GitHub attachments when available. For this public
-repository, a dedicated `pr-evidence/<number>` branch with commit-pinned raw image URLs also works.
-Verify the images display in the PR.
+`visual-test-evidence`; link that Actions artifact in the PR for the full set of captures and logs.
+The images you embed in the PR are **before/after pairs** (next section).
+
+## Before/after screenshots (required for visual PRs)
+
+A reviewer can't judge a visual change from an "after" picture alone. Every PR that changes what
+the player sees embeds **matched pairs**: the same screen, frame and arguments on `origin/main`
+and on your branch, side by side. Two commands produce and publish them:
+
+```bash
+# 1. Capture: runs the same capture on origin/main (temp worktree) and on your working tree.
+./scripts/before_after.sh menu                                    # all main-menu screens
+./scripts/before_after.sh potg                                    # post-game flow
+./scripts/before_after.sh shot presnap --no-kickoff --frames=60,260 --snap=120   # any shot.sh args
+./scripts/before_after.sh visual scorebug                         # tests/visual/scorebug_test.gd
+#    --base=REF picks another base, --out=DIR the output dir. Runs into one --out accumulate.
+
+# 2. Look at OUT/compare/*.png (before left with a grey bar, after right with a green bar).
+#    Write OUT/captions.txt, one "name: what the reviewer should notice" per pair you'll publish.
+
+# 3. Publish after opening the PR (pushes orphan branch pr-evidence/<PR#>, prints the table):
+./scripts/pr_evidence.sh 123 "$OUT" menu_online presnap_0060      # names or globs; default all
+```
+
+Paste the printed `| What changed | Before | After |` table under `### Testing`, then open the PR
+page and check that every image displays.
+
+**Rules**
+- **Same capture on both sides.** Never pair a fresh "after" with an old screenshot from a
+  different run, frame or resolution. `before_after.sh` guarantees this; hand-made pairs don't.
+- **Show the change, not everything.** Publish the pairs that show the change (usually 2–6). Add one
+  pair of a screen you expected *not* to change when the risk is a regression elsewhere.
+- **Captions say what to look at** ("panel is opaque: no lobby player or INVITE pin behind the
+  text"), not the file name. They become the alt text and the first column.
+- **New screen or new test?** `before_after.sh` copies a capture script or `tests/visual` case that
+  only exists on your branch into the base tree, so the base is photographed with the same test.
+  Its `check()`s may fail on the base; that is expected and reported, not an error. A screen that
+  exists on only one side shows as `_(new screen)_` / `_(removed)_` in the table.
+- **Read `changed=` as a hint.** `before_after.sh` prints the percent of pixels that differ per
+  pair and flags `UNCHANGED` at 0.0%: a pair you meant to change that says UNCHANGED missed your
+  change (wrong frame or screen). Menus idle-animate on wall-clock time, so untouched menu screens
+  show ~2–3%. The image is the evidence, not the number.
+- **Sides run one after the other** (about 3–4 min for `menu`). `PARALLEL=1` halves that, but two
+  llvmpipe renders at once load the CPU enough that time-driven motion drifts: an untouched
+  `scorebug` frame measured 39% changed in parallel and 0.4% serial (2026-11-25, WSL, 1280x720).
+- User data is throwaway on both sides, and the base worktree is removed when the script exits.
+- Re-running `pr_evidence.sh` adds a commit on top of the branch, so earlier image links keep working.
 
 ## Screenshots: `scripts/shot.sh`
 
