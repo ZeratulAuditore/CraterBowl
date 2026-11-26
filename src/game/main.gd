@@ -18,6 +18,7 @@ const INTERP_DELAY := 0.1   # seconds others render in the past
 const Roster := preload("res://src/sim/roster.gd")
 const LOCAL_PLAYER := 1      # the local human's player id (= host peer id online)
 const Routes := preload("res://src/sim/routes.gd")
+const Controls := preload("res://src/ui/controls.gd")
 const MatchConfig := preload("res://src/sim/match_config.gd")
 const Lobby := preload("res://src/net/lobby.gd")
 const Drills := preload("res://src/sim/drills.gd")
@@ -40,6 +41,7 @@ const StadiumArt := preload("res://src/game/art/stadium.gd")
 const ArtMats := preload("res://src/game/art/materials.gd")
 const ArtQuality := preload("res://src/game/art/quality.gd")
 const EmotePicker := preload("res://src/game/emote_picker.gd")
+const TrainingArt := preload("res://src/game/art/training_art.gd")
 const ARC_DOTS := 24
 
 const TEAM_COLORS := [Color(0.95, 0.75, 0.15), Color(0.3, 0.8, 0.95)]
@@ -55,6 +57,10 @@ var reticle: MeshInstance3D
 var arc_dots: Array = []
 var charging := false   # POV passer holding the throw
 var charge := 0.0       # 0..1 throw power (distance)
+# Render interpolation for the ball (views interpolate themselves; see player.gd).
+var _ball_prev := Vector3.ZERO
+var _ball_cur := Vector3.ZERO
+var _route_key := 0          # last drawn route-art state; rebuild only when it changes
 var aim_point := Vector2(26, 45)
 ## POV passing (Gridiron-style): while you're the passer the mouse is captured and
 ## steers your view. Throws go where you look; view pitch = launch angle (height),
@@ -82,6 +88,8 @@ var match_mode := "classic"     # classic | chaosball
 var lobby := Lobby.new()      # server: authoritative; client: mirror
 var debug_playclock := -1.0
 var drill: Drills = null        # offline practice drill (null = normal match)
+var training_path := Drills.DEFAULT_BESTS_PATH   # personal bests (tests pass --training-file)
+var queue_started_ms := 0       # matchmaking: when we queued (warm-up HUD timer)
 var stats: Stats
 var summary_lines: Array = []   # end-of-match summary (server computes; clients receive)
 var leaderboard_path := Leaderboard.DEFAULT_PATH
@@ -151,6 +159,8 @@ func _ready() -> void:
 	if args.has("name"):
 		player_name = str(args["name"]).strip_edges().left(16)
 	ranked_match = args.has("ranked")
+	if args.has("training-file"):
+		training_path = str(args["training-file"])
 	if args.has("replay-dir"):
 		replay_dir = str(args["replay-dir"])
 	if args.has("profile-file"):
@@ -218,6 +228,7 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	drill = null
 	if practice != "":
 		drill = Drills.new()
+		drill.load_bests(training_path)
 		match_size = 7
 	for r in [field_root, athlete_root]:
 		if r:
@@ -239,6 +250,8 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	world.set_ruleset(match_mode)
 	_spawn_teams()
 	_build_field()
+	if drill != null:
+		TrainingArt.build(field_root, drill, field)
 	series = Match.new(world)
 	series.start(0, Drills.LOS if drill != null else -1.0)
 	world.event.connect(_on_world_event)
@@ -395,8 +408,6 @@ func _update_aim() -> void:
 		var tf := Passing.time_to_height(v, from.z, T.CATCH_HEIGHT, world.gravity())
 		aim_point = Vector2(from.x + v.x * tf, from.y + v.y * tf)
 		return
-	if camera == null or not is_inside_tree() or DisplayServer.get_name() == "headless":
-		return
 	var forward := Vector2.DOWN.rotated(cam_yaw)
 	aim_point = player.athlete.position + forward * aim_distance
 
@@ -550,7 +561,9 @@ func _apply_award(xp: Dictionary, ctx: Dictionary = {}) -> void:
 	xp_line = "XP +%d (Level %d%s)" % [total, profile.level(), " - LEVEL UP!" if gained > 0 else ""]
 	achievement_line = ("ACHIEVEMENTS: " + ", ".join(unlocked)) if not unlocked.is_empty() else ""
 
-func _on_match_event(n: String, _d: Dictionary) -> void:
+func _on_match_event(n: String, data: Dictionary) -> void:
+	if n in ["timeout", "clock_warning"]:
+		_on_world_event(n, data)
 	if n == "final" and drill == null:
 		saved_replay = _save_replay()
 		print("REPLAY saved: %s" % saved_replay)
@@ -779,6 +792,7 @@ func _queue_up(args: Dictionary) -> void:
 	var mode := str(args["queue"])
 	var advertise := str(args.get("advertise", _local_ipv4()))
 	mm_client.host_match.connect(func(m):
+		_end_warmup(args)
 		ranked_match = m.get("mode", "") == "competitive"
 		pending_teams = m.get("teams", {}) if m.get("teams") is Dictionary else {}
 		var port := int(args.get("host-port", 25000 + randi() % 5000))
@@ -788,6 +802,7 @@ func _queue_up(args: Dictionary) -> void:
 		print("QUEUE matched (%s): hosting %s" % [m.get("mode", "?"), code])
 		mm_client.send_hosting(code))
 	mm_client.join_match.connect(func(code):
+		_end_warmup(args)
 		print("QUEUE matched: joining %s" % code)
 		_join_game(code, 0, {"auto_ready": true}))
 	var rk := Ranked.new()
@@ -797,6 +812,23 @@ func _queue_up(args: Dictionary) -> void:
 		str(args.get("party", "")).get_slice(":", 0), int(str(args.get("party", "x:1")).get_slice(":", 1)) if str(args.get("party", "")).find(":") > 0 else 1,
 		"chaosball" if str(args.get("mode", "")) == "chaosball" else "classic")
 	print("QUEUE %s via %s:%d: %s" % [mode, addr, mm_port, error_string(err)])
+	queue_started_ms = Time.get_ticks_msec()
+	# Waiting lobby: warm up on the training ground until the match is found.
+	if not args.has("no-warmup"):
+		start_practice("hub")
+		print("QUEUE warm-up: training ground")
+
+## Match found: leave the training ground and rebuild the queued match's world.
+func _end_warmup(args: Dictionary) -> void:
+	if drill == null:
+		return
+	configure(MatchConfig.normalize(args.get("size", 7)), "", str(args.get("mode", "classic")))
+	print("QUEUE warm-up over: match found")
+
+## "SEARCHING FOR A CASUAL MATCH  0:42" while queued.
+func queue_text() -> String:
+	var secs := int((Time.get_ticks_msec() - queue_started_ms) / 1000)
+	return "SEARCHING FOR A %s MATCH  %d:%02d" % [str(_cli_args().get("queue", "")).to_upper(), secs / 60, secs % 60]
 
 func _practice_kind() -> String:
 	if _pending_practice != "":
@@ -821,7 +853,7 @@ func _local_ipv4() -> String:
 ## True while the private lobby is open (server) / we haven't been placed yet (client).
 func in_lobby() -> bool:
 	if searching():
-		return true
+		return drill == null   # queued + warming up on the training ground = playable
 	if is_server():
 		return net.lobby_mode and lobby.phase == Lobby.Phase.LOBBY
 	if is_client():
@@ -1070,8 +1102,9 @@ func _update_camera(delta: float) -> void:
 	var target := player.global_position
 	if camera_follow.distance_to(target) > 12.0:
 		camera_follow = target
-	camera_follow = camera_follow.lerp(target, clampf(delta * 10.0, 0.0, 1.0))
-	var follow_pos := camera_follow + rot * Vector3(0, 6, 9)
+	camera_follow = camera_follow.lerp(target, 1.0 - exp(-10.0 * delta))
+	var offset := Vector3(0, 10, 13) if drill != null and drill.kind == "blocking" else Vector3(0, 6, 9)
+	var follow_pos := camera_follow + rot * offset
 	var follow_look := target + rot * Vector3(0, 0, -aim_distance)
 	if pov_w <= 0.0:
 		camera.global_position = follow_pos
@@ -1149,7 +1182,12 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		KEY_E:
 			do_action({"a": "spin", "s": 1})
 		KEY_G:
+			do_action({"a": "handoff"})
+		KEY_T:
 			taunt()
+		KEY_U:
+			if drill == null:
+				do_action({"a": "timeout"})
 		KEY_J:
 			if pov_active():
 				_set_charging(true)
@@ -1160,6 +1198,9 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		KEY_R:
 			if world.phase == World.Phase.DEAD and not is_client():
 				next_play()
+		KEY_BACKSPACE:
+			if drill != null and net == null:
+				start_practice("hub")   # back to the training ground
 
 func _physics_process(delta: float) -> void:
 	if charging:
@@ -1209,6 +1250,9 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 			drill.start_rep(world)
 			last_whistle = ""
 			set_controlled(my_id)
+		if drill.portal != "":
+			start_practice(drill.portal)   # walked into a training-ground portal
+			return
 	elif world.phase == World.Phase.DEAD and auto_next and not series.is_final():
 		dead_t += delta
 		if dead_t >= NEXT_PLAY_DELAY:
@@ -1227,6 +1271,8 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 		snap_delay = T.HUDDLE_SECONDS
 	ai.presnap_tick(world, humans, delta, series.downs.down, series.downs.distance(), snap_delay)
 	var inputs := ai.think(world, humans)
+	if drill != null:
+		drill.override_inputs(world, inputs)
 	inputs[controlled_id] = my_input
 	if is_server():
 		for aid in net.inputs:
@@ -1279,21 +1325,43 @@ func _render_replay() -> void:
 		return
 	var pos: Array = smp["pos"]
 	for i in mini(pos.size(), views.size()):
-		views[i].position = Vector3(pos[i].x, 0, -pos[i].y)
+		views[i].place(Vector3(pos[i].x, 0, -pos[i].y), views[i].rotation.y)
 	var b: Vector3 = smp["ball"]
-	ball_view.position = Vector3(b.x, b.z, -b.y)
+	_place_ball(Vector3(b.x, b.z, -b.y))
 
+## Per physics tick: copy sim state into view targets. Cheap, change-driven work only.
+## Anything that moves on screen is drawn per frame in _render_frame (interpolated).
 func _render() -> void:
 	for v in views:
 		v.sync()
 	var b = world.ball.position
-	ball_view.position = Vector3(b.x, b.z, -b.y)
-	_update_aim()
-	_update_arc()
+	_place_ball(Vector3(b.x, b.z, -b.y))
 	los_marker.position = Vector3(field.width / 2.0, 0.03, -series.downs.los)
 	fd_marker.position = Vector3(field.width / 2.0, 0.03, -series.downs.first_down_y)
 	fd_marker.visible = not series.downs.is_goal_to_go()
 	_draw_routes()
+
+## True while the throw-arc preview is visible (tests).
+func arc_shown() -> bool:
+	return not arc_dots.is_empty() and arc_dots[0].visible
+
+## Ball interpolation target (same teleport rule as athlete views).
+func _place_ball(p: Vector3) -> void:
+	_ball_prev = p if p.distance_to(_ball_cur) > PlayerNode.TELEPORT_DIST * 2.0 else _ball_cur
+	_ball_cur = p
+	ball_view.position = p
+
+## Per display frame: draw between the last two sim ticks, so motion is smooth at any
+## refresh rate (60 Hz sim on a 144 Hz screen, or a slow frame that ran 2 ticks).
+## Runs before presentation.gd's _process (parent first), which then pins a held ball
+## to the (interpolated) carrier's hand.
+func _render_frame() -> void:
+	var f := Engine.get_physics_interpolation_fraction()
+	for v in views:
+		v.interpolate(f)
+	ball_view.position = _ball_prev.lerp(_ball_cur, f)
+	_update_aim()
+	_update_arc()
 
 ## Presnap route art for your own offense only (the defense never sees it):
 ## flat glowing ribbons, a distinct color per receiver, arrowheads, start dots.
@@ -1301,16 +1369,39 @@ const ROUTE_COLORS := [Color(1.0, 0.82, 0.25), Color(1.0, 0.45, 0.75), Color(0.5
 const MY_ROUTE_COLOR := Color(0.35, 1.0, 0.55)
 
 func _draw_routes() -> void:
-	route_mesh.clear_surfaces()
 	var me = world.get_athlete(my_id)
-	if me == null or world.phase != World.Phase.PRESNAP:
+	var offense: bool = me != null and me.team == world.offense_team
+	var is_run := world.is_run_play()
+	var show: bool = me != null and world.phase == World.Phase.PRESNAP and (not offense or is_run or not world.route_of.is_empty())
+	if not show:
+		if _route_key != 0:
+			route_mesh.clear_surfaces()
+			_route_key = 0
 		return
-	if me.team != world.offense_team:
+	# Rebuilding an ImmediateMesh re-uploads it to the GPU; only do it when the art's inputs
+	# change. Offense art = routes + protection lines, defense art = assignments; both depend
+	# on every athlete's position, the calls, the LOS and which side you're on.
+	var key_src := [my_id, me.team, world.offense_team, field.width, world.los_y, world.play_name, is_run, world.route_of, world.defensive_call]
+	for a in world.athletes:
+		key_src.append(a.position)
+	var key := hash(key_src)
+	if key == _route_key:
+		return
+	_route_key = key
+	route_mesh.clear_surfaces()
+	if not offense:
 		_draw_defense_routes(me.team)
 		return
-	if world.route_of.is_empty():
-		return
 	route_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	var blocks := {}
+	if is_run:
+		var back := world.find_role(me.team, Athlete.Role.RB)
+		var qb := world.find_role(me.team, Athlete.Role.QB)
+		if back and qb:
+			var mine := back.id == my_id
+			var color: Color = MY_ROUTE_COLOR if mine else ROUTE_COLORS[0]
+			_route_ribbon([back.position, qb.position] + world.run_path(), color, 0.48 if mine else 0.34)
+		blocks = world.run_block_assignments()
 	var k := 0
 	for id in world.route_of:
 		var a = world.get_athlete(id)
@@ -1322,7 +1413,7 @@ func _draw_routes() -> void:
 	for blocker in world.athletes:
 		if blocker.team != me.team or blocker.role not in [Athlete.Role.C, Athlete.Role.OL]:
 			continue
-		var defender = world.protection_target(blocker)
+		var defender = world.get_athlete(blocks.get(blocker.id, -1)) if is_run else world.protection_target(blocker)
 		if defender != null:
 			var mine: bool = blocker.id == my_id
 			_route_ribbon([blocker.position, defender.position], MY_ROUTE_COLOR if mine else Color(0.76, 0.82, 0.90), 0.42 if mine else 0.22)
@@ -1394,6 +1485,7 @@ func _disc(p: Vector2, r: float, c: Color, h: float, depth_scale: float = 1.0) -
 		_tri(p, p + Vector2(cos(t0), sin(t0) * depth_scale) * r, p + Vector2(cos(t1), sin(t1) * depth_scale) * r, c, c, c, h)
 
 func _process(delta: float) -> void:
+	_render_frame()
 	_tick_postgame(delta)
 	var launch := get_node_or_null("/root/Launch")
 	var menu_open: bool = launch != null and launch.menu_open()
@@ -1435,8 +1527,12 @@ func _process(delta: float) -> void:
 	banner_t = maxf(0.0, banner_t - delta)
 	if banner_t > 0.0:
 		phase_name = banner + "  " + phase_name
-	if searching():
-		hud.text = "SEARCHING FOR A %s MATCH..." % str(_cli_args().get("queue", "")).to_upper()
+	if drill != null and pres and pres.overlay:
+		for b in drill.banners:
+			pres.overlay.show_drill_banner(b)
+		drill.banners.clear()
+	if searching() and drill == null:
+		hud.text = queue_text() + "..."
 		return
 	if replay_active:
 		var p: int = replay.current_play()

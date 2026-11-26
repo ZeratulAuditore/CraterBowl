@@ -16,6 +16,7 @@ var bug: PanelContainer
 var team_score: Array = []   # Label per team
 var team_tab: Array = []     # ColorRect per team
 var poss: Array = []         # possession pip per team
+var timeout_pips: Array[Label] = []
 var clock_l: Label
 var down_l: Label
 var play_clock_l: Label
@@ -23,9 +24,11 @@ var status_l: Label
 var mode_l: Label
 var picker: PanelContainer
 var picker_title: Label
+var coaching_text: Label
 var picker_grid: GridContainer
 var route_select: OptionButton
 var picker_side := -1
+var picker_calls: Array = []
 var scoreboard: PanelContainer
 var scoreboard_label: Label
 var me_panel: PanelContainer
@@ -37,6 +40,12 @@ var banner: Label
 var banner_sub: Label
 var banner_t := 0.0
 var _prev := {}
+## HUD text/state refresh rate. Nothing on the scorebug changes faster than ~10 Hz, and
+## rebuilding a dozen strings + label layouts every render frame cost ~1 ms/frame
+## (docs/optimization/LOG.md). Animated bits (throw bar, banner) still run per frame.
+const TEXT_HZ := 20.0
+var _text_t := 0.0
+var _was_pre_game := true
 
 func _ready() -> void:
 	layer = 5
@@ -101,9 +110,16 @@ func _build_scorebug() -> void:
 		tab.custom_minimum_size = Vector2(6, 34)
 		cell.add_child(tab)
 		team_tab.append(tab)
+		var team_label := VBoxContainer.new()
+		team_label.alignment = BoxContainer.ALIGNMENT_CENTER
+		team_label.add_theme_constant_override("separation", 0)
 		var name_l := _label(22, Color(0.92, 0.95, 1.0), 700)
 		name_l.text = TEAM_ABBR[t]
-		cell.add_child(name_l)
+		team_label.add_child(name_l)
+		var pips := _label(11, Color(0.85, 0.92, 1.0), 700)
+		timeout_pips.append(pips)
+		team_label.add_child(pips)
+		cell.add_child(team_label)
 		var sc := _label(30, Color.WHITE, 800)
 		sc.custom_minimum_size.x = 34
 		sc.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -154,6 +170,8 @@ func _build_picker() -> void:
 	picker.add_child(column)
 	picker_title = _label(17, ACCENT)
 	column.add_child(picker_title)
+	coaching_text = _label(16)
+	column.add_child(coaching_text)
 	picker_grid = GridContainer.new()
 	picker_grid.columns = 2
 	column.add_child(picker_grid)
@@ -255,13 +273,25 @@ func on_event(n: String, d: Dictionary) -> void:
 		"fumble": show_banner("FUMBLE", "", ALERT)
 		"recovery": show_banner("RECOVERED", "TURNOVER" if d.get("turnover", false) else "", ACCENT)
 		"explode": show_banner("BALL EXPLODED", "", ALERT, 1.6)
+		"clock_warning": show_banner("ONE-MINUTE WARNING", "", ACCENT)
+		"timeout":
+			var team: int = d["team"]
+			show_banner("TIMEOUT", TEAM_NAMES[team], ACCENT)
+		"snap":
+			if banner.text in ["TIMEOUT", "ONE-MINUTE WARNING"]:
+				banner_t = 0.0
 
 # --- per frame --------------------------------------------------------------
+
+var _last_world
 
 func refresh(main, delta: float) -> void:
 	var s = main.series
 	var w = main.world
-	var pre_game: bool = main.searching() or main.in_lobby()
+	if _last_world != w:
+		_last_world = w
+		_text_t = 0.0
+	var pre_game: bool = main.in_lobby()   # queued + warming up on the training ground still shows the overlay
 	var final: bool = s != null and s.is_final()
 	root.visible = not pre_game
 	# The detailed text HUD stays for lobby/search/final summary only.
@@ -275,23 +305,32 @@ func refresh(main, delta: float) -> void:
 			ls.outline_color = Color(0.02, 0.03, 0.08, 0.9)
 			main.hud.label_settings = ls
 	if pre_game or s == null:
+		_was_pre_game = true
 		return
+	_refresh_picker(main, final)
+	scoreboard.visible = main.scoreboard_held
+	_animate_banner(delta)
+	_text_t -= delta
+	if _text_t > 0.0 and not _was_pre_game:
+		return
+	_text_t = 1.0 / TEXT_HZ
+	_was_pre_game = false
 	for t in 2:
 		(team_tab[t] as ColorRect).color = main.TEAM_COLORS[t]
 		(team_score[t] as Label).text = str(s.score[t])
 		(poss[t] as Label).modulate.a = 1.0 if w.possession_team() == t and not final else 0.0
-	clock_l.text = "FINAL" if final else s.clock.label()
+		timeout_pips[t].visible = main.drill == null
+		timeout_pips[t].text = "●".repeat(s.clock.timeouts[t]) + "○".repeat(s.clock.timeout_limit - s.clock.timeouts[t])
+	clock_l.text = "FINAL" if final else ("" if main.drill != null else s.clock.label())
 	down_l.text = _down_text(main)
 	var pc := int(ceil(s.clock.play_clock))
-	play_clock_l.text = ":%02d" % pc if int(w.phase) == 0 else ""
+	play_clock_l.text = ":%02d" % pc if int(w.phase) == 0 and main.drill == null else ""
 	play_clock_l.label_settings.font_color = ALERT if pc <= 5 else ACCENT
 	mode_l.text = _mode_text(main)
 	status_l.text = _status_text(main)
-	_refresh_picker(main, final)
 	_refresh_me(main)
 	me_panel.visible = not final
 	bug.visible = true
-	scoreboard.visible = main.scoreboard_held
 	if scoreboard.visible:
 		scoreboard_label.text = "%s     %d – %d     %s\n%s     ·     %s\n%s possession" % [
 			TEAM_NAMES[0], s.score[0], s.score[1], TEAM_NAMES[1], clock_l.text,
@@ -303,7 +342,9 @@ func refresh(main, delta: float) -> void:
 	elif not _prev.is_empty() and _prev["k"][0] != key[0] and _prev["k"][1] == 4 and _prev.get("score", []) == s.score and not final:
 		show_banner("TURNOVER ON DOWNS", "", ALERT, 1.8)
 	_prev = {"k": key, "score": s.score.duplicate()}
-	# Banner animation: punch in, hold, fade.
+
+## Banner animation: punch in, hold, fade (every frame).
+func _animate_banner(delta: float) -> void:
 	if banner_t > 0.0:
 		banner_t = maxf(0.0, banner_t - delta)
 		var age := 3.0 - banner_t
@@ -335,14 +376,26 @@ func _mode_text(main) -> String:
 	if main.ranked_match:
 		t += "  ·  RANKED"
 	if main.drill != null:
-		t = "PRACTICE"
+		t = main.drill.title() if _training(main) else "PRACTICE"
+	if main.searching():
+		t = main.queue_text() + "  ·  " + t
 	return t
+
+func _training(main) -> bool:
+	return main.drill != null and main.Drills.is_training(main.drill.kind)
+
+## Drill banners: [title, sub, kind] (good / miss / up / info).
+func show_drill_banner(b: Array) -> void:
+	var c: Color = {"good": Color(0.45, 1.0, 0.6), "miss": ALERT, "up": Color(1.0, 0.86, 0.35)}.get(b[2], ACCENT)
+	show_banner(str(b[0]), str(b[1]), c, 1.6)
 
 func _status_text(main) -> String:
 	var w = main.world
 	var s = main.series
 	if s.is_final():
 		return ""
+	if _training(main):
+		return main.drill.status(w)
 	var lab: String = s.downs.label()
 	var at := lab.find(" at ")
 	var spot := lab.substr(at + 4).to_upper() if at > 0 else ""
@@ -352,20 +405,31 @@ func _status_text(main) -> String:
 		1:
 			if main.world.is_chaos():
 				return "PASS CLOCK %.1f" % maxf(0.0, main.T.PASS_CLOCK - w.hold_t)
-			return ""
+			return "MEET THE BACK" if w.handoff_receiver(main.my_id) == null and w.is_run_play() and w.ball.is_held_by(main.my_id) else ""
 		_:
 			return main.last_whistle
 
 func _refresh_picker(main, final: bool) -> void:
 	var w = main.world
+	var training := _training(main)
+	coaching_text.visible = training
+	picker_grid.visible = not training
+	if training:
+		picker.visible = not main.scoreboard_held
+		var card: Array = main.drill.card()
+		picker_title.text = card[0]
+		coaching_text.text = card[1]
+		route_select.hide()
+		return
 	picker.visible = not final and w.phase == w.Phase.PRESNAP and main.play_picker_open and not main.scoreboard_held and not main.replay_active
 	if not picker.visible:
 		return
 	var side := 0 if w.get_athlete(main.my_id).team == w.offense_team else 1
 	var offense := side == 0
-	var calls: Array = Array(main.Routes.PLAY_NAMES) if offense else w.DefensivePlaybook.CALLS.keys()
-	if picker_side != side:
+	var calls: Array = w.available_plays() if offense else w.DefensivePlaybook.CALLS.keys()
+	if picker_side != side or picker_calls != calls:
 		picker_side = side
+		picker_calls = calls
 		for child in picker_grid.get_children():
 			picker_grid.remove_child(child)
 			child.queue_free()

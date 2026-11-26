@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Fast gate before every commit (lint + unit + perf). Enabled by scripts/install-hooks.sh.
+# Skipped for commits that touch no .gd/.tscn/.sh files (docs-only commits stay instant).
+# Emergency bypass: git commit --no-verify (say why in the commit message).
+cd "$(git rev-parse --show-toplevel)" || exit 1
+if ! git diff --cached --name-only | grep -qE '\.(gd|tscn|tres|sh|godot)$'; then exit 0; fi
+[ -x scripts/check.sh ] || exit 0
+./scripts/check.sh --fast

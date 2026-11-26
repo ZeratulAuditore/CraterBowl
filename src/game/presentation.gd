@@ -359,7 +359,12 @@ func _update_ball(delta: float, w) -> void:
 		bv.scale = Vector3.ONE
 		spin += delta * 9.0
 		bv.rotation = Vector3(spin, spin * 0.7, 0)
-	# Trail while airborne.
+	# Trail while airborne. (Skip the GPU re-upload when there's no trail at all.)
+	if trail_pts.is_empty() and st != 1:
+		if trail_mesh.get_surface_count() > 0:
+			trail_mesh.clear_surfaces()
+		landing.visible = false
+		return
 	trail_mesh.clear_surfaces()
 	if st == 1:
 		trail_pts.push_front(bv.global_position)
@@ -394,13 +399,17 @@ func _update_ball(delta: float, w) -> void:
 			landing.position = Vector3(p.x, 0.04, -p.y)
 			landing.visible = true
 
+var _ring_team := -1
+
 func _update_rings(w) -> void:
 	var pv: Node3D = main.player
 	ring.visible = pv != null
 	if pv:
 		ring.position = Vector3(pv.global_position.x, 0.035, pv.global_position.z)
 		var tc: Color = main.TEAM_COLORS[pv.athlete.team]
-		(ring.material_override as ShaderMaterial).set_shader_parameter("color", Color(tc.r, tc.g, tc.b, 0.9))
+		if pv.athlete.team != _ring_team:
+			_ring_team = pv.athlete.team
+			(ring.material_override as ShaderMaterial).set_shader_parameter("color", Color(tc.r, tc.g, tc.b, 0.9))
 		chevron.position = pv.global_position + Vector3(0, 2.75 + sin(Time.get_ticks_msec() * 0.005) * 0.12, 0)
 		chevron.rotation.y += 0.04
 	var b = w.ball

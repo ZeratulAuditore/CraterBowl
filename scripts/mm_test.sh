@@ -41,6 +41,10 @@ if [ $ok -eq 1 ] && grep -qE "NET match started: (Chaosball )?3v3.*(Ann ✓, Ben
     # Friends who queued as a party must be seated together.
     grep -qE "NET seats: .*(Ann->0.*Ben->0|Ben->0.*Ann->0|Ann->1.*Ben->1|Ben->1.*Ann->1)" .mm-a.log .mm-b.log || { echo "MM TEST FAIL (party split)"; exit 1; }
   fi
+  # Both queued players warmed up on the training ground, then left it when matched.
+  for f in .mm-a.log .mm-b.log; do
+    grep -q "QUEUE warm-up: training ground" $f && grep -q "QUEUE warm-up over" $f || { echo "MM TEST FAIL (queue warm-up in $f)"; exit 1; }
+  done
   echo "MM TEST PASS ($MODE)"; exit 0
 fi
 echo "MM TEST FAIL"; exit 1

@@ -5,6 +5,7 @@ extends RefCounted
 const T := preload("res://src/sim/tuning.gd")
 const Athlete := preload("res://src/sim/athlete.gd")
 const Passing := preload("res://src/sim/passing.gd")
+const Routes := preload("res://src/sim/routes.gd")
 
 var defense_enabled := true
 var offense_enabled := true
@@ -30,7 +31,10 @@ func presnap_tick(world, human_ids: Array, dt: float, down: int = 1, distance: f
 			humans_on_offense = true
 	var qb = world.find_role(world.offense_team, Athlete.Role.QB)
 	if not _presnap_called and qb and not humans_on_offense:
-		world.call_play(choose_play(down, distance, _calls))
+		world.call_play(choose_play(down, distance, _calls, world.has_run_back()))
+		if world.play_name == "Outside Sweep":
+			# Sweep across the formation so the back can keep their exchange momentum.
+			world.flip_play()
 		_calls += 1
 		_presnap_called = true
 	if not humans_on_offense and _presnap_t >= snap_delay:
@@ -38,7 +42,9 @@ func presnap_tick(world, human_ids: Array, dt: float, down: int = 1, distance: f
 
 ## Situational play choice: deterministic, rotating through fitting plays so
 ## drives don't repeat (variant = plays called so far).
-static func choose_play(down: int, distance: float, variant: int = 0) -> String:
+static func choose_play(down: int, distance: float, variant: int = 0, can_run: bool = false) -> String:
+	if can_run and down <= 2 and distance <= 10.0 and variant % 3 == 1:
+		return Routes.RUN_NAMES[0 if variant % 6 == 1 else 1]
 	var options: Array
 	if distance >= 12.0:
 		options = ["Deep Shot", "Verticals", "Flood"]
@@ -57,9 +63,15 @@ func think(world, human_ids: Array) -> Dictionary:
 		return out
 	_refresh_man(world)
 	var c = world.carrier()
+	var run_call: bool = world.is_run_play() and not world.forward_pass_thrown
+	var qb = world.find_role(world.offense_team, Athlete.Role.QB) if run_call else null
+	var exchange: bool = qb != null and (c == null or c.id == qb.id) and world.play_time <= T.AI_HANDOFF_WINDOW
+	if exchange and c != null and not human_ids.has(qb.id) and world.handoff(qb.id):
+		c = world.carrier()
+		exchange = false
 	var loose: bool = world.ball.state == world.ball.State.LOOSE
 	var in_air: bool = c == null and world.ball.state == world.ball.State.IN_FLIGHT and world.forward_pass_thrown
-	var pass_phase: bool = c != null and c.team == world.offense_team and c.role == Athlete.Role.QB and c.position.y <= world.los_y and not world.forward_pass_thrown
+	var pass_phase: bool = c != null and c.team == world.offense_team and c.role == Athlete.Role.QB and c.position.y <= world.los_y and not world.forward_pass_thrown and (not run_call or exchange)
 	var landing := _landing_point(world) if in_air else Vector2.INF
 	var ball_chasers := _nearest_to(world, landing, 2) if in_air else []
 	for a in world.athletes:
@@ -72,13 +84,27 @@ func think(world, human_ids: Array) -> Dictionary:
 			continue
 		if c != null and a.id == c.id:
 			if pass_phase:
-				_qb_decide(world, a)
-				out[a.id] = _qb_pocket(world, a)
+				if not exchange:
+					_qb_decide(world, a)
+					out[a.id] = _qb_pocket(world, a)
 			else:
 				if world.is_chaos():
 					_chaos_pass(world, a)
-				out[a.id] = _run_ball(world, a)
+				var run := _run_ball(world, a)
+				if run_call and world.route_paths.has(a.id):
+					run["dir"] = _avoid(world, a, _route_dir(world, a))
+				out[a.id] = run
 			continue
+		if run_call and offense_enabled and a.team == world.offense_team and (c == null or c.team == a.team):
+			if exchange and a.role == Athlete.Role.RB:
+				out[a.id] = _arrive(a, qb.position)
+				continue
+			if world.run_blocks.has(a.id):
+				var target = world.get_athlete(world.run_blocks[a.id])
+				if not target.is_grounded():
+					var lane: Vector2 = world.run_path()[0]
+					out[a.id] = _approach_block(world, a, target, lane)
+					continue
 		if c != null and a.team != c.team:
 			if not defense_enabled:
 				continue
@@ -391,14 +417,16 @@ func _avoid(world, a, dir: Vector2) -> Vector2:
 
 ## Pass protection: get between the nearest free rusher and the carrier, face him.
 func _protect(world, a, carrier) -> Dictionary:
+	return _approach_block(world, a, world.protection_target(a), carrier.position)
+
+func _approach_block(world, a, target, lane: Vector2) -> Dictionary:
 	if a.engaged_with >= 0:
 		var held = world.get_athlete(a.engaged_with)
 		return {"dir": (held.position - a.position).normalized(), "sprint": false}
-	var best = world.protection_target(a)
-	if best == null:
+	if target == null:
 		return {"dir": Vector2.ZERO, "sprint": false}
-	var spot: Vector2 = best.position + (carrier.position - best.position).normalized() * 0.9
+	var spot: Vector2 = target.position + (lane - target.position).normalized() * 0.9
 	var to: Vector2 = spot - a.position
 	if to.length() < 0.2:
-		to = best.position - a.position  # in position: face the rusher
+		to = target.position - a.position  # in position: face the defender
 	return {"dir": to.normalized(), "sprint": false}

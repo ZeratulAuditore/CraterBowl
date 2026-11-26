@@ -11,16 +11,17 @@ const ACTIONS := [
 	["throw", "Throw (QB: hold to charge)", KEY_J], ["lob", "Lob modifier", KEY_CTRL],
 	["tackle", "Dive / tackle (pre-snap: cycle route)", KEY_F],
 	["spin_left", "Spin left (pre-snap: play picker)", KEY_Q], ["spin_right", "Spin right", KEY_E],
-	["dash", "Dash", KEY_C], ["taunt", "Taunt (wheel picks)", KEY_G],
+	["dash", "Dash", KEY_C], ["handoff", "Handoff", KEY_G], ["timeout", "Team timeout", KEY_U],
+	["taunt", "Taunt (wheel picks)", KEY_T],
 	["scoreboard", "Show scoreboard (hold)", KEY_TAB],
 	["next", "Next play", KEY_R], ["replay", "Instant replay", KEY_V],
 	["try1", "Extra point", KEY_1], ["try2", "Two-point try", KEY_2],
 ]
 const OTHER_CONTROLS := [
-	"Mouse: look live · middle drag: look pre-snap · wheel: pick taunt",
+	"Mouse: look live · middle drag: look pre-snap · wheel: pick taunt (T performs)",
 	"QB / passer: mouse aims your view (look up = loft) · hold left click to charge distance, release to throw",
 	"Hold right click: block",
-	"Gamepad: left stick move · right stick QB aim · A snap · B dive · X / Y spin · RT pass · LT sprint",
+	"Gamepad: left stick move · right stick QB aim · A snap · B dive · X / Y spin · R3 handoff · RT pass · LT sprint",
 	"Replay viewer: Space pause · Left / Right seek · [ / ] speed",
 ]
 const SYNTH_DEVICE := -42     # marks events we injected (never re-translated)
@@ -30,7 +31,7 @@ const TRIGGER_ON := 0.5
 const PAD_BUTTONS := {
 	JOY_BUTTON_A: "snap", JOY_BUTTON_B: "tackle", JOY_BUTTON_X: "spin_left", JOY_BUTTON_Y: "spin_right",
 	JOY_BUTTON_LEFT_SHOULDER: "scoreboard", JOY_BUTTON_RIGHT_SHOULDER: "lob",
-	JOY_BUTTON_LEFT_STICK: "sprint", JOY_BUTTON_BACK: "replay", JOY_BUTTON_DPAD_UP: "next",
+	JOY_BUTTON_LEFT_STICK: "sprint", JOY_BUTTON_RIGHT_STICK: "handoff", JOY_BUTTON_BACK: "replay", JOY_BUTTON_DPAD_UP: "next",
 	JOY_BUTTON_DPAD_LEFT: "try1", JOY_BUTTON_DPAD_RIGHT: "try2", JOY_BUTTON_DPAD_DOWN: "dash",
 }
 ## Gamepad trigger axis -> action (held while past TRIGGER_ON)
