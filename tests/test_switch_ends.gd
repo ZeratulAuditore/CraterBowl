@@ -7,6 +7,7 @@ const Match := preload("res://src/sim/match.gd")
 const Protocol := preload("res://src/net/protocol.gd")
 const Athlete := preload("res://src/sim/athlete.gd")
 const FieldArt := preload("res://src/game/art/field_art.gd")
+const HeadlessMeshGuard := preload("res://src/game/headless_mesh_guard.gd")
 const DT := 1.0 / 60.0
 const R := Athlete.Role
 const COLORS := [Color(0.95, 0.75, 0.15), Color(0.3, 0.8, 0.95)]
@@ -60,14 +61,16 @@ func test_each_team_attacks_the_other_goal_every_quarter() -> void:
 	assert_eq(m.clock.quarter, 4)
 	assert_eq([m.defended_end(0), m.defended_end(1)], [1, 0], "Q4: ends switched again")
 
-func test_halves_format_switches_at_halftime() -> void:
+## #130: a zero quarter length was the old halves format; it now plays default quarters.
+func test_legacy_halves_length_still_switches_every_quarter() -> void:
 	var m := _match(25.0, 0.0)
-	assert_true(not m.ends_switched(), "H1 opening ends")
+	assert_eq(m.clock.label(), "Q1 2:30")
+	assert_true(not m.ends_switched(), "Q1 opening ends")
 	var out := _expire_with_tackle(m, 28.0)
-	assert_eq(out["outcome"], "halftime")
+	assert_eq(out["outcome"], "quarter", "the first period ends at Q1, not at halftime")
 	assert_true(out.get("switch_ends", false))
-	assert_eq(m.clock.half, 2)
-	assert_true(m.ends_switched(), "H2 ends switched")
+	assert_eq(m.clock.half, 1)
+	assert_true(m.ends_switched(), "Q2 ends switched")
 	assert_eq(m.defended_end(0), 1)
 
 func test_switch_preserves_field_position_down_and_possession() -> void:
@@ -98,7 +101,8 @@ func test_client_derives_the_same_ends_from_the_snapshot() -> void:
 	assert_true(client.ends_switched(), "client sees Q2 switched ends")
 
 ## The nodes FieldArt.build names (Turf + EndZoneName0/1), without the meshes the
-## headless dummy renderer complains about.
+## headless dummy renderer complains about. The Label3Ds still own a mesh: free the tree
+## with HeadlessMeshGuard.free_node (#179).
 func _field_nodes() -> Node3D:
 	var root := Node3D.new()
 	var turf := GeometryInstance3D.new()   # stands in for the turf MeshInstance3D
@@ -132,4 +136,4 @@ func test_end_zone_cues_follow_offense_and_period() -> void:
 	# Same period, NEBULA on offense: the end behind it is the HELIOS end.
 	FieldArt.orient_ends(root, m.defended_end(1), COLORS)
 	assert_eq([near.text, far.text], ["HELIOS", "NEBULA"], "cues follow possession too (#93)")
-	root.free()
+	HeadlessMeshGuard.free_node(root)   # plain free() logs mesh_storage.h "m" is null (#179)

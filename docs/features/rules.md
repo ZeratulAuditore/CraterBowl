@@ -4,7 +4,7 @@ Feature-level doc: how this works for players **today** on `main`. Open work: Gi
 
 ## Summary
 Classic Crater Bowl is two-way football with four downs to gain 10 yards, a PAT kick or 2-point scrimmage try,
-and two timed halves by default. Private hosts can choose four quarters. Kickoffs, punts and field goals are live kicking plays ([kicking.md](kicking.md)). Fields shrink with match size so 3v3 and 5v5 use the same rules engine as 7v7.
+and four timed quarters (2:30 each by default; #130). Kickoffs, punts and field goals are live kicking plays ([kicking.md](kicking.md)). Fields shrink with match size so 3v3 and 5v5 use the same rules engine as 7v7.
 Chaosball changes most of this: see [chaosball.md](chaosball.md).
 
 ## How it plays
@@ -34,7 +34,13 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
   `FORWARD_PROGRESS_BANNER` in `src/sim/tuning.gd`.
 - Four downs; failing on 4th is a turnover on downs, new offense at the mirrored spot (`goal − spot`).
 - Snap: Space by any offensive human. If nobody snaps, the 20 s play clock (`Clock.PLAY_CLOCK`) auto-snaps.
-- Next play starts `NEXT_PLAY_DELAY` (2.0 s) after the whistle; R skips the wait (offline or host only).
+- **One play clock** (#136): the scorebug's `PLAY :NN` is the countdown the snap obeys. A bot-run offense's play clock
+  is its huddle (`HUDDLE_SECONDS` 5 s, kickoffs `AI_SNAP_DELAY` 2.5 s) and the bots snap or kick when it reads 0;
+  a human offense gets the full 20 s and may snap any time before. An unattended kickoff gets the default kick
+  (`KICKOFF_DEFAULT_POWER`) at 0. The play clock is hidden and doesn't run while it governs no snap: live and dead
+  balls, the coin toss (its own `TOSS_WINDOW`), FINAL. A timeout or the one-minute warning restarts it (a fresh huddle
+  for bots). Clients show the same value: it is computed by `Match.play_clock_shown()` from snapshot state only.
+- Next play starts `NEXT_PLAY_DELAY` (2.0 s) after the whistle; Enter skips the wait (offline or host only; it was R before #138).
 
 ### Scoring and tries
 | Event | Points | Then |
@@ -65,22 +71,23 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 - After a takeaway the new offense starts at the mirrored spot; downed in its own end zone = touchback at the kickoff spot.
 
 ### Clock (`src/sim/clock.gd`)
-- Two 5:00 halves by default (`HALF_LENGTH`). In a private lobby, the host presses **Q** to switch formats and
-  **H** to cycle the duration. Halves come in 2, 5 or 8 minutes. Quarters come in 1, 2 or 3 minutes and initially select 2.
-  Everyone sees the selection in the lobby and the active period and time remaining on the scorebug.
+- Every match plays four quarters, **Q1-Q4** (#130). Quarters are 2:30 by default (`QUARTER_LENGTH`), so a game
+  runs the same 10 minutes the old two 5:00 halves did. In a private lobby the host presses **H** to cycle the
+  quarter length: 1, 2, 2.5 or 3 minutes. There is no halves format. Everyone sees the length in the lobby and the
+  quarter and time remaining on the scorebug, the Tab scoreboard, the stadium screens and replay labels.
 - The game clock runs during live plays. It **keeps running between plays** only after an in-bounds tackle by the
   original offense short of the line to gain, before 4th down, with no change of possession. Incompletions,
   sideline stops, first downs, scores, turnovers and tries stop it.
-- **One-minute warning** once per half. In quarters, it applies in Q2 and Q4. A live play finishes first. A crossing
+- **One-minute warning** once per half, in Q2 and Q4. A live play finishes first. A crossing
   between plays stops the clock at 1:00.
-- **Timeouts:** U, outside live play, by either team; the scorebug shows pips. Resets the play clock if pre-snap.
+- **Timeouts:** T, outside live play, by either team; the scorebug shows pips. Resets the play clock if pre-snap.
   Counts reset at halftime. No gamepad binding.
 - A period can end between snaps when the running clock hits 0:00. A play in progress at 0:00 finishes, and a touchdown on it still gets its try.
 - At the end of Q1 and Q3, the next period starts with the same possession, down, spot and remaining timeouts.
-- The coin toss winner chooses to receive or kick the opening kickoff. At halftime after H1 or Q2, the other team receives.
-- After H2 or Q4 the higher score wins. A tie stands.
-- **Switching ends** (#89): teams switch the goal they attack every period, after Q1, Q2 and Q3 (and at
-  halftime in the halves format). Possession, spot, down and line to gain carry over unchanged. Because the view is
+- The coin toss winner chooses to receive or kick the opening kickoff. At halftime after Q2, the other team receives.
+- After Q4 the higher score wins. A tie stands.
+- **Switching ends** (#89): teams switch the goal they attack every period, after Q1, Q2 and Q3 (Q2 -> Q3 is
+  halftime). Possession, spot, down and line to gain carry over unchanged. Because the view is
   offense-relative, the switch shows on the field: the end zone behind the offense is painted and named for the end
   it defends this period (HELIOS defends the HELIOS end in odd periods), and a **SWITCH ENDS** banner shows at each
   period change. The paint also follows possession within a period (#93).
@@ -93,6 +100,15 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
   change-driven from `presentation.gd`) is the whole cue.
 - The scrimmage try reuses the regular downs engine. The PAT uses the field goal kick.
 - Play-clock expiry auto-snaps, so an AFK player can't stall a lobby.
+- One clock, not two (#136). Bots used to snap on a private timer (`AI._presnap_t`) while the scorebug counted a
+  20 s clock they ignored, so you'd see `PLAY :16` (`:18` on a bot kickoff) as the ball went, and a bot kickoff after
+  the coin toss went the instant the toss was chosen because that timer had run through the toss. Now the bots' huddle
+  *is* the play clock (`Match.huddle` caps it, `Match.tick`'s snapper does the bots' snap, so kickoff depth still varies).
+  Rejected: keeping both timers and only lining up their starts (still two sources that drift on timeouts, the warning
+  and the toss); hiding the clock whenever bots have the ball (the defense loses the one cue for when the ball goes);
+  a delay-of-game penalty at 0 (a later rules decision; auto-snap stays).
+- The shown value is `ceil(play_clock - 1 ms)`: snapshots carry the clock as float32, and a plain `ceil` put the client
+  one second behind the host at every whole-second boundary.
 - Forward progress is the furthest point in contact, capped by how far opponents pushed the carrier. Whistling on
   first contact was rejected because it kills the contact game (spins, breaking a lean, the dive). The uncapped
   furthest point was rejected because a QB drifting back with a rusher on him would get the yards back on a sack.
@@ -102,6 +118,15 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
   which would be one more state for every client.
 - Quarters are a counter inside the halves, which stay the unit for rules. Reusing halftime at Q1 and Q3 would reset
   the drive and hand out extra timeouts, so those boundaries only reset the clock.
+- **Quarters only** (#130, owner: "I don't like H1 is showing… we should have Q1/2/3/4"). `Clock.quarter` is the one
+  source of truth and `half` is derived from it, so `label()` can only build `Q1`-`Q4`. Rejected: keeping halves as a
+  hidden rules path that only *displays* quarters, because the shown time would not match the period (a 5:00 "Q1")
+  and two rule sets would stay alive for one used format. Legacy inputs are normalized instead: a zero quarter
+  length (the old halves marker) falls back to 2:30, a pre-quarters snapshot's half maps to Q1/Q3, and an old
+  lobby's `"quarters": false` reads as quarters. 2.5 min was added to the quarter lengths so the default game keeps
+  its 10 minutes; 2 (8 min) or 3 (12 min) would have changed pacing.
+- The bots' end-of-half prevent defense (Deep Zone) keys off the time left in the **half**
+  (`Clock.half_remaining()`), so it still comes at the end of Q2/Q4, not at the end of every quarter.
 - The rear strip is near-certain so fumbles stay readable: don't sprint with a defender closing from behind.
 - Fumbles are a hit-quality outcome rather than a fatigue special case (#99): fresh carriers have a small base chance
   that grows with hit speed, and a hit from behind raises it in proportion to the angle (sprinting or not), so a
@@ -110,13 +135,14 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 ## Code and tests
 - `src/sim/match.gd` — series flow: scoring, tries, kickoffs, turnovers, safeties, halves, timeouts.
 - `src/sim/downs.gd` — downs, line to gain, spot clamping, down & distance label.
-- `src/sim/clock.gd` — game/play clock, one-minute warning, timeout counts.
+- `src/sim/clock.gd` — game/play clock, quarters (Q1-Q4 only), one-minute warning, timeout counts.
 - `src/sim/world.gd` — whistles (tackle, out of bounds, touchdown), catches/interceptions, fumbles and loose balls.
 - `src/sim/match_config.gd`, `src/sim/roster.gd`, `src/sim/field.gd` — sizes, slots, field geometry.
-- `src/net/lobby.gd` (size and period settings), `src/net/protocol.gd` (period snapshots and host-validated `try`/`timeout` actions).
+- `src/net/lobby.gd` (size and quarter-length settings), `src/net/protocol.gd` (period snapshots and host-validated `try`/`timeout` actions).
 - Tests: `tests/test_downs.gd`, `tests/test_scoring.gd`, `tests/test_match.gd`, `tests/test_clock.gd`,
   `tests/test_turnovers.gd`, `tests/test_tackling.gd`, `tests/test_match_sizes.gd`, `tests/test_field.gd`, `tests/test_switch_ends.gd`, `tests/game_flow.gd`,
-  `tests/visual/switch_ends_test.gd`.
+  `tests/test_lobby.gd`, `tests/test_protocol.gd`, `tests/test_play_clock.gd`, `tests/visual/switch_ends_test.gd`,
+  `tests/visual/play_clock_test.gd`, `tests/visual/quarter_clock_test.gd` (scorebug, Tab board and stadium screens at Q1 2:30).
 
 ## Open issues
 - #6 C04c Switching ends, mercy rule and clock actions (parent; #89 switching ends in review)
@@ -128,3 +154,4 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 - #39 B08 Tuning data file editable without code
 - #40 C25 Momentum / "on fire"
 - #42 C27 Backyard rules / trick plays
+- #192 Replays saved before #130 still label plays H1/H2

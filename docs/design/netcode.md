@@ -24,7 +24,9 @@ see when hosting, joining, queueing) lives in `docs/features/` (online play). La
 ## Peer / athlete assignment
 
 - `host(port, assign, release)`: `main.gd:_host_game` passes `roster.auto_assign(peer)` / `roster.release(peer)`.
-- `_on_peer_connected`: if `lobby_mode` and the lobby is open, the peer joins `lobby.players` with **no
+- `_on_peer_connected` admits nobody yet: the peer waits in `_awaiting_hello` until its `hello` passes the
+  [version handshake](#version-handshake-165). A peer that never says hello is refused after `HELLO_TIMEOUT` (5 s).
+- `_admit` (after a matching hello): if `lobby_mode` and the lobby is open, the peer joins `lobby.players` with **no
   athlete**, unless `lobby.is_full()` (`players.size() >= capacity()`, capacity = 2 × the size's slots),
   which refuses it. Otherwise (`--no-lobby`, or a match already running) it is auto-assigned at once;
   `-1` (no free slot) refuses it. So every lobby player is guaranteed a seat at start (#54).
@@ -39,16 +41,26 @@ see when hosting, joining, queueing) lives in `docs/features/` (online play). La
 - Client side, `join()` hooks `SceneMultiplayer.server_disconnected`. If the client wasn't refused (a refused
   client hangs up on purpose), `NetSession` emits `host_lost`, and `main.gd:_on_host_lost` calls
   `Launch.go_to_menu("Host disconnected")`. It keeps the match overview if the post-game had already started (#56).
-  A crash is noticed only at ENet's peer timeout (#86). `connection_failed` is still unhandled (#85).
+  `connection_failed` is still unhandled (#85).
+- Host-silence watchdog (#86, client): once seated (`my_athlete >= 0`, the host then sends a snapshot
+  every other tick), `_process` adds wall-clock time since the previous frame, capped at
+  `SILENCE_STEP_MAX` (0.25 s) per frame, to `host_silence`; any packet from peer 1 (`_heard_host`) zeroes it.
+  `STALL_AFTER` (2 s) emits `host_stalled` (`src/game/link_banner.gd` shows "Connection to host lost…"),
+  a packet after that emits `host_recovered`, and `DROP_AFTER` (4 s) goes through `_lose_host` →
+  `host_lost` and closes the peer. `_lose_host` sends `host_lost` once per session, whether the watchdog or
+  ENet's `server_disconnected` gets there first. A reconnect (#17) would replace the `DROP_AFTER` branch.
+  Not armed in the lobby, where the host is silent while nothing changes (#175). Why not a shorter ENet
+  timeout: [online.md](../features/online.md#design-decisions).
 
 ## Messages — game session (`net_session.gd:_on_packet`)
 
 | `k` | Direction | Delivery | Payload | Receiver checks |
 |---|---|---|---|---|
+| `hello` | C→S | reliable, ch 0, first message | `v` (protocol version, int), `build` (VERSION file, informational) | from a peer in `_awaiting_hello`, once; `P.version_refusal(v)` must be `""`, else `refuse(id, why, true)`. See [Version handshake](#version-handshake-165) |
 | `in` | C→S | unreliable-ordered, ch 1, every tick | `dir`, `spr`, `seq`, `block` | sender has an athlete; `P.sanitize_input`; `seq` must exceed the last queued or consumed sequence |
 | `act` | C→S | reliable, ch 0 | `act` (action dict) | sender has an athlete; `P.is_action(act)` (Dictionary with a String `a`, else dropped); queued as `[peer, aid, act]`, fields validated when applied |
 | `lact` | C→S | reliable, ch 0 | `act` = `{"a":"ready"}` / `{"a":"name","n":…}` / `{"a":"seat","s":…}` (queue matches, #59) / `{"a":"id","i":…}` (install id, 16–32 hex chars, #102) | sender is in `lobby.players`; `act` is a Dictionary |
-| `refused` | S→C | reliable, ch 0 | `why` (reason text) | from peer 1; cut to 120 chars. Client stores `refused_reason`, emits `refused`, closes its peer and ignores later packets |
+| `refused` | S→C | reliable, ch 0 | `why` (reason text), `v` (server protocol version, only on a version mismatch) | from peer 1; cut to 120 chars. Client stores `refused_reason` (and `version_refused` when `v` is present), emits `refused`, closes its peer and ignores later packets |
 | `welcome` | S→C | reliable, ch 0 | `aid`, `size`, `mode` | from peer 1; `aid` must index an athlete, `size` is 3, 5 or 7 (default 7), and `mode` is classic (default) or chaosball. Invalid fields leave the current assignment intact |
 | `snap` | S→all | unreliable-ordered, ch 1, 30 Hz | see Snapshots | from peer 1; tick `t` > last seen |
 | `ev` | S→all | reliable, ch 0 | `n` (event name), `d` | from peer 1; `d` forced to Dictionary |
@@ -97,6 +109,53 @@ can read the name entry from an older host.
   leave the connected client's assignment intact.
 - Not validated: message rate. `actions` and `lobby_actions` are unbounded queues drained once per tick.
 
+## Version handshake (#165)
+
+Client, host and matchmaker must run compatible builds. Before #165 nothing checked: a mismatched
+build connected and then failed in confusing ways (snapshots silently dropped by `valid_snapshot`,
+new actions rejected as unknown, a different lobby shape).
+
+- **`Protocol.VERSION`** (`src/net/protocol.gd`, int) is the wire/sim compatibility number.
+  `Protocol.local_version()` returns it, or the `--protocol-version=N` debug override (tests only).
+  `Protocol.build()` is the `VERSION` file (`0.1.0`): a human label that is sent and logged but never
+  compared, because two different releases can be wire-compatible.
+- **Game session.** `NetSession.join` hooks `connected_to_server` and sends `hello {v, build}` first.
+  The host holds every new peer in `_awaiting_hello`: no lobby seat, no athlete, no welcome. A
+  matching hello goes on to `_admit` (lobby or seat, as before). A mismatch is refused through the
+  existing `refuse()` path with `why` from `Protocol.version_refusal` and the extra field `v`, and the
+  client shows it on its join screen (without the "bigger match" hint, which is only for capacity).
+  A peer that sends no hello within `HELLO_TIMEOUT` (5 s) is a build from before the handshake and
+  is refused with "you have an older build". Those builds already understand `refused` (#54).
+- **Matchmaker.** `mm_client` puts `v` on `enq`. `mm_server` answers a mismatch (or a missing `v`)
+  with `{"k":"refused","why":…,"v":…}` and doesn't queue the player. `mm_client` emits `refused` and
+  hangs up, and `main.gd:_queue_up` sends the player back to the menu with the reason as the status.
+- **Reasons** (`Protocol.version_refusal`, ≤ 120 chars): older client → `Update Crater Bowl to play
+  online (server is vX, you have vY)`; newer client → `This server runs an older Crater Bowl (server
+  is vX, you have vY)`; no version → `…(server is vX, you have an older build)`.
+- **Not covered yet.** A new client joining a pre-#165 host isn't checked (that host welcomes it
+  without reading `hello`; #224). The server browser (`list`, `register`) is not version-aware, and
+  the matchmaker refuses rather than queueing each version separately during a rollout (#222).
+
+### When to bump `Protocol.VERSION`
+
+Bump it by one, in the same PR, whenever a host and a client built from different commits could
+disagree:
+
+- **Wire format:** any message key, field, type or meaning added, removed or changed: snapshot
+  layout (`encode_snapshot`/`valid_snapshot`/`apply_snapshot`), `welcome`, `lobby` state, events,
+  lobby actions, the action whitelist (`sanitize_action`) or input fields.
+- **Sim rules a client predicts or presents:** changes in `src/sim` (or `tuning.gd`) that change what
+  the client predicts, validates or shows from host state: athlete movement, roles, phases, routes
+  and playbooks indexed by number, new match states.
+- **Matchmaker protocol:** `enq`/`match` fields the other side depends on.
+
+Don't bump for presentation-only, AI-only (host-side bots), docs, test or tooling changes.
+Why a single integer rather than semver or the build string: the check must be exact and cheap, and
+"compatible" is a property of the wire and the sim, not of the release number. Bumping when unsure
+costs one forced update; not bumping costs broken online play for everyone mixed. Two PRs that both
+bump will conflict on the constant, which is the point: the second one re-bumps after merging.
+Whether CI should enforce the bump is #223; today it's a review rule.
+
 ## Snapshots (`protocol.gd:encode_snapshot` / `apply_snapshot`)
 
 | Key | Content |
@@ -117,7 +176,9 @@ acknowledgments. A rejected snapshot leaves the previous game state and tick int
 `apply_snapshot` writes accepted state into the client's `World` and `Match`. Dive and ground
 flags become token timers (`0.01`), and optional fields retain their compatibility defaults.
 When adding wire fields, update the encoder, validator, decoder and protocol tests together.
-The quarter fields extend the clock array after its four original entries. If they are absent, the client uses halves.
+The quarter fields extend the clock array after its four original entries. If they are absent (a pre-quarters host),
+the client maps the half to Q1/Q3; a zero quarter length (the old halves marker) falls back to the default 2:30
+quarter, so no client ever shows H1/H2 (#130).
 
 ## Client prediction (`client_predictor.gd`)
 
@@ -149,7 +210,7 @@ and full rollback of the whole sim is overkill when the host owns every contact.
 
 1. Host: `_host_game` makes a `Lobby` (`host_id = 1`), sets `code` (invite code), `expected` (queue
    matches), and `NetSession.lobby_mode = true`. Host keys (`main.gd:lobby_key`): Enter ready, 3/5/7 size,
-   M classic/chaosball (forces size 3), Q halves/quarters, H duration (2/5/8 min halves or 1/2/3 min quarters).
+   M classic/chaosball (forces size 3), H quarter length (1/2/2.5/3 min; every match plays quarters, #130).
    Any setting change clears the guests' ready state. A size or mode change whose capacity is below
    `players.size()` is refused and sets `lobby.notice` (shown in the host lobby HUD) rather than kicking
    anyone; an accepted change clears it. Chosen over disconnecting extras because it never throws a
@@ -168,7 +229,8 @@ messages are reliable on channel 0.
 
 | `k` | Direction | Payload / effect |
 |---|---|---|
-| `enq` | C→MM | `mode` (casual/competitive), `size`, `rating`, `name`, `party`, `party_size`, `game`, `seat` → `mm.enqueue` |
+| `enq` | C→MM | `mode` (casual/competitive), `size`, `rating`, `name`, `party`, `party_size`, `game`, `seat`, `v` (protocol version, #165) → `mm.enqueue`, or `refused` on a version mismatch |
+| `refused` | MM→C | `why`, `v`: the client's version doesn't match (#165); the client hangs up and shows `why` on the menu |
 | `queued` | MM→C | `ok`, `n` (queue length) |
 | `match` | MM→C | `role:"host"` + `mode`, `size`, `expected`, `seats` (seat token → team), `teams` (name → team, legacy), `game`; or `role:"join"` + `code` |
 | `hosting` | C→MM | `code` from the elected host → MM sends `match/join` to the others |
@@ -244,3 +306,6 @@ messages are reliable on channel 0.
 - #57 UPnP port mapping is never removed after hosting
 - #60 Client trusts host snapshots and awards
 - #61 Tick rate (60 Hz) hard-coded in several places
+- #222 Matchmaker serves more than one protocol version during a rollout
+- #223 CI enforces the `Protocol.VERSION` bump
+- #224 Client checks the host's protocol version

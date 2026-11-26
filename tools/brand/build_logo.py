@@ -1,24 +1,22 @@
 #!/usr/bin/env python3
 """Generate Crater Bowl brand SVGs (original art). Wordmark glyphs are converted to
-paths from assets/fonts/Oswald.ttf (OFL) so the SVGs render without the font.
+paths from assets/fonts/Graduate-Regular.ttf (OFL, collegiate block; #125) so the SVGs render without the font.
 Usage: python3 tools/brand/build_logo.py  -> assets/brand/*.svg"""
 import os
 from fontTools.ttLib import TTFont
 from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.pens.transformPen import TransformPen
-from fontTools.varLib.instancer import instantiateVariableFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = os.path.join(ROOT, "assets", "brand")
 SPACE, NAVY, CYAN, ORANGE, GOLD, CREAM, GREY = "#07080F", "#0E1424", "#5CE1FF", "#FF6A1F", "#F2BF26", "#FFF4E0", "#8A8C94"
 
-font = TTFont(os.path.join(ROOT, "assets", "fonts", "Oswald.ttf"))
-font = instantiateVariableFont(font, {"wght": 700})
+font = TTFont(os.path.join(ROOT, "assets", "fonts", "Graduate-Regular.ttf"))
 gs, cmap, hmtx = font.getGlyphSet(), font.getBestCmap(), font["hmtx"]
 UPM = font["head"].unitsPerEm
 
 def text_path(s, x, y, size, tracking=0.04):
-    """SVG path data for s, baseline at (x, y), cap height ~ size*0.81."""
+    """SVG path data for s, baseline at (x, y), cap height ~ size*0.75."""
     sc = size / UPM
     d, cx = [], x
     for ch in s:
@@ -65,10 +63,10 @@ def icon():
 
 def wordmark_svg(stacked):
     if stacked:
-        w, h = 640, 520
         d1, w1 = text_path("CRATER", 0, 0, 150)
         d2, w2 = text_path("BOWL", 0, 0, 150)
-        body = emblem(320, 150, 1.25)
+        w, h = int(max(640, w1 + 60)), 520
+        body = emblem(w / 2, 150, 1.25)
         body += f'<path transform="translate({(w - w1) / 2:.1f} 390)" d="{d1}" fill="{CREAM}"/>'
         body += f'<path transform="translate({(w - w2) / 2:.1f} 510)" d="{d2}" fill="{CYAN}"/>'
         h = 530

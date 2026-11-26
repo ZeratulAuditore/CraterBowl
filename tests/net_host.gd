@@ -18,8 +18,8 @@ func _physics_process(dt: float) -> bool:
 		return false
 	if main.in_lobby():
 		if not set_quarters:
-			_key(KEY_Q)
-			_key(KEY_H)
+			_key(KEY_Q)   # #130: no-op now (halves are gone); the client checks the lobby stayed quarters
+			_key(KEY_H)   # 2.5 -> 3-min quarters
 			set_quarters = true
 		return false
 	if not reported_ids:   # match started: the joiner's install id came in through the lobby (#102)
