@@ -141,7 +141,7 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 			last_result = {"type": "explode", "spot": d["spot"].y, "team": d.get("team", world.offense_team)}
 		"field_goal":
 			last_result = {"type": "field_goal", "good": d["good"], "team": world.offense_team}
-		"touchback", "kick_out_of_bounds", "kick_downed":
+		"touchback", "kick_out_of_bounds", "kick_downed", "fair_catch":
 			last_result = {"type": n, "spot": d["spot"].y, "team": world.offense_team}
 
 func _clock_runs_after_tackle(spot: float, team: int) -> bool:
@@ -210,6 +210,13 @@ func _kick_next(r: Dictionary, off: int) -> Dictionary:
 			var tb := kickoff_los() if kind == "kickoff" else roundf(goal() * PUNT_TOUCHBACK_FRACTION)
 			downs.reset(def, tb)
 			return {"outcome": "touchback", "los": downs.los, "offense": def}
+		"fair_catch":
+			# Ball at the catch; a kickoff fair-caught short of the 25 comes out to the 25 (#189).
+			var at := goal() - float(r["spot"])
+			if kind == "kickoff":
+				at = maxf(at, kickoff_los())
+			downs.reset(def, clampf(at, 1.0, goal() - 1.0))
+			return {"outcome": "fair_catch", "los": downs.los, "offense": def}
 		"kick_out_of_bounds", "kick_downed":
 			var at := goal() - float(r["spot"])
 			if r["type"] == "kick_out_of_bounds" and kind == "kickoff":

@@ -511,6 +511,16 @@ func _bot_kick(world, k) -> void:
 	else:
 		world.kick(k.id, Vector2(cx + (world.los_y - floorf(world.los_y)) * 6.0 - 3.0, k.position.y + 40.0), 0.86)
 
+## Bot fair-catch rule (#189), deterministic: once the punt/kickoff is coming down,
+## wave it off if any coverage man is within AI_FAIR_CATCH_PRESSURE of the landing spot.
+static func wants_fair_catch(world, landing: Vector2) -> bool:
+	if world.kick_play not in ["punt", "kickoff"] or not world.kick_free or world.ball.velocity.z >= 0.0:
+		return false
+	for a in world.athletes:
+		if a.team == world.offense_team and a.can_act() and a.position.distance_to(landing) <= T.AI_FAIR_CATCH_PRESSURE:
+			return true
+	return false
+
 ## Kick in the air: coverage sprints to the landing spot in lanes; the nearest
 ## returner settles under it and the rest of the return team forms a wall.
 func _kick_coverage(world, human_ids: Array, landing: Vector2) -> Dictionary:
@@ -534,6 +544,8 @@ func _kick_coverage(world, human_ids: Array, landing: Vector2) -> Dictionary:
 		elif defense_enabled:
 			if a == ret:
 				out[a.id] = _arrive(a, landing)
+				if wants_fair_catch(world, landing):
+					world.signal_fair_catch(a.id)
 			else:
 				var wall := Vector2(landing.x + (a.home_x - cx) * 0.5, landing.y - 10.0)
 				out[a.id] = _arrive(a, wall)
