@@ -20,12 +20,14 @@ Defaults from `src/ui/controls.gd`; every keyboard action can be rebound in Sett
 | Spin left / right | Q / E | X / Y |
 | Dive tackle | F | B |
 | Block (shield) | hold right mouse | none |
-| Snap / break stance / fair catch (returner, kick in the air: see [kicking](kicking.md)) | Space | A |
+| Snap / break stance (defense: double-tap) / fair catch (returner, kick in the air: see [kicking](kicking.md)) | Space | A |
 | Look / aim | mouse (middle drag pre-snap) | none (#33) |
 
 Passing, handoff and play-call keys are in [offense.md](offense.md).
 
 ### Run and sprint
+- Nobody on offense moves before the snap; set defenders need a Space double-tap to roam. Pre-snap rules are in
+  [defense.md](defense.md#pre-snap-stance-and-roam).
 - `RUN_SPEED` 7.0 yd/s, `SPRINT_SPEED` 9.5 yd/s. Velocity is set directly from input each step: no acceleration
   ramp and no slide on stop. Diagonals are clamped to unit length.
 - W is "up the screen". On defense the camera faces the offense, so W moves you toward the line of scrimmage.

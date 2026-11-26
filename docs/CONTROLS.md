@@ -4,7 +4,7 @@
 |---|---|---|
 | WASD | Move | Move (relative to the camera; for the passer, relative to the aim) |
 | Shift | Sprint | Sprint |
-| Space | Snap (offense) / break stance (defense) | |
+| Space | Snap (offense). Defense: **double-tap** to break stance (LB, CB, S). The offense can't move before the snap. | |
 | **Q** | Open / close the play picker | **Spin left** |
 | **E** | | **Spin right** |
 | **F** | Cycle your route | **Dive**: tackle attempt on D; with the ball, dive for yards, down where you land (score if you cross the goal line) |
@@ -54,7 +54,7 @@ While you're the passer (QB before the forward pass, including lining up pre-sna
 Chaosball) the mouse is captured and steers an over-the-shoulder camera:
 
 - **Direction** is where you look.
-- **Height** comes from looking up or down. Launch angle = view pitch + 10°, clamped −10°…70°. The crosshair shows `LOFT`.
+- **Height** comes from looking up or down. Launch angle = view pitch + 10°, clamped −10°…70°. There is no number on screen (#131): the arc preview shows the height.
 - **Distance** comes from holding the throw: charge sets the ball's speed. The bar under the crosshair fills to full power in 0.9 s.
 - **Aim-zoom:** while you hold, the camera zooms in with the charge (FOV 65° → 45° at full power) and eases back on release.
 - The landing reticle and arc preview show where it will come down.

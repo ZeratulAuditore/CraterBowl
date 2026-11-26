@@ -34,6 +34,7 @@ func _run() -> void:
 	check(game.world.phase == game.World.Phase.PRESNAP, "bots still huddling")
 	check(shown == 3 and overlay.play_clock_l.text == "PLAY :03",
 		"scorebug counts the bots' 5 s huddle (%s, %d)" % [overlay.play_clock_l.text, shown])
+	check(overlay.play_clock_l.label_settings.font_color == overlay.ACCENT, "the bots' huddle is not the red alarm (#168)")
 	await capture("play-clock-bot-huddle")
 	game.set_physics_process(true)
 	await _ticks(4 * 60)

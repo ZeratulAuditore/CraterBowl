@@ -296,10 +296,12 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	if drill != null:
 		TrainingArt.build(field_root, drill, field)
 	series = Match.new(world)
+	if debug_playclock > 0.0:
+		series.clock.play_clock_length = debug_playclock
 	_start_series()
 	world.event.connect(_on_world_event)
 	stats = Stats.new()
-	stats.attach(world, owner_name)
+	stats.attach(world, owner_name, series)
 	replay = Replay.new()
 	replay.attach(world)
 	replay.meta = {"size": match_size, "mode": match_mode}
@@ -410,9 +412,7 @@ func _draw_crosshair() -> void:
 		var bar := Rect2(c + Vector2(-50, 44), Vector2(100, 8))
 		crosshair.draw_rect(bar.grow(2.0), shade)
 		crosshair.draw_rect(Rect2(bar.position, Vector2(bar.size.x * charge, bar.size.y)), col.lerp(Color(1.0, 0.45, 0.15), charge))
-	var lbl := "LOFT %d°" % int(round(launch_angle()))
-	crosshair.draw_string_outline(ArtMats.ui_font(600), c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, shade)
-	crosshair.draw_string(ArtMats.ui_font(600), c + Vector2(22, 30), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, col)
+	# No LOFT N° readout (#131): the view pitch is the loft; the arc dots show the throw.
 
 ## True while the human is the passer: QB before the forward pass (Chaosball: any holder).
 func pov_active() -> bool:
@@ -658,7 +658,7 @@ func _match_contexts(ratings: Dictionary) -> Dictionary:
 		for k in stats.lines:
 			if k.get_slice("|", 0) == nm:
 				for f in stats.lines[k]:
-					line[f] = maxf(line.get(f, 0.0), float(stats.lines[k][f])) if f == "max_td_pts" else line.get(f, 0.0) + float(stats.lines[k][f])
+					line[f] = maxf(line.get(f, 0.0), float(stats.lines[k][f])) if f in Stats.MAX_FIELDS else line.get(f, 0.0) + float(stats.lines[k][f])
 		var t: int = team_of[nm]
 		out[nm] = {"line": line, "won": series.winner() == t, "deficit": series.max_deficit[t],
 			"rating": ratings.get(nm, 0.0), "mode": match_mode}
@@ -865,9 +865,11 @@ func _ensure_net() -> void:
 ## Open a hosted match (lobby by default). opts: playclock, no_lobby, start_when_ready, advertise, expected, size, mode
 func _host_game(port: int, opts: Dictionary) -> String:
 	_ensure_net()
-	if opts.get("playclock", -1.0) > 0.0:
-		debug_playclock = opts["playclock"]
-		series.clock.play_clock = debug_playclock
+	var playclock: float = opts.get("playclock", -1.0)
+	if playclock > 0.0 and is_finite(playclock):
+		debug_playclock = playclock
+		series.clock.play_clock_length = playclock
+		series.clock.new_play()
 	net.match_size = match_size
 	var err := net.host(port, func(peer): return roster.auto_assign(peer), func(peer): roster.release(peer))
 	print("NET host on %d: %s" % [port, error_string(err)])
@@ -1084,8 +1086,6 @@ func _start_from_lobby() -> void:
 	configure(lobby.settings["size"], "", lobby.settings.get("mode", "classic"))
 	series.clock.quarter_length = lobby.settings["quarter_minutes"] * 60.0
 	series.clock.reset()
-	if debug_playclock > 0.0:
-		series.clock.play_clock = debug_playclock
 	net.match_size = match_size
 	net.match_mode = match_mode
 	# Queue match: seat everyone on the matchmaker's team, by seat token (name only for
@@ -1375,6 +1375,9 @@ func _notification(what: int) -> void:
 		if taunt_wheel:
 			taunt_wheel.close()   # the C release would be lost
 
+## Space on a set defender (#142): one press does nothing, a double-tap breaks stance.
+var stance_tap := preload("res://src/sim/double_tap.gd").new()
+
 func _unhandled_key_input(e: InputEvent) -> void:
 	var launch := get_node_or_null("/root/Launch")
 	if launch != null and launch.menu_open():
@@ -1396,6 +1399,9 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		return
 	match e.keycode:
 		KEY_SPACE:
+			# Offense snaps on one press. A set defender needs a double-tap to roam (#142).
+			if world.can_break_stance(world.get_athlete(controlled_id)) and not stance_tap.press(Time.get_ticks_msec() / 1000.0):
+				return
 			do_action({"a": "snap"})
 		KEY_1:
 			do_action({"a": "toss", "c": "receive"} if series.state == Match.State.TOSS else {"a": "try", "n": 1})

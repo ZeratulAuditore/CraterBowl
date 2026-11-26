@@ -25,7 +25,7 @@ func _run() -> void:
 	check(overlay.clock_l.text == "Q4 2:05" and overlay.play_clock_l.text == "PLAY :12", "period, game time and play clock")
 	check(overlay.timeout_pips[0].text == "●●○" and overlay.timeout_pips[1].text == "●●●", "both teams' timeouts")
 	check(overlay.down_l.text == "2ND & 6" and overlay.spot_l.text == "HEL 34", "down, distance and named territory")
-	check(overlay.mode_l.text == "7v7 CLASSIC", "active match mode")
+	check(overlay.mode_l.text == "" and not overlay.mode_l.visible, "no mode line in a match (#131: it is on the Tab board)")
 	check(overlay.field_strip.is_visible_in_tree() and overlay.field_marks.is_equal_approx(Vector2(0.34, 0.4)), "field strip tracks LOS and line to gain")
 	check(root.get_visible_rect().encloses(overlay.bug.get_global_rect()), "scorebug fits the viewport")
 	check(not overlay.bug.get_global_rect().intersects(overlay.me_panel.get_global_rect()), "scorebug clears the movement meter")
@@ -33,7 +33,7 @@ func _run() -> void:
 
 	series.start_match(0, false)
 	await _refresh()
-	check(overlay.down_l.text == "KICKOFF" and not overlay.field_strip.visible, "kickoffs hide the line-to-gain strip")
+	check(overlay.down_l.text == "" and not overlay.field_strip.visible, "kickoffs: no KICKOFF chip (#131) and no line-to-gain strip")
 	await capture("scorebug-kickoff")
 
 	series.start(1)
