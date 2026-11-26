@@ -910,6 +910,7 @@ func _join_game(target: String, port: int, opts: Dictionary) -> void:
 	net.snapshot_received.connect(_on_snapshot)
 	net.event_received.connect(_on_world_event)
 	net.host_lost.connect(_on_host_lost)
+	add_child(preload("res://src/game/link_banner.gd").new(net))   # #86: "Connection to host lost…"
 
 const HOST_LOST_STATUS := "Host disconnected"
 const HOST_UNREACHABLE_STATUS := "Couldn't reach the host"
