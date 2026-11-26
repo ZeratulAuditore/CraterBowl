@@ -41,13 +41,16 @@ var games := 0                   # matches finished
 func level() -> int:
 	return xp / XP_PER_LEVEL
 
+## Generous ceiling for one match, shared by the award producer and receiver.
+const MAX_MATCH_XP := 10_000
+
 ## XP for one match from a Stats line (or {}) and whether your team won.
 static func award_xp(line: Dictionary, won: bool) -> int:
 	var g := func(f): return float(line.get(f, 0.0))
 	var yds: float = g.call("pass_yds") + g.call("rec_yds") + g.call("rush_yds")
 	var tds: float = g.call("pass_td") + g.call("rec_td") + g.call("rush_td")
-	return int(100 + (50 if won else 0) + 25 * tds + floor(maxf(yds, 0.0) / 10.0)
-		+ 10 * g.call("tkl") + 30 * g.call("int") + 20 * g.call("sack"))
+	return clampi(int(100 + (50 if won else 0) + 25 * tds + floor(maxf(yds, 0.0) / 10.0)
+		+ 10 * g.call("tkl") + 30 * g.call("int") + 20 * g.call("sack")), 0, MAX_MATCH_XP)
 
 func add_xp(amount: int) -> int:
 	var before := level()
