@@ -9,6 +9,7 @@ const Mats := preload("res://src/game/art/materials.gd")
 const Stadium := preload("res://src/game/art/stadium.gd")
 const Overlay := preload("res://src/game/overlay.gd")
 const LosBarrier := preload("res://src/game/art/los_barrier.gd")
+const FieldArt := preload("res://src/game/art/field_art.gd")
 const TRAIL_LEN := 22
 
 var main: Node3D
@@ -30,6 +31,8 @@ var shake := 0.0
 var spin := 0.0
 var _last_score := [0, 0]
 var barrier: LosBarrier
+var _ends_behind := 0    # #89: end painted behind the offense (FieldArt.orient_ends)
+var _period := 0         # #89: SWITCH ENDS banner on period change
 
 func _ready() -> void:
 	main = get_parent()
@@ -73,6 +76,8 @@ func rebuild(field_root: Node3D) -> void:
 	barrier.setup(main.field.width)
 	add_child(barrier)
 	_last_score = [0, 0]
+	_ends_behind = 0   # FieldArt.build paints HELIOS behind the offense
+	_period = 0
 
 func _ground_quad(n: String, size: float, shader: String) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
@@ -330,12 +335,26 @@ func _process(delta: float) -> void:
 			stadium.set_scoreboard("HELIOS %d   NEBULA %d\n%s" % [s.score[0], s.score[1], s.clock.label()])
 			if s.score[0] != _last_score[0] or s.score[1] != _last_score[1]:
 				_last_score = [s.score[0], s.score[1]]
+			_update_ends(s, w)
 	# Camera shake (main already placed the camera this frame).
 	if shake > 0.0 and main.camera:
 		shake = maxf(0.0, shake - delta)
 		var a := shake * shake * 1.2
 		main.camera.position += Vector3(randf_range(-a, a), randf_range(-a, a), 0)
 	overlay.refresh(main, delta)
+
+## #89: switch ends each period; the end zones re-orient whenever the offense or
+## the period changes (change-driven, no per-frame shader pushes).
+func _update_ends(s, w) -> void:
+	var behind: int = s.defended_end(w.offense_team)
+	if behind != _ends_behind:
+		_ends_behind = behind
+		FieldArt.orient_ends(main.field_root, behind, main.TEAM_COLORS)
+	var period: int = s.clock.period()
+	if period != _period:
+		if period > _period and not s.is_final() and main.drill == null:
+			overlay.show_banner("SWITCH ENDS", s.clock.label().get_slice(" ", 0), overlay.ACCENT, 2.4)
+		_period = period
 
 func _update_ball(delta: float, w) -> void:
 	var bv: Node3D = main.ball_view

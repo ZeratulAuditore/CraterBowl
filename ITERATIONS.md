@@ -288,3 +288,10 @@
 - The host now drops `act` messages that aren't a Dictionary with a String `a` before they reach its action queue (`Protocol.is_action`). `apply_action` takes an untyped action and rejects junk instead of aborting the caller. `lob`/`spr`/`block` flags are type-checked rather than compared with `== true`.
 - Before the fix, one malformed action raised a script error in `_step_authoritative`. That aborted the host tick and dropped any valid action queued behind it in the same tick.
 - Verified with 4 new unit tests (`test_action_validation.gd`) and a rendered host test (`tests/visual/invalid_actions_test.gd`). Restoring the old `protocol.gd`/`net_session.gd` made both fail: the unit queue test because 16 entries were queued instead of 1, and the visual test because of a script error and a dropped play call. Design notes are in `docs/design/netcode.md` under Validation.
+
+## 040: C04c Switching ends (2026-11-25, #89, part of #6)
+- #6 split into #89 (switching ends), #90 (host mercy rule) and #91 (spike and kneel); this iteration ships #89.
+- `Clock.period()` and `Match.defended_end(team)`: teams switch the goal they attack every period (after Q1, Q2, Q3; at halftime in halves). Derived from the synced clock, so no new snapshot field. Quarter and halftime outcomes carry `switch_ends`. The offense-relative sim keeps spot, down and distance as is.
+- `FieldArt.orient_ends` re-tints the end zones and swaps their names (change-driven from `presentation.gd`) so the end behind the offense is the one it defends; a SWITCH ENDS banner marks the period change. Also fixes #93 (end-zone paint ignored possession).
+- Tests: 337 unit (+5, `test_switch_ends.gd`; all 5 fail when `ends_switched()` is forced false); game_flow step (frames 13000-13170, Space snap → whistle → auto next play into Q2); `tests/visual/switch_ends_test.gd` captures Q1 and Q2.
+- Remaining on #6: #90, #91.
