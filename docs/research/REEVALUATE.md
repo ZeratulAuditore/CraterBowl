@@ -6,12 +6,12 @@ This runs on a schedule (`tools/gap_review.sh`, from the user's crontab) and can
 1. **Orient (read only).**
    - Read `docs/research/README.md`, `gap-analysis.md`, and the newest file in `docs/research/reviews/`.
    - List the open issues: `gh issue list --state open --limit 200 --json number,title,labels`. Also list the ones closed since the last review: `gh issue list --state closed --search "closed:>=<last review date>"`.
-   - Read the `ITERATIONS.md` entries since the last review's date, and `git log --oneline --since=<last review date>`.
+   - Read the PRs merged since the last review's date (`gh pr list --state merged --search "merged:>=<date>"`), and `git log --oneline --since=<last review date>`.
 2. **Reconcile issues with the code.** For each open feature/parity issue that recent commits might have touched, grep the code to confirm.
    - Fully shipped but still open: comment the evidence (commit, file) and close it. `gh issue close N --comment "Gap review YYYY-MM-DD: shipped in <sha> (<file>)."`
    - Partly shipped: comment what's left (narrow the scope). Don't close.
    - A stale `status:in-progress` claim (no commits on its branch for 3+ days): comment asking whether it's still active. Never remove someone else's claim.
-3. **Re-check the code for new gaps.** Look at what the latest iterations added and their known gaps. Each untracked gap → a new issue. Update the "Ours" column in `gap-analysis.md` wherever it's now wrong.
+3. **Re-check the code for new gaps.** Look at what the latest merged PRs added and the follow-ups they list. Each untracked gap → a new issue. Update the "Ours" column in `gap-analysis.md` wherever it's now wrong.
 4. **Re-check the outside world.** Keep it to ~6 searches and fetches:
    - Gridiron Remastered news: https://store.steampowered.com/news/app/3878710
    - Its store page: https://store.steampowered.com/app/3878710/

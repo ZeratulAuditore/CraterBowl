@@ -9,7 +9,9 @@ see when hosting, joining, queueing) lives in `docs/features/` (online play). La
 
 - **Listen server.** The host runs the authoritative sim and also plays as peer 1 (`main.gd:LOCAL_PLAYER`).
   Clients talk only to the host. `NetSession` (`src/net/net_session.gd`) is a `Node` with its own
-  `SceneMultiplayer`, used only for raw `send_bytes` / `peer_packet` (no RPCs).
+  `SceneMultiplayer`, used only for raw `send_bytes` / `peer_packet` (no RPCs). Why: high-level RPCs and
+  `MultiplayerSynchronizer` tie sim state to scene nodes, which fights the pure sim, while our own snapshot codec
+  keeps bandwidth explicit and testable. Lockstep was rejected as too fragile over the internet with 14 athletes.
 - Game port `NetSession.DEFAULT_PORT = 24565`, `MAX_PEERS = 13` (7v7 minus the host). Queue hosts use
   `main_menu.gd:QUEUE_HOST_PORT = 24566` from the menu, or a random 25000–29999 if `--host-port` isn't given.
 - **Rates:** sim 60 Hz (physics tick); client input sent every tick (60 Hz); snapshots every
@@ -106,6 +108,9 @@ client trusts the host's shape. New sim state: add to both functions and `tests/
 The quarter fields extend the clock array after its four original entries. If they are absent, the client uses halves.
 
 ## Client prediction (`client_predictor.gd`)
+
+Predict our own athlete, interpolate everyone else. Interpolating ourselves too makes controls lag by the round trip,
+and full rollback of the whole sim is overkill when the host owns every contact.
 
 1. `main.gd:_physics_process` (client): `predictor.record(dir, sprint, dt, block)` → `seq`;
    `net.send_input(..., seq)`; `world.predict_step(me, ...)` moves only the local athlete (stance lock and

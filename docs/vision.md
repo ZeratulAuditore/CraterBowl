@@ -1,6 +1,6 @@
 # Crater Bowl: vision
 
-The original pitch, pillars and roadmap (written as `PLAN.md`, 2026-11-24). The pillars and the problems → fixes table still guide every design call. The roadmap phases are history: what to build next lives in GitHub issues (`workflow.md`), and what shipped is in `../ITERATIONS.md`. The game is now named **Crater Bowl** (`features/out-of-game.md`).
+The original pitch, pillars and roadmap (written as `PLAN.md`, 2026-11-24). The pillars and the problems → fixes table still guide every design call. The roadmap phases are history: what to build next lives in GitHub issues (`workflow.md`), and what shipped is in `features/` (history: merged PRs). The game is now named **Crater Bowl** (`features/out-of-game.md`).
 
 Working title: **"Fourth & Long"** (placeholder; pick your own. Don't reuse "Gridiron Remastered" or any existing game's name, art or assets.)
 
