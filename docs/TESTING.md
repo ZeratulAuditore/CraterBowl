@@ -195,7 +195,10 @@ when the question is visual: does it look right, is it visible, is the camera fr
 legible, does the new art read.
 
 Input rule (from LOOP.md): player-facing input must be exercised through the real key handler.
-In game_flow that's `_key()`; in shot.sh that's `--press`.
+In game_flow that's `_key()`; in shot.sh that's `--press`. Mouse clicks on GUI controls are the
+exception: a headless viewport doesn't hit-test `root.push_input` mouse events (#251), so game_flow
+emits the control's own `gui_input` (the #129 toss cards, `_click()`), and the hit-tested click
+lives in a `tests/visual` test under Xvfb (`coin_toss_test.gd`).
 
 Scripted contact: to make one body push another, place the pusher at a fixed overlap each frame
 (e.g. 0.75 yd). Moving it a fixed step per frame lets it pass through the other body on the software-GL

@@ -91,17 +91,59 @@ func test_coin_toss_times_out_to_receive() -> void:
 	var m := Match.new(_world())
 	m.start_match(1)
 	assert_eq(m.toss_winner, 1)
+	# #129: the window opens when the coin lands (TOSS_REVEAL), so the winner gets all of it.
 	for i in int((Match.TOSS_WINDOW + 0.2) / DT):
+		m.tick(DT)
+	assert_eq(m.state, Match.State.TOSS, "still choosing: the window runs from the reveal")
+	while m.toss_elapsed() < Match.TOSS_REVEAL + Match.TOSS_WINDOW - 0.1:
+		m.tick(DT)
+	assert_eq(m.state, Match.State.TOSS, "still choosing 0.1 s before the window ends")
+	for i in int(0.2 / DT):
 		m.tick(DT)
 	assert_eq(m.state, Match.State.KICKOFF, "window over")
 	assert_eq(m.toss_choice, "receive")
 	assert_eq(m.world.offense_team, 0, "home kicks to the toss winner")
 	assert_eq(m.world.phase, World.Phase.PRESNAP, "still presnap (no accidental kick)")
 
-func test_bot_toss_winner_receives_immediately() -> void:
+## #129: the kickoff's play clock waits out the cutscene's outro after the pick, then runs.
+func test_coin_toss_outro_holds_the_kickoff_clock() -> void:
+	var m := Match.new(_world())
+	m.start_match(0)
+	while m.toss_elapsed() < Match.TOSS_REVEAL + 1.0:
+		m.tick(DT)
+	assert_true(m.choose_toss(0, "kick"), "winner kicks")
+	for i in int((Match.TOSS_OUTRO - 0.05) / DT):
+		m.tick(DT)
+	assert_near(m.clock.play_clock, m.clock.PLAY_CLOCK, 0.001, "held through the outro")
+	for i in int(0.3 / DT):
+		m.tick(DT)
+	assert_true(m.clock.play_clock < m.clock.PLAY_CLOCK - 0.1, "then it runs (%.2f)" % m.clock.play_clock)
+	m.start(0)
+	m.tick(DT)
+	assert_true(m.clock.play_clock < m.clock.PLAY_CLOCK, "a fresh series has no leftover hold")
+
+## The cutscene's timeline matches the sim: the coin lands on the reveal and the outro
+## (pick, dip, fade back) fits inside the sim's clock hold.
+func test_coin_toss_cutscene_fits_the_sim_timing() -> void:
+	var CT := preload("res://src/game/coin_toss.gd")
+	assert_eq(CT.LAND, Match.TOSS_REVEAL, "coin lands on the reveal")
+	assert_true(CT.HOLD + CT.DIP + CT.UNDIP <= Match.TOSS_OUTRO, "outro fits the clock hold")
+	assert_true(CT.FLIP_AT < CT.LAND and CT.WALK_END < CT.FLIP_AT, "walk, flip, land in order")
+
+## #129: a bot winner waits for the coin to land (the cutscene's reveal), "thinks" for
+## TOSS_BOT_PICK, then receives. The play clock never runs while it does.
+func test_bot_toss_winner_receives_after_the_reveal() -> void:
 	var m := Match.new(_world())
 	m.start_match(1, false)
+	assert_eq(m.state, Match.State.TOSS, "coin in the air: nobody has chosen yet")
+	while m.toss_elapsed() < Match.TOSS_REVEAL + Match.TOSS_BOT_PICK - 0.05:
+		m.tick(DT)
+	assert_eq(m.state, Match.State.TOSS, "bot still choosing just before TOSS_BOT_PICK")
+	assert_near(m.clock.play_clock, m.clock.PLAY_CLOCK, 0.001, "play clock held through the toss")
+	for i in int(0.1 / DT):
+		m.tick(DT)
 	assert_eq(m.state, Match.State.KICKOFF)
+	assert_eq(m.toss_choice, "receive", "bots receive")
 	assert_eq(m.opening_receiver, 1)
 	# 2nd half: the other team receives.
 	m.clock.quarter = 2
