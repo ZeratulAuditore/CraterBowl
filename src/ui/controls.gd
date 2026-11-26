@@ -13,13 +13,13 @@ const ACTIONS := [
 	["tackle", "Dive / tackle (pre-snap: cycle route)", KEY_F],
 	["spin_left", "Spin left (pre-snap: play picker)", KEY_Q], ["spin_right", "Spin right", KEY_E],
 	["dash", "Dash (when charged)", KEY_R], ["handoff", "Handoff", KEY_G], ["timeout", "Team timeout", KEY_T],
-	["taunt", "Taunt (wheel picks)", KEY_C],
+	["taunt", "Taunt wheel (hold, drag, release)", KEY_C],
 	["scoreboard", "Show scoreboard (hold)", KEY_TAB],
 	["next", "Next play", KEY_ENTER], ["replay", "Instant replay", KEY_V],
 	["try1", "Extra point / toss: receive", KEY_1], ["try2", "Two-point try / toss: kick", KEY_2],
 ]
 const OTHER_CONTROLS := [
-	"Mouse: look live · middle drag: look pre-snap · wheel: pick taunt (C performs)",
+	"Mouse: look live · middle drag: look pre-snap · hold C: drag to a taunt, release (tap: last taunt)",
 	"QB / passer: mouse aims your view (look higher to throw higher) · hold left click to charge distance, release to throw",
 	"Hold right click: block",
 	"Gamepad: left stick move · right stick QB aim · A snap · B dive · X / Y spin · R3 handoff · RT pass · LT sprint",

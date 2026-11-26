@@ -38,7 +38,8 @@ func test_gamepad_follows_new_defaults() -> void:
 
 func test_hint_copy_names_new_keys() -> void:
 	var help := Controls.help_text({})
-	assert_true(help.find("C performs") >= 0 and help.find("T performs") < 0, "taunt hint says C")
+	assert_true(help.find("hold C") >= 0 and help.find("T performs") < 0, "taunt hint says hold C")
+	assert_true(help.find("wheel: pick taunt") < 0, "the mouse wheel no longer picks taunts (#139)")
 
 func test_migration_untouched_player_gets_new_defaults() -> void:
 	assert_eq(Controls.migrate_bindings({}, 1), {}, "never rebound: empty overrides = new defaults")
