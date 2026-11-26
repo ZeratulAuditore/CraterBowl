@@ -165,7 +165,6 @@ messages are reliable on channel 0.
 | `hosting` | C→MM | `code` from the elected host → MM sends `match/join` to the others |
 | `list` / `lobbies` | C↔MM | server browser: `registry.listing()` + `queued` count |
 | `register` / `registered`, `unregister` | C↔MM | public lobby advertising |
-| `whoami` / `you` | C↔MM | the peer's remote IP (no caller in `src/` today) |
 
 - `matchmaker.gd:tick` (called from `mm_server._process` every frame) forms matches per (game, mode,
   size). Parties are one unit once all `party_size` members queued and must fit one team. Competitive
@@ -228,6 +227,5 @@ messages are reliable on channel 0.
 - #55 No rate limits on client actions or matchmaker messages
 - #56 Client doesn't detect losing the host
 - #57 UPnP port mapping is never removed after hosting
-- #58 Dead matchmaker code: whoami/you path and snake_teams
 - #60 Client trusts host snapshots and awards
 - #61 Tick rate (60 Hz) hard-coded in several places

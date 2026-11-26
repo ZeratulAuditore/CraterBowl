@@ -873,17 +873,14 @@ func forward_progress_credit() -> float:
 	var y := attack_sign(c.team) * c.position.y
 	return maxf(0.0, minf(_fp_best, y + maxf(0.0, _fp_pushed)) - y)
 
-## Impact uses the closing speed along the contact normal. A sprinting
-## carrier hit in the back also gets a strip penalty.
+## Fumble chance is a hit-quality outcome: closing speed along the contact normal,
+## how far behind the carrier the diver came from, and the carrier's fatigue.
 func _is_strip(diver: Athlete, c: Athlete) -> bool:
 	var normal := diver.position.direction_to(c.position)
 	if normal.is_zero_approx():
 		normal = diver.facing
 	var impact := maxf(0.0, (diver.velocity - c.velocity).dot(normal))
-	var rear_strip := c.last_sprinting and diver.facing.dot(c.facing) > T.FUMBLE_BEHIND_DOT
-	var risk := fumble_risk(impact, c.stamina)
-	if rear_strip:
-		risk = maxf(risk, 0.97)
+	var risk := fumble_risk(impact, c.stamina, diver.facing.dot(c.facing), c.last_sprinting)
 	return _impact_roll(diver.id, c.id) < risk
 
 ## Deterministic pseudo-random roll in [0, 1) from the play situation (sim must stay pure).
@@ -892,10 +889,21 @@ func _impact_roll(a: int, b: int) -> float:
 	var h := hash([1837, a, b, int(round(play_time * 60.0)), _impact_rolls])
 	return float(posmod(h, 100000)) / 100000.0
 
-static func fumble_risk(impact: float, stamina: float) -> float:
+## 0 when the diver comes from the side or front (facing dot <= FUMBLE_BEHIND_DOT),
+## rising to 1 when diver and carrier face the same way (hit squarely from behind).
+static func behind_factor(facing_dot: float) -> float:
+	return clampf((facing_dot - T.FUMBLE_BEHIND_DOT) / (1.0 - T.FUMBLE_BEHIND_DOT), 0.0, 1.0)
+
+## `impact`: closing speed (yd/s); `facing_dot`: diver.facing . carrier.facing;
+## `sprinting`: the carrier was sprinting. Fresh carriers can fumble from big hits;
+## fatigue multiplies the whole chance.
+static func fumble_risk(impact: float, stamina: float, facing_dot: float = -1.0, sprinting: bool = false) -> float:
 	var force := clampf(impact / (T.DIVE_SPEED + T.SPRINT_SPEED), 0.0, 1.0)
-	var fatigue := clampf((0.84 - stamina) / 0.84, 0.0, 1.0)
-	return force * fatigue * fatigue * 0.58
+	var hit := T.FUMBLE_HIT_RISK * force * force
+	var rear := behind_factor(facing_dot) * (T.FUMBLE_REAR_SPRINT if sprinting else T.FUMBLE_REAR)
+	var fatigue := clampf((T.FUMBLE_FRESH_STAMINA - stamina) / T.FUMBLE_FRESH_STAMINA, 0.0, 1.0)
+	var mult := 1.0 + T.FUMBLE_FATIGUE_GAIN * fatigue * fatigue
+	return minf(T.FUMBLE_MAX_RISK, (hit + rear) * mult)
 
 func _fumble(c: Athlete, by: Athlete) -> void:
 	ball.state = Ball.State.LOOSE

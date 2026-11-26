@@ -157,6 +157,7 @@ func test_retreating_in_contact_is_not_credited() -> void:
 	_run(w, {qb.id: {"dir": Vector2(0, -1)}, lb.id: {"dir": Vector2(0, -1)}}, 0.6)
 	assert_true(start_y - qb.position.y > 2.0, "QB retreated (%.2f)" % (start_y - qb.position.y))
 	assert_true(lb.position.distance_to(qb.position) <= T.CONTACT_REACH, "still in contact")
+	qb.facing = Vector2(0, 1)   # backpedalling, facing the rusher: head-on hit (no rear-strip roll, #99)
 	w.tackle(lb.id)
 	_run(w, {}, 0.2)
 	assert_eq(w.phase, World.Phase.DEAD, "sacked")
@@ -178,6 +179,7 @@ func test_progress_window_resets_after_contact_breaks() -> void:
 	lb.facing = Vector2(0, -1)
 	var touch_y := qb.position.y
 	_run(w, {lb.id: {"dir": Vector2(0, -1), "sprint": true}}, 0.2)
+	qb.facing = Vector2(0, 1)   # facing the defender: head-on hit (no rear-strip roll, #99)
 	w.tackle(lb.id)
 	_run(w, {}, 0.2)
 	assert_eq(w.phase, World.Phase.DEAD, "tackled")

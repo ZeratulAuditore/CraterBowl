@@ -19,7 +19,7 @@ args=("$@")
 has() { for a in "${args[@]}"; do [[ "$a" == --$1=* || "$a" == --$1 ]] && return 0; done; return 1; }
 # Default output prefix outside the repo; per-job tmp when running as a background job.
 SHOT_DIR="${SHOT_DIR:-${CLAUDE_JOB_DIR:+$CLAUDE_JOB_DIR/tmp/shots}}"
-SHOT_DIR="${SHOT_DIR:-/tmp/fourth-and-long-shots}"
+SHOT_DIR="${SHOT_DIR:-/tmp/crater-bowl-shots}"
 has out || args+=("--out=$SHOT_DIR/shot")
 # Never touch the player's real profile/leaderboard/ratings/replays.
 has profile-file     || args+=("--profile-file=user://test_shot_profile.json")

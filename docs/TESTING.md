@@ -1,4 +1,4 @@
-# Testing Fourth & Long without opening the game
+# Testing Crater Bowl without opening the game
 
 **Never launch a windowed game (`godot --path .`, `godot -e`) to check your work.** In WSL it opens a
 real window on the user's desktop, and several sessions doing it at once is disruptive. Use the tools
@@ -151,7 +151,7 @@ Flags (all optional; implemented in `tools/capture.gd`):
 | `--do=F:ACTION,...` | `main.do_action({"a": ACTION})`, e.g. `snap`, `tackle`, `throw`, `cycle`, `team` |
 | `--press=F:KEY[:HOLD],...` | real key event through `Input.parse_input_event` (so `_unhandled_key_input` and `Input.is_key_pressed` both see it), held HOLD frames (default 1). Key names: `Space`, `Tab`, `V`, `W`, `Shift`, `Enter`... |
 | `--call=F:METHOD,...` | `main.call(METHOD)`, e.g. `next_play` |
-| `--out=PREFIX` | writes `PREFIX_0060.png`. Default `$CLAUDE_JOB_DIR/tmp/shots/shot`, else `/tmp/fourth-and-long-shots/shot` |
+| `--out=PREFIX` | writes `PREFIX_0060.png`. Default `$CLAUDE_JOB_DIR/tmp/shots/shot`, else `/tmp/crater-bowl-shots/shot` |
 
 Env: `RES=1920x1080` (default 1280x720), `TIMEOUT=240`, `GODOT=/path/to/godot`.
 
