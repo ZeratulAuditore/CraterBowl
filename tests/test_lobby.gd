@@ -48,9 +48,9 @@ func test_settings_host_only_and_validated() -> void:
 	assert_true(l.set_setting(1, "size", 3))
 	assert_eq(l.settings["size"], 3)
 	assert_true(not l.set_setting(1, "size", 4), "invalid size")
-	assert_true(not l.set_setting(1, "half_minutes", 99), "invalid half")
+	assert_true(not l.set_setting(1, "quarter_minutes", 99), "invalid quarter length")
 	l.toggle_ready(7)
-	l.set_setting(1, "half_minutes", 2)
+	l.set_setting(1, "quarter_minutes", 2)
 	assert_true(not l.players[7]["ready"], "settings change clears ready")
 
 func test_lobby_serialization() -> void:
@@ -65,9 +65,9 @@ func test_lobby_serialization() -> void:
 	assert_eq(m.code, "ABCDE-FGHJK")
 	assert_eq(m.players.size(), 2)
 
-func test_clock_half_length() -> void:
+func test_clock_quarter_length() -> void:
 	var c := Clock.new()
-	c.half_length = 120.0
+	c.quarter_length = 120.0
 	c.reset()
 	assert_near(c.remaining, 120.0)
 	c.start_next_half()
@@ -83,25 +83,32 @@ func test_mode_setting() -> void:
 	m.from_dict(l.to_dict())
 	assert_eq(m.settings["mode"], "chaosball")
 
-func test_host_controls_quarter_settings_and_legacy_lobbies_default_to_halves() -> void:
+## #130: every lobby plays quarters; the host picks only their length.
+func test_lobby_always_plays_quarters_and_reads_legacy_halves_as_quarters() -> void:
 	var lobby := Lobby.new()
+	assert_true(lobby.settings["quarters"], "default format is quarters")
+	assert_near(lobby.settings["quarter_minutes"], 2.5, 0.001, "default 2.5-min quarters = the old 10-minute game")
+	assert_true(lobby.summary().contains("2.5-min quarters"), lobby.summary())
 	lobby.add(1, "Host")
 	lobby.add(2, "Client")
 	lobby.set_ready(2, true)
-	assert_true(not lobby.set_setting(2, "quarters", true), "only host sets period format")
-	assert_true(not lobby.set_setting(1, "quarters", 4), "format is a bool")
+	assert_true(not lobby.set_setting(2, "quarter_minutes", 3), "only host sets the length")
+	assert_true(not lobby.set_setting(1, "quarters", false), "halves can't be selected")
+	assert_true(not lobby.set_setting(1, "half_minutes", 5), "half length is not a setting")
 	assert_true(not lobby.set_setting(1, "quarter_minutes", 9), "duration requires a supported value")
-	assert_true(lobby.set_setting(1, "quarters", true))
+	assert_true(not lobby.set_setting(1, "quarter_minutes", "3"), "duration is a number")
 	assert_true(lobby.set_setting(1, "quarter_minutes", 3))
 	assert_true(not lobby.players[2]["ready"], "players re-ready after changes")
 	var client := Lobby.new()
-	client.from_dict(lobby.to_dict())
+	client.from_dict(bytes_to_var(var_to_bytes(lobby.to_dict())))
 	assert_true(client.settings["quarters"])
-	assert_eq(client.settings["quarter_minutes"], 3)
-	assert_true(client.summary().contains("3-min quarters"))
-	client.from_dict({"settings": {"half_minutes": 5}})
-	assert_true(not client.settings["quarters"])
-	assert_true(client.summary().contains("5-min halves"))
+	assert_eq(client.settings["quarter_minutes"], 3.0)
+	assert_true(client.summary().contains("3-min quarters"), client.summary())
+	for legacy in [{"half_minutes": 5}, {"quarters": false, "half_minutes": 8, "quarter_minutes": 2}]:
+		client.from_dict({"settings": legacy})   # a pre-#130 host's halves lobby
+		assert_true(client.settings["quarters"], "legacy %s reads as quarters" % str(legacy))
+		assert_true(not client.summary().contains("halves"), client.summary())
+	assert_eq(client.settings["quarter_minutes"], 2.0)
 
 func test_capacity_is_both_teams_slots() -> void:
 	var l := Lobby.new()

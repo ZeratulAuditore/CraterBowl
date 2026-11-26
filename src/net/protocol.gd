@@ -159,11 +159,15 @@ static func apply_snapshot(m, s: Dictionary) -> void:
 	var sc: PackedInt32Array = s["s"]
 	m.score = [sc[0], sc[1]]
 	var c: PackedFloat32Array = s["c"]
-	m.clock.half = int(c[0])
 	m.clock.remaining = c[1]
 	m.clock.play_clock = c[2]
 	m.clock.final = c[3] > 0.5
-	m.clock.quarter = int(c[4]) if c.size() > 4 else 1
+	# #130: quarters only. A pre-quarters snapshot has no quarter: its half maps to Q1/Q3,
+	# and a missing or zero (halves-format) length falls back to the default quarter.
+	if c.size() > 4:
+		m.clock.quarter = int(c[4])
+	else:
+		m.clock.half = int(c[0])
 	m.clock.quarter_length = c[5] if c.size() > 5 else 0.0
 	if s.has("to"):
 		m.clock.timeouts = Array(s["to"])
@@ -324,3 +328,38 @@ static func apply_action(m, athlete_id: int, action) -> bool:
 		"route":
 			return w.phase == w.Phase.PRESNAP and w.set_route(athlete_id, act["r"])
 	return false
+
+# ---- version handshake (#165) ----
+## Wire/sim compatibility version. Bump it in the same PR as any change to the wire format
+## (message keys or fields, snapshot layout, action shapes) or to sim rules a host and client
+## must agree on (src/sim). Rule and reasons: docs/design/netcode.md "Version handshake".
+const VERSION := 1
+const VERSION_FILE := "res://VERSION"
+const VERSION_FLAG := "--protocol-version="   # debug: pretend to be another version (net_test.sh)
+
+## This process's protocol version: VERSION, or the `--protocol-version=N` debug override.
+static func local_version() -> int:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with(VERSION_FLAG) and a.trim_prefix(VERSION_FLAG).is_valid_int():
+			return int(a.trim_prefix(VERSION_FLAG))
+	return VERSION
+
+## Human build label from the VERSION file (informational, logged; compatibility is `v`).
+static func build() -> String:
+	var b := FileAccess.get_file_as_string(VERSION_FILE).strip_edges() if FileAccess.file_exists(VERSION_FILE) else ""
+	return b if b != "" else "dev"
+
+## First message a client sends to a game host (`k:"hello"`); the matchmaker reads `v` off `enq`.
+static func hello(v: int = local_version()) -> Dictionary:
+	return {"k": "hello", "v": v, "build": build()}
+
+## Why a peer announcing version `theirs` can't play with this one (`ours`); "" = compatible.
+## `theirs` comes off the wire: anything but an int means a build from before the handshake.
+static func version_refusal(theirs, ours: int = local_version()) -> String:
+	if theirs is int and theirs == ours:
+		return ""
+	if not (theirs is int):
+		return "Update Crater Bowl to play online (server is v%d, you have an older build)" % ours
+	if theirs < ours:
+		return "Update Crater Bowl to play online (server is v%d, you have v%d)" % [ours, theirs]
+	return "This server runs an older Crater Bowl (server is v%d, you have v%d)" % [ours, theirs]

@@ -172,7 +172,7 @@ func _physics_process(_dt: float) -> bool:
 		check(team_swap_rejected, "legacy team request preserves the host assignment")
 		check(equipped_number == "88", "my equipped #88 round-tripped through the host (%s)" % equipped_number)
 		check(pick_rejected, "legacy slot request preserves the host assignment")
-		check(timeout_confirmed and got_timeout_event, "remote U decrements only its team's timeouts and broadcasts the event")
+		check(timeout_confirmed and got_timeout_event, "remote T decrements only its team's timeouts and broadcasts the event")
 		check(remote_handoff_confirmed, "client QB hands off through G and sees the host's RB possession")
 		check(remote_handoff_confirmed and main.controlled_id == aid, "online QB keeps the same athlete after the handoff")
 		print("NET FLOW " + ("PASS" if ok else "FAIL"))
@@ -187,7 +187,7 @@ func _test_remote_handoff() -> void:
 	if w.offense_team != 1 or me.role != main.Athlete.Role.QB:
 		return
 	if not sent_timeout and w.phase == w.Phase.PRESNAP:
-		_key(KEY_U)
+		_key(KEY_T)
 		sent_timeout = true
 	if sent_timeout and main.series.clock.timeouts == [3, 2]:
 		timeout_confirmed = true

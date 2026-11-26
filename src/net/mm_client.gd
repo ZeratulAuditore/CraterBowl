@@ -8,10 +8,14 @@ signal lobbies(list: Array)
 signal registered(ok: bool)
 signal connected
 signal failed
+signal refused(reason: String)   # #165: the matchmaker turned us away (version mismatch)
+
+const P := preload("res://src/net/protocol.gd")
 
 var api: SceneMultiplayer
 var peer: ENetMultiplayerPeer
 var _req := {}
+var protocol_version := P.local_version()
 
 func queue_up(address: String, port: int, mode: String, size: int, rating: float, name: String = "", party: String = "", party_size: int = 1, game: String = "classic", seat: String = "") -> Error:
 	api = SceneMultiplayer.new()
@@ -22,7 +26,7 @@ func queue_up(address: String, port: int, mode: String, size: int, rating: float
 	if err != OK:
 		return err
 	api.multiplayer_peer = peer
-	_req = {"k": "enq", "mode": mode, "size": size, "rating": rating, "name": name, "party": party, "party_size": party_size, "game": game, "seat": seat}
+	_req = {"k": "enq", "mode": mode, "size": size, "rating": rating, "name": name, "party": party, "party_size": party_size, "game": game, "seat": seat, "v": protocol_version}
 	api.connected_to_server.connect(func(): _send(_req))
 	api.connection_failed.connect(func(): failed.emit())
 	return OK
@@ -64,6 +68,10 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 	if from != 1 or not (msg is Dictionary):
 		return
 	match msg.get("k", ""):
+		"refused":
+			var why = msg.get("why", "")
+			refused.emit(str(why).left(120) if why is String and why != "" else "The matchmaker refused the connection")
+			peer.close.call_deferred()
 		"lobbies":
 			var l = msg.get("list", [])
 			lobbies.emit(l if l is Array else [])
