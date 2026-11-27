@@ -130,8 +130,8 @@ func _on_event(n: String, _d: Dictionary) -> void:
 		var line: Dictionary = _d["ctx"].get(aid, {}).get("line", {})
 		check(line.get("comp", 0.0) == 0.0 and line.get("pass_yds", 0.0) == 0.0,
 			"replacement QB's network award excludes the previous player's completion and passing yards")
-		check(line.get("car", 0.0) == 0.0 and line.get("rush_yds", 0.0) == 0.0,
-			"replacement QB's network award excludes the previous player's carry and rushing yards")
+		check(line.get("car", 0.0) == 1.0 and line.get("rush_yds", 0.0) == 7.0,
+			"QB's network award includes the fumbled keeper and excludes the previous player's run")
 	if n == "summary":
 		got_summary = _d.get("mine") is Dictionary and _d["mine"].has(aid)
 		shared_td_line = _d.get("lines", []).any(func(l): return str(l).begins_with("Ann ") and str(l).contains("1TD"))
@@ -233,8 +233,8 @@ func _physics_process(_dt: float) -> bool:
 		var mine: Array = main.match_overview()["my_lines"]
 		check(got_summary and shared_td_line and not mine.any(func(l): return str(l).contains("1TD")),
 			"same-named client's Your game leaves out the host Ann's touchdown line (%s)" % str(mine))
-		check(not mine.any(func(l): return str(l).contains(" car ")),
-			"replacement QB's Your game leaves out the previous player's carry (%s)" % str(mine))
+		check(mine.filter(func(l): return str(l).contains(" car ")) == ["QB: 1 car 7yd 0TD"],
+			"QB's Your game shows only the local player's fumbled keeper (%s)" % str(mine))
 		print("NET FLOW " + ("PASS" if ok else "FAIL"))
 		quit(0 if ok else 1)
 	return false
