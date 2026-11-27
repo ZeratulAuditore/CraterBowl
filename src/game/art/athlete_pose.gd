@@ -78,6 +78,7 @@ var look_weight := 0.0            # 0 = clip's head, 1 = full look
 var catch_weight := 0.0           # 0 = no catch pose, 1 = full stance/reach
 var catch_target := Vector3.ZERO  # the ball, skeleton space
 var catch_reach := 0.0            # 0 = ready stance, 1 = hands on the ball
+var catch_twist := true           # keep the slide clip's torso during a diving reach
 var _bones := {}
 var _fingers := {}     # "_r"/"_l" -> finger bone ids (joints 01-03)
 var _rig_ok := false   # every bone in _bones exists (checked once: no per-frame allocation)
@@ -108,14 +109,15 @@ func apply(sk: Skeleton3D) -> void:
 	# The arms do one job: the stronger of catching and carrying (they cross over at the catch).
 	var catching := catch_weight > weight
 	_pre = Transform3D()
-	if catching:
+	if catching and catch_twist:
 		_plan_twist(sk)
 	if look_weight > 0.0:
 		_look(sk)
 	if catching:
 		_catch(sk)
-		sk.set_bone_pose_rotation(_bones.spine_02, _twist_q[0])
-		sk.set_bone_pose_rotation(_bones.spine_03, _twist_q[1])
+		if catch_twist:
+			sk.set_bone_pose_rotation(_bones.spine_02, _twist_q[0])
+			sk.set_bone_pose_rotation(_bones.spine_03, _twist_q[1])
 		return
 	if weight <= 0.0:
 		return

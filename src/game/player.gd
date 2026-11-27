@@ -380,14 +380,15 @@ func watches_now() -> bool:
 
 ## Heads track the ball (not the carrier's own; not while down, celebrating, too far from
 ## the camera to see, or when the athlete has no reason to watch it).
-func _update_look(delta: float, down: bool) -> void:
+func _update_look(delta: float, down: bool, diving: bool) -> void:
 	_look_decide_t -= delta
 	if _look_decide_t <= 0.0:
 		_look_decide_t = 1.0 / LOOK_DECIDE_HZ
 		var cam := get_viewport().get_camera_3d()
 		_look_wanted = cam != null and head_visible(global_position.distance_to(cam.global_position), cam.fov) and watches_now()
 		_catch_wanted = _look_wanted and _near_catch_point()
-	var looking := _look_wanted and look_node != null and ball_node == null and not down and celebrate_t <= 0.0
+	var watching := _look_wanted and look_node != null and ball_node == null and celebrate_t <= 0.0
+	var looking := watching and not down
 	var k := 1.0 - exp(-LOOK_K * delta)
 	if look_node != null and (looking or pose.look_weight > 0.0):   # also while fading out, so a fading head never points at an old spot
 		var target := look_node.global_position
@@ -398,7 +399,10 @@ func _update_look(delta: float, down: bool) -> void:
 	pose.look_weight = lerpf(pose.look_weight, 1.0 if looking else 0.0, k)
 	if pose.look_weight < 0.01 and not looking:
 		pose.look_weight = 0.0
-	_update_catch(delta, looking)
+	# A Classic receiver can catch while diving. The arms reach over the existing slide.
+	var dive_reach: bool = watching and diving and not athlete.is_grounded() \
+		and world != null and not world.is_chaos() and not world.kicked
+	_update_catch(delta, looking or dive_reach, dive_reach)
 
 ## Where a pass in flight comes down through height h (field x, y), on its way down. A
 ## pass that never climbs to h (a low line drive) uses where it lands. Same flight math as
@@ -423,9 +427,10 @@ func _near_catch_point() -> bool:
 	return athlete.position.distance_to(cp) < CATCH_RANGE
 
 ## Catch pose (#246): ready stance while the pass is far, hands to the ball as it closes.
-func _update_catch(delta: float, looking: bool) -> void:
-	var catching := _catch_wanted and looking and _pass_in_air()
+func _update_catch(delta: float, can_reach: bool, dive_reach: bool) -> void:
+	var catching := _catch_wanted and can_reach and _pass_in_air()
 	if catching:
+		pose.catch_twist = not dive_reach
 		var ball := look_node.global_position
 		var chest := global_position + Vector3.UP * CATCH_HEIGHT
 		pose.catch_target = _skel.global_transform.affine_inverse() * ball
@@ -484,7 +489,8 @@ func _process(delta: float) -> void:
 		v = Vector3.ZERO
 	_vel = _vel.lerp(v, clampf(delta * 12.0, 0.0, 1.0))
 	var spd := Vector2(_vel.x, _vel.z).length()
-	var down: bool = athlete.is_diving() or athlete.is_grounded()
+	var diving: bool = athlete.is_diving()
+	var down: bool = diving or athlete.is_grounded()
 	if spd > 0.4 and not down and not athlete.blocking:
 		rotation.y = lerp_angle(rotation.y, atan2(-_vel.x, -_vel.z), clampf(delta * 14.0, 0.0, 1.0))
 	_hit_t = maxf(0.0, _hit_t - delta)
@@ -508,7 +514,7 @@ func _process(delta: float) -> void:
 		pose.weight = lerpf(pose.weight, target, 1.0 - exp(-CARRY_K * delta))
 		if absf(pose.weight - target) < 0.01:
 			pose.weight = target
-		_update_look(delta, down)
+		_update_look(delta, down, diving)
 	# Celebration flourishes on top of the dance.
 	body.rotation = Vector3.ZERO
 	body.position = Vector3.ZERO

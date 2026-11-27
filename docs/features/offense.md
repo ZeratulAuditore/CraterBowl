@@ -69,6 +69,9 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
 - Beyond that window, a lone defender intercepts only within `INT_RADIUS` (0.6 yd) at the ball's closest approach;
   otherwise it is a breakup.
 - A receiver (or defender) standing out of bounds can't complete the catch: incomplete.
+- During an active Classic dive, an athlete reaching for a nearby pass keeps the slide's torso and
+  leg animation. The arms track the pass using the standing reach's shoulder and elbow limits
+  (#360). The reach blends into the carry after the catch.
 - Control stays on your own athlete after a catch or handoff. Bots run with the ball when they have it.
 
 ### Run game
@@ -112,6 +115,6 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
   `tests/test_turnovers.gd` (interceptions), `tests/test_bots.gd`, `tests/game_flow.gd` (real J/Q/G/Space keys).
 
 ## Open issues
-- #9 C07 Catch rules: sideline catches (#338), reach input (#247), contested catches (#339) and dive/jump catches (#340)
+- #9 C07 Catch rules: sideline catches (#338), reach input (#247), contested catches (#339) and jump catches (#361)
 - #10 C09 Offense depth: formations, audibles, hot routes, pre-snap motion
 - #11 C10 Throw readability: landing marker, aim-zoom (aim-zoom shipped as #109)
