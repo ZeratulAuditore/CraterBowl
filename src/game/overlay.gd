@@ -7,6 +7,11 @@ extends CanvasLayer
 const Mats := preload("res://src/game/art/materials.gd")
 const UITheme := preload("res://src/ui/ui_theme.gd")
 const T := preload("res://src/sim/tuning.gd")
+const Routes := preload("res://src/sim/routes.gd")
+const DefensivePlaybook := preload("res://src/sim/defensive_playbook.gd")
+## Picker buttons, built once (#169): the longest list either side shows. Offense with a run
+## back: passes + runs + Repeat last/Flip play; defense: calls + Repeat last.
+var PICKER_POOL := maxi(Routes.PLAY_NAMES.size() + Routes.RUN_NAMES.size() + 2, DefensivePlaybook.CALLS.size() + 1)
 const TEAM_NAMES := ["HELIOS", "NEBULA"]
 const TEAM_ABBR := ["HEL", "NEB"]
 const NAVY := Color(0.055, 0.078, 0.14, 0.9)
@@ -14,7 +19,7 @@ const ACCENT := Color(0.36, 0.88, 1.0)
 const ALERT := Color(1.0, 0.42, 0.12)
 ## Fixed scorebug width (#116): reserving the play-clock cell keeps the bug from jumping
 ## and re-centering at the snap and the whistle. Content wider than this still grows it.
-const BUG_W := 600.0
+const BUG_W := 660.0   # fits every state in Teko (#125 Slice A; was 600 with Rajdhani)
 ## Bottom HUD stack (#116): scorebug flush to the bottom, the movement meters beside it and
 ## the status pill on its top-left edge, so nothing floats over the controlled player.
 const BUG_BOTTOM := 14.0
@@ -43,6 +48,7 @@ var picker_grid: GridContainer
 var route_select: OptionButton
 var picker_side := -1
 var picker_calls: Array = []
+var _picker_main   # set on refresh; pooled buttons call its do_action
 var scoreboard: PanelContainer
 var scoreboard_label: Label
 var me_panel: PanelContainer
@@ -181,6 +187,8 @@ func _build_scorebug() -> void:
 	field_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	field_strip.draw.connect(_draw_field_strip)
 	details.add_child(field_strip)
+	# Hold the row's height when all three hide (the coin toss, #131) so the bug doesn't jump.
+	details.custom_minimum_size.y = maxf(spot_l.get_combined_minimum_size().y, field_strip.custom_minimum_size.y)
 	# Status pill: a small backed tab on the scorebug's top-left edge, off the player.
 	status_pill = PanelContainer.new()
 	status_pill.name = "StatusPill"
@@ -229,9 +237,21 @@ func _build_picker() -> void:
 	picker_grid.add_theme_constant_override("h_separation", 6)
 	picker_grid.add_theme_constant_override("v_separation", 6)
 	column.add_child(picker_grid)
+	# Built up front so the node count never changes mid-match (perf.sh's leak check, #169).
+	for i in PICKER_POOL:
+		_add_picker_button()
 	route_select = OptionButton.new()
 	route_select.focus_mode = Control.FOCUS_NONE
 	column.add_child(route_select)
+
+func _add_picker_button() -> void:
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.visible = false
+	b.pressed.connect(func():
+		if _picker_main != null and b.has_meta("action"):
+			_picker_main.do_action(b.get_meta("action")))
+	picker_grid.add_child(b)
 
 ## UITheme's menu look, compacted for the in-game picker.
 static func _picker_theme() -> Theme:
@@ -427,13 +447,14 @@ func refresh(main, delta: float) -> void:
 		timeout_pips[t].text = "●".repeat(s.clock.timeouts[t]) + "○".repeat(s.clock.timeout_limit - s.clock.timeouts[t])
 	clock_l.text = "FINAL" if final else ("" if main.drill != null else s.clock.label())
 	down_l.text = _down_text(main)
-	var pc := int(ceil(s.clock.play_clock))
-	var clock_up: bool = int(w.phase) == 0 and main.drill == null
+	var pc: int = s.play_clock_shown()   # #136: the value the snap obeys, or -1 = hidden
+	var clock_up: bool = pc >= 0 and main.drill == null
 	play_clock_l.text = "PLAY :%02d" % pc if clock_up else ""
 	play_clock_l.visible = clock_up
 	play_clock_div.visible = clock_up
-	play_clock_l.label_settings.font_color = ALERT if pc <= 5 else ACCENT
-	mode_l.text = _mode_text(main)
+	play_clock_l.label_settings.font_color = ALERT if pc <= 5 and _my_snap(main) else ACCENT
+	mode_l.text = _hud_title(main)
+	mode_l.visible = mode_l.text != ""
 	_refresh_field_position(main, final)
 	status_l.text = _status_text(main)
 	status_pill.visible = status_l.text != ""
@@ -442,9 +463,11 @@ func refresh(main, delta: float) -> void:
 	bug.visible = true
 	_layout_stack()
 	if scoreboard.visible:
-		scoreboard_label.text = "%s     %d – %d     %s\n%s     ·     %s\n%s possession" % [
+		# #131: mode/size lives here, on the hold-to-view board, not on the live HUD.
+		scoreboard_label.text = "%s\n%s     %d – %d     %s\n%s     ·     %s\n%s possession" % [
+			_mode_text(main) if main.drill == null else _hud_title(main),
 			TEAM_NAMES[0], s.score[0], s.score[1], TEAM_NAMES[1], clock_l.text,
-			_down_text(main), TEAM_NAMES[w.possession_team()]]
+			_down_text(main, true), TEAM_NAMES[w.possession_team()]]
 	# First down detection (same offense, down reset, chains moved).
 	var key := [w.offense_team, s.downs.down, snappedf(s.downs.first_down_y, 0.1)]
 	if not _prev.is_empty() and _prev["k"][0] == key[0] and key[1] == 1 and _prev["k"][1] > 1 and int(s.state) == 0:
@@ -468,16 +491,18 @@ func _animate_banner(delta: float) -> void:
 		banner.visible = false
 		banner_sub.visible = false
 
-func _down_text(main) -> String:
+## `board` = the Tab scoreboard. The live scorebug drops the KICKOFF / COIN TOSS phase
+## words (#131): the cell is down & distance only, and kickoffs/tosses have none.
+func _down_text(main, board := false) -> String:
 	var s = main.series
 	if main.drill != null:
 		return main.drill.label()
 	if int(s.state) == 1:
 		return "TRY FOR %d" % s.try_points
 	if int(s.state) == 2:
-		return "KICKOFF"
+		return "KICKOFF" if board else ""
 	if int(s.state) == 3:
-		return "COIN TOSS"
+		return "COIN TOSS" if board else ""
 	if main.world.is_chaos():
 		return "STREAK %d  ·  TD %d" % [main.world.streak, main.world.streak_points()]
 	var lab: String = s.downs.label()
@@ -514,16 +539,29 @@ func _draw_field_strip() -> void:
 	field_strip.draw_line(Vector2(start, mid - 7), Vector2(start, mid + 7), ACCENT, 2)
 	field_strip.draw_line(Vector2(gain, mid - 7), Vector2(gain, mid + 7), Color(1.0, 0.86, 0.35), 2)
 
+## Match mode and size ("7v7 CLASSIC  ·  RANKED"): the Tab scoreboard's header line (#131).
 func _mode_text(main) -> String:
 	var m := "CHAOSBALL" if main.match_mode == "chaosball" else "CLASSIC"
 	var t := "%dv%d %s" % [main.match_size, main.match_size, m]
 	if main.ranked_match:
 		t += "  ·  RANKED"
+	return t
+
+## The live HUD's title line (#131): training/practice titles and the queue search only.
+## A match shows none; its mode/size is on the Tab scoreboard (_mode_text).
+func _hud_title(main) -> String:
+	var t := ""
 	if main.drill != null:
 		t = main.drill.title() if _training(main) else "PRACTICE"
 	if main.searching():
-		t = main.queue_text() + "  ·  " + t
+		t = main.queue_text() + ("  ·  " + t if t != "" else "")
 	return t
+
+## #168: the play clock turns ALERT red only when the snap is yours to make (your team has
+## the ball). Against bots it counts their 5 s huddle, so it would be red the whole presnap.
+func _my_snap(main) -> bool:
+	var me = main.world.get_athlete(main.my_id)
+	return me != null and main.world.offense_team == me.team
 
 func _training(main) -> bool:
 	return main.drill != null and main.Drills.is_training(main.drill.kind)
@@ -544,20 +582,33 @@ func _status_text(main) -> String:
 		0:
 			var mine: bool = w.offense_team == w.get_athlete(main.my_id).team
 			if int(s.state) == 3:
+				# #131: no key hints on the toss (1 receive / 2 kick live in the controls list;
+				# no answer = receive). The coin-toss cutscene (#129) will own this moment.
 				var won: bool = s.toss_winner == w.get_athlete(main.my_id).team
-				return ("YOU WON THE TOSS  ·  PRESS 1 TO RECEIVE OR 2 TO KICK" if won else "%s IS CHOOSING" % TEAM_NAMES[clampi(s.toss_winner, 0, 1)])
-			# The scorebug already says KICKOFF; the pill only says what to do.
+				return "YOU WON THE TOSS" if won else "%s IS CHOOSING" % TEAM_NAMES[clampi(s.toss_winner, 0, 1)]
+			# #131: the kicker keeps the J / click hint (the only place a new player learns to
+			# kick) until the kick meter (#68) carries it; the return team gets no narration.
 			if w.kick_play == "kickoff":
-				return "PRESS J OR CLICK TO KICK" if mine else "GET READY TO RETURN"
+				return "PRESS J OR CLICK TO KICK" if mine else ""
 			if w.kick_play != "" and mine:
 				return ("PUNT" if w.kick_play == "punt" else "FIELD GOAL") + "  ·  PRESS K TO CHANGE"
 			return ""
 		1:
 			if main.world.is_chaos():
 				return "PASS CLOCK %.1f" % maxf(0.0, main.T.PASS_CLOCK - w.hold_t)
+			if w.kick_in_air():
+				return fair_catch_prompt(w, main.controlled_id)
 			return "MEET THE BACK" if w.handoff_receiver(main.my_id) == null and w.is_run_play() and w.ball.is_held_by(main.my_id) else ""
 		_:
 			return whistle_summary(main.last_whistle, main.world)
+
+## Kick in the air (#189): tell the return team about the fair catch.
+static func fair_catch_prompt(w, my_id: int) -> String:
+	if w.fair_catch_id == my_id:
+		return "FAIR CATCH SIGNALED  ·  CATCH IT TO END THE PLAY"
+	if w.fair_catch_id >= 0:
+		return "FAIR CATCH SIGNALED"
+	return "PRESS SPACE FOR A FAIR CATCH" if w.can_signal_fair_catch(my_id) else ""
 
 func _refresh_picker(main, final: bool) -> void:
 	var w = main.world
@@ -577,25 +628,28 @@ func _refresh_picker(main, final: bool) -> void:
 	var side := 0 if w.get_athlete(main.my_id).team == w.offense_team else 1
 	var offense := side == 0
 	var calls: Array = w.available_plays() if offense else w.DefensivePlaybook.CALLS.keys()
+	_picker_main = main
 	if picker_side != side or picker_calls != calls:
 		picker_side = side
 		picker_calls = calls
-		for child in picker_grid.get_children():
-			picker_grid.remove_child(child)
-			child.queue_free()
+		# Reuse one pool of buttons, relabelled per side: rebuilding on every possession change
+		# churned nodes and tripped perf.sh's object-growth leak check (#169).
+		var entries: Array = []   # [text, action, toggle]
 		for call in calls:
-			var b := Button.new()
-			b.text = call if offense else w.DefensivePlaybook.CALLS[call].name
-			b.focus_mode = Control.FOCUS_NONE
-			b.toggle_mode = true
-			b.pressed.connect(func(): main.do_action({"a": "play" if offense else "defense", "p": call}))
-			picker_grid.add_child(b)
+			entries.append([call if offense else w.DefensivePlaybook.CALLS[call].name,
+				{"a": "play" if offense else "defense", "p": call}, true])
 		for action in ([["Repeat last", "recall_call"], ["Flip play", "flip_play"]] if offense else [["Repeat last", "recall_call"]]):
-			var b := Button.new()
-			b.text = action[0]
-			b.focus_mode = Control.FOCUS_NONE
-			b.pressed.connect(func(): main.do_action({"a": action[1]}))
-			picker_grid.add_child(b)
+			entries.append([action[0], {"a": action[1]}, false])
+		while picker_grid.get_child_count() < entries.size():   # safety net; PICKER_POOL covers every list
+			_add_picker_button()
+		for i in picker_grid.get_child_count():
+			var b: Button = picker_grid.get_child(i)
+			b.visible = i < entries.size()
+			if b.visible:
+				b.text = entries[i][0]
+				b.set_meta("action", entries[i][1])
+				b.toggle_mode = entries[i][2]
+				b.set_pressed_no_signal(false)
 		if route_select.item_count == 0:
 			for route in main.Routes.ROUTE_NAMES:
 				route_select.add_item(route)

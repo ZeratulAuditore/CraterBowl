@@ -149,3 +149,75 @@ func test_bursty_inputs_match_delayed_reference_motion() -> void:
 	assert_near(buffered_error, 0.0, 0.001, "buffered movement follows the delayed reference")
 	assert_eq(host.acks().get(0, -1), 48)
 	host.free()
+
+# ---- #86 host-silence watchdog (client) ----
+func _seated_client() -> LocalHost:
+	var c := LocalHost.new()
+	c.mode = NetSession.Mode.CLIENT
+	c.my_athlete = 3
+	return c
+
+func _from_host(c: LocalHost) -> void:
+	c._on_packet(1, var_to_bytes({"k": "noop"}))
+
+func test_watchdog_warns_then_drops_once() -> void:
+	var c := _seated_client()
+	var seen := {"stalled": 0, "recovered": 0, "lost": 0}
+	c.host_stalled.connect(func(): seen["stalled"] += 1)
+	c.host_recovered.connect(func(): seen["recovered"] += 1)
+	c.host_lost.connect(func(): seen["lost"] += 1)
+	for i in int(NetSession.STALL_AFTER * 60) - 1:
+		c.watch_host(1.0 / 60.0)
+	assert_eq(seen["stalled"], 0, "no warning before STALL_AFTER of silence")
+	c.watch_host(2.0 / 60.0)
+	assert_eq(seen["stalled"], 1, "warning at STALL_AFTER")
+	assert_true(c.stalled, "stalled flag set")
+	c.watch_host(NetSession.DROP_AFTER - NetSession.STALL_AFTER - 0.1)
+	assert_eq(seen["lost"], 0, "still waiting just before DROP_AFTER")
+	c.watch_host(0.1)
+	assert_eq(seen, {"stalled": 1, "recovered": 0, "lost": 1}, "warned once, dropped once at DROP_AFTER")
+	c._on_server_disconnected()   # ENet's own timeout (or our close) arriving later
+	c.watch_host(10.0)
+	assert_eq(seen["lost"], 1, "host_lost is sent once per session")
+	c.free()
+
+func test_watchdog_lag_spike_recovers_without_drop() -> void:
+	var c := _seated_client()
+	var seen := {"recovered": 0, "lost": 0}
+	c.host_recovered.connect(func(): seen["recovered"] += 1)
+	c.host_lost.connect(func(): seen["lost"] += 1)
+	c.watch_host(NetSession.DROP_AFTER - 0.05)
+	assert_true(c.stalled, "warning during a long spike")
+	_from_host(c)
+	assert_eq(seen, {"recovered": 1, "lost": 0}, "any packet from the host clears the warning, no drop")
+	assert_eq(c.host_silence, 0.0, "silence clock reset")
+	c.watch_host(NetSession.DROP_AFTER - 0.05)
+	_from_host(c)
+	assert_eq(seen["lost"], 0, "silence is per gap, not cumulative across spikes")
+	c.free()
+
+func test_watchdog_only_runs_seated_in_a_match() -> void:
+	var c := LocalHost.new()
+	c.mode = NetSession.Mode.CLIENT   # in the lobby: no snapshots expected, ENet's timeout applies
+	c._watch_us = Time.get_ticks_usec() - 10_000_000
+	c._process(0.0)
+	assert_eq(c.host_silence, 0.0, "unseated client doesn't count silence")
+	c.my_athlete = 2
+	c.refused_reason = "Match full"
+	c._process(0.0)
+	assert_eq(c.host_silence, 0.0, "refused client doesn't count silence")
+	var server := LocalHost.new()
+	server.mode = NetSession.Mode.SERVER
+	server._process(0.0)
+	assert_eq(server.host_silence, 0.0, "server never runs the watchdog")
+	c.free()
+	server.free()
+
+func test_watchdog_caps_our_own_hitch() -> void:
+	var c := _seated_client()
+	c._process(0.0)                                    # first step only starts the clock
+	c._watch_us = Time.get_ticks_usec() - 3_000_000    # our frame took 3 s (loading, debugger)
+	c._process(0.0)
+	assert_near(c.host_silence, NetSession.SILENCE_STEP_MAX, 0.01, "one long frame counts SILENCE_STEP_MAX")
+	assert_true(not c.stalled, "our hitch alone doesn't warn")
+	c.free()

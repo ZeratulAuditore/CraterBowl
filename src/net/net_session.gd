@@ -12,6 +12,8 @@ signal lobby_changed()
 signal refused(reason: String)
 signal connection_failed()     # client: the initial connection never reached the host
 signal host_lost()             # client: the host went away (quit, crashed, timed out) mid-session
+signal host_stalled()          # client: in the match, nothing from the host for STALL_AFTER s (#86)
+signal host_recovered()        # client: the host was heard from again before DROP_AFTER
 
 const P := preload("res://src/net/protocol.gd")
 const DEFAULT_PORT := 24565
@@ -20,6 +22,13 @@ const INPUT_BUFFER_LIMIT := 6  # 100 ms at the 60 Hz sim rate
 const NO_INPUT := {}
 const REFUSE_GRACE := 1.0      # s: server drops a refused peer after this (the client normally hangs up first)
 const FULL_MATCH_REASON := "Match full: every seat is taken"
+# #86 host-silence watchdog (client, in the match). The host sends 30 snapshots/s, so silence
+# means trouble long before ENet's own peer timeout (5-30 s, measured 5.8-9.7 s). Decision and
+# why: docs/features/online.md "Design decisions".
+const STALL_AFTER := 2.0       # s of silence: warn ("Connection to host lost...")
+const DROP_AFTER := 4.0        # s of silence: give up -> host_lost (the #17 reconnect grace would go here)
+const SILENCE_STEP_MAX := 0.25 # s: one frame counts at most this much, so our own hitch isn't the host's silence
+const HELLO_TIMEOUT := 5.0      # s: server refuses a peer that never says hello (a pre-#165 build)
 
 enum Mode { OFFLINE, SERVER, CLIENT }
 
@@ -42,6 +51,13 @@ var lobby                      # server: Lobby (set by main)
 var lobby_actions: Array = []  # server: [[peer_id, action], ...]
 var last_snapshot_tick := -1
 var refused_reason := ""       # client: why the host turned us away ("" = not refused)
+var host_silence := 0.0        # client: seconds since the last packet from the host (watchdog clock)
+var stalled := false           # client: the watchdog is warning (host_stalled sent, not yet recovered)
+var _host_gone := false        # client: host_lost already sent (once per session)
+var _watch_us := 0             # client: wall clock of the previous watchdog step
+var version_refused := false   # client: the refusal was a protocol version mismatch (#165)
+var protocol_version := P.local_version()   # both: announced (client) / required (server) wire version
+var _awaiting_hello := {}      # server: peer_id -> true until its hello arrives (#165)
 
 func _ready() -> void:
 	api = SceneMultiplayer.new()
@@ -67,10 +83,15 @@ func join(address: String, port: int) -> Error:
 	if err != OK:
 		return err
 	api.multiplayer_peer = peer
+	host_silence = 0.0
+	stalled = false
+	_host_gone = false
 	if not api.server_disconnected.is_connected(_on_server_disconnected):
 		api.server_disconnected.connect(_on_server_disconnected)
 	if not api.connection_failed.is_connected(_on_connection_failed):
 		api.connection_failed.connect(_on_connection_failed)
+	if not api.connected_to_server.is_connected(_say_hello):
+		api.connected_to_server.connect(_say_hello)
 	mode = Mode.CLIENT
 	return OK
 
@@ -83,8 +104,47 @@ func _on_connection_failed() -> void:
 ## (and already shows why), so only an unexpected loss counts.
 func _on_server_disconnected() -> void:
 	if mode == Mode.CLIENT and refused_reason == "":
-		print("NET host lost")
-		host_lost.emit()
+		_lose_host("disconnected")
+
+func _lose_host(why: String) -> void:
+	if _host_gone:
+		return
+	_host_gone = true
+	print("NET host lost (%s)" % why)
+	host_lost.emit()
+
+## Client watchdog (#86): armed once we're seated in the match (the host then sends snapshots
+## every other tick). Wall clock, so time scale doesn't matter; each frame counts at most
+## SILENCE_STEP_MAX so a hitch on our side (loading, a debugger) isn't blamed on the host.
+func _process(_delta: float) -> void:
+	if mode != Mode.CLIENT or my_athlete < 0 or refused_reason != "" or _host_gone:
+		_watch_us = 0
+		return
+	var now := Time.get_ticks_usec()
+	var step := 0.0 if _watch_us == 0 else minf((now - _watch_us) / 1000000.0, SILENCE_STEP_MAX)
+	_watch_us = now
+	watch_host(step)
+
+## Advance the silence clock by `step` seconds: warn at STALL_AFTER, give up at DROP_AFTER.
+## Hearing from the host (any packet) resets it in _heard_host. #17 (reconnect) slots in at the
+## DROP_AFTER branch: try to rejoin during a grace window instead of leaving.
+func watch_host(step: float) -> void:
+	host_silence += step
+	if not stalled and host_silence >= STALL_AFTER:
+		stalled = true
+		print("NET host stalled (%.1fs silent)" % host_silence)
+		host_stalled.emit()
+	if host_silence >= DROP_AFTER:
+		_lose_host("silent %.1fs" % host_silence)
+		if peer != null:
+			peer.close.call_deferred()   # stop sending into the void; the menu frees us anyway
+
+func _heard_host() -> void:
+	host_silence = 0.0
+	if stalled and not _host_gone:
+		stalled = false
+		print("NET host recovered")
+		host_recovered.emit()
 
 func human_athletes() -> Array:
 	return peer_athlete.values()
@@ -93,8 +153,33 @@ func _send(target: int, msg: Dictionary, reliable: bool) -> void:
 	var m := MultiplayerPeer.TRANSFER_MODE_RELIABLE if reliable else MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED
 	api.send_bytes(var_to_bytes(msg), target, m, 0 if reliable else 1)
 
+## Client: the first message on a new connection announces our protocol version (#165).
+func _say_hello() -> void:
+	if mode == Mode.CLIENT:
+		_send(1, P.hello(protocol_version), true)
+
 # ---- server ----
+## A new peer gets nothing until its hello proves a matching protocol version (#165).
+## Builds from before the handshake never send one and are refused after HELLO_TIMEOUT.
 func _on_peer_connected(id: int) -> void:
+	_awaiting_hello[id] = true
+	if is_inside_tree():
+		get_tree().create_timer(HELLO_TIMEOUT).timeout.connect(func():
+			if mode == Mode.SERVER and _awaiting_hello.has(id):
+				_on_hello(id, {}))
+
+func _on_hello(id: int, msg: Dictionary) -> void:
+	if not _awaiting_hello.has(id):
+		return   # one hello per connection
+	_awaiting_hello.erase(id)
+	var why := P.version_refusal(msg.get("v"), protocol_version)
+	if why != "":
+		print("NET peer %d build %s: protocol v%s, need v%d" % [id, str(msg.get("build", "?")).left(32), str(msg.get("v", "?")).left(8), protocol_version])
+		refuse(id, why, true)
+		return
+	_admit(id)
+
+func _admit(id: int) -> void:
 	if lobby_mode and lobby != null and lobby.phase == lobby.Phase.LOBBY:
 		if lobby.is_full():
 			refuse(id, lobby.full_reason())
@@ -111,9 +196,14 @@ func _on_peer_connected(id: int) -> void:
 
 ## Server: tell a peer why it can't join, then drop it. ENet's disconnect discards queued
 ## packets, so the drop waits REFUSE_GRACE (the client hangs up itself on receipt).
-func refuse(id: int, reason: String) -> void:
+func refuse(id: int, reason: String, version_mismatch := false) -> void:
 	print("NET refused peer %d: %s" % [id, reason])
-	_send(id, {"k": "refused", "why": reason}, true)
+	var msg := {"k": "refused", "why": reason}
+	if version_mismatch:
+		msg["v"] = protocol_version
+	_send(id, msg, true)
+	if not is_inside_tree():
+		return
 	get_tree().create_timer(REFUSE_GRACE).timeout.connect(func():
 		if mode == Mode.SERVER and api.get_peers().has(id):
 			peer.disconnect_peer(id))
@@ -126,6 +216,7 @@ func set_assignment(id: int, aid: int) -> void:
 	_send(id, {"k": "welcome", "aid": aid, "size": match_size, "mode": match_mode}, true)
 
 func _on_peer_disconnected(id: int) -> void:
+	_awaiting_hello.erase(id)
 	if lobby != null and lobby.players.has(id):
 		lobby.remove(id)
 		lobby_changed.emit()
@@ -210,11 +301,17 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 		return
 	if mode == Mode.CLIENT and refused_reason != "":
 		return   # turned away: ignore anything still in flight
+	if mode == Mode.CLIENT and from == 1:
+		_heard_host()
 	match msg.get("k", ""):
+		"hello":
+			if mode == Mode.SERVER:
+				_on_hello(from, msg)
 		"refused":
 			if mode == Mode.CLIENT and from == 1:
 				var why = msg.get("why", "")
 				refused_reason = str(why).left(120) if why is String and why != "" else "The host refused the connection"
+				version_refused = msg.has("v")
 				print("NET refused by host: %s" % refused_reason)
 				refused.emit(refused_reason)
 				peer.close.call_deferred()

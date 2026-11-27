@@ -6,11 +6,23 @@ const Mats := preload("res://src/game/art/materials.gd")
 const OPEN_HELMET := preload("res://assets/characters/InnersceneHelmet.glb")
 const OPPONENT := preload("res://assets/characters/OpponentUniform.glb")
 
+## Fit of InnersceneHelmet.glb on the Quaternius head, in Head-bone space (#158).
+## The GLB as built rides about 0.2 high and is ~1.8x the skull's width, so it
+## perched on the crown. This scale/offset clears the crown by about 7 mm, covers
+## the back of the head down to the skull base and keeps every cranium vertex
+## inside the shell in every clip (tests/test_helmet_fit.gd).
+const OPEN_HELMET_SCALE := 0.75
+const OPEN_HELMET_OFFSET := Vector3(0.0, -0.106, -0.003)
+
 static var _opponent_mesh: Mesh
 static var _opponent_skin: Skin
 
+## `parent` is the Head BoneAttachment3D itself (PlayerView._bone), so the fit is in
+## bone-space units and moves with the head in every clip.
 static func open_helmet(parent: Node3D) -> MeshInstance3D:
 	var gear := OPEN_HELMET.instantiate() as Node3D
+	gear.name = "OpenHelmet"
+	gear.transform = Transform3D(Basis.from_scale(Vector3.ONE * OPEN_HELMET_SCALE), OPEN_HELMET_OFFSET)
 	parent.add_child(gear)
 	return CharacterArt.find_mesh(gear)
 

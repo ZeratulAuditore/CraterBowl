@@ -1,6 +1,7 @@
 extends "res://tests/test_case.gd"
-## C08d: defense lines up stance-locked; Space (snap action) breaks stance for
-## non-DL; neutral-zone clamp shared by host step and client prediction.
+## C08d + #142: everyone lines up stance-locked. The offense stays set until the
+## snap; non-DL defenders break stance with a Space double-tap (one snap action on
+## the wire). Neutral-zone clamp shared by host step and client prediction.
 
 const World := preload("res://src/sim/world.gd")
 const Match := preload("res://src/sim/match.gd")
@@ -8,6 +9,8 @@ const Athlete := preload("res://src/sim/athlete.gd")
 const P := preload("res://src/net/protocol.gd")
 const Predictor := preload("res://src/net/client_predictor.gd")
 const T := preload("res://src/sim/tuning.gd")
+const AI := preload("res://src/sim/ai.gd")
+const DoubleTap := preload("res://src/sim/double_tap.gd")
 const DT := 1.0 / 60.0
 const R := Athlete.Role
 
@@ -26,10 +29,10 @@ func _run(w, inputs: Dictionary, seconds: float) -> void:
 	for i in int(round(seconds / DT)):
 		w.step(inputs, DT)
 
-func test_defense_lines_up_locked_offense_free() -> void:
+func test_everyone_lines_up_locked() -> void:
 	var w := _match().world
 	for a in w.athletes:
-		assert_eq(a.set_lock, a.team != w.offense_team, "athlete %d lock matches side" % a.id)
+		assert_true(a.set_lock, "athlete %d lines up set" % a.id)
 
 func test_locked_defender_holds_spot_but_turns() -> void:
 	var w := _match().world
@@ -39,12 +42,64 @@ func test_locked_defender_holds_spot_but_turns() -> void:
 	assert_true(lb.position.distance_to(start) < 0.01, "locked LB didn't move")
 	assert_near(lb.facing.x, 1.0, 0.001, "but faces the input")
 
-func test_offense_still_moves_presnap() -> void:
+## #142: no offensive athlete translates pre-snap, human or bot, but each turns.
+func test_offense_frozen_until_snap() -> void:
+	for human in [true, false]:
+		var w := _match().world
+		var inputs := {}
+		var start := {}
+		for a in w.athletes:
+			if a.team == w.offense_team:
+				inputs[a.id] = {"dir": Vector2(1, 0), "sprint": true, World.HUMAN: human}
+				start[a.id] = a.position
+		_run(w, inputs, 1.0)
+		for id in start:
+			var a := w.get_athlete(id)
+			assert_true(a.position.distance_to(start[id]) < 0.001, "offense %d (%s) held pre-snap (human=%s)" % [id, a.role, human])
+			assert_near(a.facing.x, 1.0, 0.001, "offense %d still turns to face" % id)
+		assert_true(w.snap(), "snap")
+		var wr := w.find_role(0, R.WR)
+		var x0 := wr.position.x
+		_run(w, inputs, 0.5)
+		assert_true(wr.position.x - x0 > 2.0, "offense moves once the ball is snapped")
+
+func test_offense_cannot_break_stance() -> void:
 	var w := _match().world
-	var wr := w.find_role(0, R.WR)
-	var start := wr.position
-	_run(w, {wr.id: {"dir": Vector2(1, 0)}}, 1.0)
-	assert_true(wr.position.x - start.x > 2.0, "offense unaffected by stance lock")
+	for a in w.athletes:
+		if a.team == w.offense_team:
+			assert_true(not w.can_break_stance(a), "offense %s can't break stance" % a.role)
+			assert_true(not w.break_stance(a.id) and a.set_lock, "offense %s stays set" % a.role)
+
+func test_bots_hold_offense_presnap() -> void:
+	var m := _match()
+	var w := m.world
+	var ai := AI.new()
+	var start := []
+	for a in w.athletes:
+		start.append(a.position)
+	for i in 60:   # under AI_SNAP_DELAY: bots call a play but haven't snapped
+		ai.presnap_tick(w, [], DT)
+		w.step(ai.think(w, []), DT)
+	assert_eq(w.phase, World.Phase.PRESNAP, "still pre-snap")
+	for a in w.athletes:
+		if a.team == w.offense_team:
+			assert_true(a.position.distance_to(start[a.id]) < 0.001, "bot %s held" % a.role)
+
+func test_kickoff_coverage_waits_for_the_kick() -> void:
+	var w := _match().world
+	w.setup_kickoff(30.0)
+	var k := w.kicker()
+	var cover: Athlete = null
+	for a in w.athletes:
+		if a.team == w.offense_team and a != k:
+			cover = a
+			break
+	var y0 := cover.position.y
+	_run(w, {cover.id: {"dir": Vector2(0, 1), World.HUMAN: true}}, 0.5)
+	assert_near(cover.position.y, y0, 0.001, "coverage held before the kick")
+	assert_true(w.kick(k.id, Vector2(w.field.width / 2.0, w.field.length), 0.8), "kick off")
+	_run(w, {cover.id: {"dir": Vector2(0, 1), World.HUMAN: true}}, 0.5)
+	assert_true(cover.position.y - y0 > 2.0, "coverage runs once the ball is kicked")
 
 func test_break_stance_rules() -> void:
 	var w := _match().world
@@ -57,6 +112,7 @@ func test_break_stance_rules() -> void:
 	assert_true(not w.break_stance(dl.id), "DL holds stance")
 	assert_true(dl.set_lock, "DL still locked")
 	assert_true(not w.break_stance(w.find_role(0, R.WR).id), "offense can't break stance")
+	assert_true(not w.can_break_stance(dl), "DL never offered a stance break")
 
 func test_break_stance_only_presnap() -> void:
 	var m := _match()
@@ -133,3 +189,44 @@ func test_prediction_obeys_lock_and_clamp() -> void:
 	lb.velocity = Vector2.ZERO
 	pred.reconcile(lb, 10, w)
 	assert_true(lb.position.y >= w.los_y + T.NEUTRAL_ZONE_HALF - 0.0001, "reconcile replay clamps")
+
+## #142: client prediction applies the same offense lock as the host step.
+func test_prediction_holds_offense_like_host() -> void:
+	var host := _match().world
+	var client := _match().world
+	var hw := host.find_role(0, R.WR)
+	var cw := client.find_role(0, R.WR)
+	for i in 60:
+		host.step({hw.id: {"dir": Vector2(1, 1).normalized(), "sprint": true, World.HUMAN: true}}, DT)
+		client.predict_step(cw, Vector2(1, 1).normalized(), true, DT)
+	assert_true(cw.position.distance_to(hw.position) < 0.0001, "predicted WR = host WR")
+	assert_true(cw.facing.distance_to(hw.facing) < 0.0001, "predicted facing = host facing")
+	assert_true(cw.position.distance_to(Vector2(cw.home_x, client.los_y - 1.0)) < 0.001, "both held on the line")
+
+## #142: one Space press does nothing for a set defender; two inside the window break stance.
+func test_double_tap_window() -> void:
+	var tap := DoubleTap.new()
+	assert_true(not tap.press(10.0), "first press alone does nothing")
+	assert_true(tap.press(10.0 + T.STANCE_DOUBLE_TAP - 0.01), "second press inside the window")
+	assert_true(not tap.press(10.5), "the pair was consumed: a third press starts over")
+	assert_true(not tap.press(10.5 + T.STANCE_DOUBLE_TAP + 0.01), "too slow: no double-tap")
+	assert_true(tap.press(10.5 + T.STANCE_DOUBLE_TAP + 0.2), "but that press opens a new window")
+	tap.press(20.0)
+	tap.reset()
+	assert_true(not tap.press(20.1), "reset forgets a pending press")
+
+## The double-tap feeds the unchanged one-action protocol: one press = no action
+## sent; the completing press sends one snap, which the host turns into break_stance.
+func test_double_tap_drives_one_break_stance() -> void:
+	var m := _match()
+	var w := m.world
+	var cb := w.find_role(1, R.CB)
+	var tap := DoubleTap.new()
+	var sent := 0
+	for t in [1.0, 1.2]:
+		if w.can_break_stance(cb) and not tap.press(t):
+			continue
+		sent += 1
+		assert_true(P.apply_action(m, cb.id, {"a": "snap"}), "host breaks stance")
+	assert_eq(sent, 1, "one action for the double-tap")
+	assert_true(not cb.set_lock and w.phase == World.Phase.PRESNAP, "CB roaming, ball not snapped")

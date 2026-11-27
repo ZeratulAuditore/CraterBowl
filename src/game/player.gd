@@ -48,6 +48,8 @@ var emote_t := 0.0
 var spin_vis_t := 0.0      # view-side spin animation (works for net + local)
 var spin_vis_side := 0
 var bubble: Label3D
+var fair_catch_label: Label3D   # "FAIR CATCH" over a signaling returner (#189), built on first use
+var fair_catch_shown := false
 
 var model: Node3D
 var mesh_i: MeshInstance3D
@@ -104,14 +106,14 @@ func _ready() -> void:
 
 	trim_mat = Mats.cloth(Color.WHITE)
 	var chest := _attach(skel, "spine_03")
-	var head_b := _attach(skel, "Head")
+	var head_bone := _bone(skel, "Head")
 	hand_r = _attach(skel, "hand_r")
 	_open_gear = Node3D.new()
 	chest.add_child(_open_gear)
 	var pads := _part(_open_gear, RC.sphere(0.5, 1.0), Mats.cloth(color), Vector3(0, 0.1, -0.01))
 	pads.scale = Vector3(0.46, 0.15, 0.27)
 	_part(_open_gear, _cyl(0.085, 0.05), trim_mat, Vector3(0, 0.2, 0.0))
-	_open_helmet = Uniforms.open_helmet(head_b)
+	_open_helmet = Uniforms.open_helmet(head_bone)
 	_opponent_mesh = Uniforms.opponent_mesh(mesh_i)
 	number_front = _number_label(chest, 0.205)
 	number_back = _number_label(chest, -0.205)
@@ -137,20 +139,28 @@ func _set_uniform(n: String, v) -> void:
 	if mesh_i and mesh_i.material_override is ShaderMaterial:
 		(mesh_i.material_override as ShaderMaterial).set_shader_parameter(n, v)
 
+## Gear sized in yards: a child of the bone that undoes the model scale.
 func _attach(skel: Skeleton3D, bone: String) -> Node3D:
+	var ba := _bone(skel, bone)
+	if not ba is BoneAttachment3D:
+		return ba
+	var holder := Node3D.new()
+	holder.scale = Vector3.ONE / MODEL_SCALE
+	ba.add_child(holder)
+	return holder
+
+## A node that follows `bone`, in the rig's own (bone-space) units.
+func _bone(skel: Skeleton3D, bone: String) -> Node3D:
 	if skel == null or skel.find_bone(bone) < 0:
 		var n := Node3D.new()
 		n.position.y = {"Head": 1.7, "spine_03": 1.35, "hand_r": 1.0}.get(bone, 1.0)
 		body.add_child(n)
 		return n
 	var ba := BoneAttachment3D.new()
+	ba.name = bone + "Bone"
 	ba.bone_name = bone
 	skel.add_child(ba)
-	# Undo the model scale so gear sizes are authored in yards.
-	var holder := Node3D.new()
-	holder.scale = Vector3.ONE / MODEL_SCALE
-	ba.add_child(holder)
-	return holder
+	return ba
 
 func _part(parent: Node3D, mesh: Mesh, mat: Material, at: Vector3) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
@@ -238,6 +248,26 @@ func emote(id: String) -> void:
 	bubble.text = Emotes.bubble(id)
 	bubble.visible = true
 
+## Fair-catch signal (#189): a raised arm plus a label everyone can read, while the
+## kick is in the air. Change-driven: toggled only when the signal flips.
+func _show_fair_catch(on: bool) -> void:
+	fair_catch_shown = on
+	if on and fair_catch_label == null:
+		fair_catch_label = Label3D.new()
+		fair_catch_label.name = "FairCatchSignal"
+		fair_catch_label.text = "FAIR CATCH"
+		fair_catch_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		fair_catch_label.no_depth_test = true
+		fair_catch_label.pixel_size = 0.0032
+		fair_catch_label.font_size = 64
+		fair_catch_label.outline_size = 16
+		fair_catch_label.modulate = Color(1.0, 1.0, 1.0)
+		fair_catch_label.outline_modulate = Color(0.05, 0.05, 0.1)
+		fair_catch_label.position = Vector3(0, 2.7, 0)
+		add_child(fair_catch_label)
+	if fair_catch_label:
+		fair_catch_label.visible = on
+
 func is_celebrating() -> bool:
 	return celebrate_t > 0.0
 
@@ -310,6 +340,9 @@ func _process(delta: float) -> void:
 		spin_vis_side = athlete.spin_dir
 	spin_vis_t = maxf(0.0, spin_vis_t - delta)
 	_release_t = maxf(0.0, _release_t - delta)
+	var fc: bool = world != null and world.get("fair_catch_id") == athlete.id and int(world.phase) == 1
+	if fc != fair_catch_shown:
+		_show_fair_catch(fc)
 	_choose_anim(spd, down)
 	_was_down = down
 	# Celebration flourishes on top of the dance.
@@ -351,6 +384,9 @@ func _choose_anim(spd: float, down: bool) -> void:
 		return
 	if emote_t > 0.0 and spd < 1.5:
 		_play(Emotes.clip(emote_id), 0.12)
+		return
+	if fair_catch_shown and spd < 1.5:
+		_play("Pistol_Aim_Up", 0.12)   # arm straight up: the fair-catch wave
 		return
 	if athlete.blocking:
 		_play("u2/Idle_Shield")

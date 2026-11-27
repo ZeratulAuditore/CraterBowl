@@ -20,7 +20,8 @@ defenders. Line play is in [line-play.md](line-play.md); scoring, tries and turn
   the goal, otherwise Mesh (`match.gd _setup_formation`).
 - **Space** (gamepad A) snaps. The 20 s play clock (`Clock.PLAY_CLOCK`) auto-snaps if nobody does.
 - Bot-only offenses pick their own call (`ai.choose_play`, about one run in three on early downs when an RB exists) and
-  snap after `AI_SNAP_DELAY` (2.5 s), or `HUDDLE_SECONDS` (5.0 s) when any human is in a classic match.
+  snap after `AI_SNAP_DELAY` (2.5 s), or `HUDDLE_SECONDS` (5.0 s) when any human is in a classic match. The scorebug's
+  play clock counts that huddle down and the snap comes at 0 (#136).
 - Your team's pre-snap turf art shows every route, the RB's run path and each lineman's target; yours is highlighted.
   The defense never sees it.
 
@@ -41,12 +42,18 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
   ball and the snap is instant.
 
 ### Passing
-- **Aim:** during live play the mouse is captured. Horizontal motion orbits the camera; vertical motion sets the aim
-  distance (2 to 65 yd, starts at 22). A ground reticle and a 24-dot arc preview show while you can throw.
-- **Throw:** left click or **J** (gamepad RT). Hold **Ctrl** (gamepad RB) for a lob.
-- Player throws use a fixed `PLAYER_PASS_POWER` (0.68), so about 24 yd/s. The solver picks the flattest angle that
-  crosses the aim point at `CATCH_HEIGHT` (1.1 yd). Past about 56 yd the ball goes out at 45° and falls short.
-- A lob uses a fixed `LOB_ANGLE` (65°) arc with the speed solved to land on the target.
+- **QB (POV aim):** while you're the passer the camera goes over your shoulder and the mouse (gamepad right stick)
+  aims. Where you look is the direction, looking up or down sets the launch angle, and holding the throw
+  (left click / **J**, gamepad RT) charges the speed from `THROW_SPEED_MIN` to `THROW_SPEED_MAX` (12 to 30 yd/s) over
+  `THROW_CHARGE_TIME` (0.9 s). Release throws. Keys and numbers: [CONTROLS.md "QB POV aiming"](../CONTROLS.md#qb-pov-aiming).
+- **Aim-zoom (#109):** while you hold the throw the camera FOV narrows with the charge, from 65° to 45° at full power,
+  so the longest throws zoom in furthest. It eases (`1 - exp(-8·dt)`) and returns to 65° on release
+  (`main.gd aim_zoom_fov`, `AIM_ZOOM_FOV`).
+- A ground reticle and a 24-dot arc preview show where the ball will come down while you can throw.
+- **Other carriers** (an RB behind the line after a handoff) use the orbit camera: mouse X orbits, mouse Y sets the aim
+  distance (2 to 65 yd). Left click / **J** throws on press at a fixed `PLAYER_PASS_POWER` (0.68, about 24 yd/s); the
+  solver picks the flattest angle that crosses the aim point at `CATCH_HEIGHT` (1.1 yd). Hold **Ctrl** (gamepad RB) for
+  a lob: a fixed `LOB_ANGLE` (65°) arc with the speed solved to land on the target.
 - Legal throw: you hold the ball, play is live, you aren't diving, grounded or mid dash/spin, you are at or behind the
   LOS, and no forward pass has been thrown. Any carrier qualifies, so an RB behind the line after a handoff can throw.
 - A ball that hits the ground is incomplete.
@@ -73,9 +80,13 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
 - The snap is a short visible flight, not a teleport, so its timing is readable.
 - Aim point plus solved arc over homing passes (no skill) or golf-style angle/power (too fiddly). The arc preview
   makes it learnable.
-- Charged power (hold to charge, release to throw) was removed in the live-controls rework: throws now fire
-  on press at fixed power. `THROW_INHERIT` (30% of QB velocity) exists but player and bot throws pass
-  `inherit_motion = false`, so throwing on the run no longer drifts the ball.
+- Charged power was removed in the live-controls rework, then came back for the QB with Gridiron-style POV aiming:
+  look sets direction and height, the hold sets distance. Non-QB carriers still throw on press at fixed power.
+  POV throws add `THROW_INHERIT` (30%) of the QB's velocity (`world.gd throw_dir`); target-aimed player and bot
+  throws pass `inherit_motion = false`, so they don't drift.
+- Aim-zoom follows the charge rather than a separate zoom button (Gridiron zooms on right click; right click is
+  block here). Charge is distance, so the zoom is tightest exactly when the target is far away. A fixed zoom on any
+  hold would have hidden the near field on short, quick throws.
 - Reach-volume catching over physics collision: deterministic and server friendly. A catch button is #9.
 - The contest margin makes body position matter: a defender doesn't need to be closer, only close enough.
 - Pass not catchable for 2.5 yd and the 0.6 yd interception radius both came from bot sims where rushers batted
@@ -100,4 +111,4 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
 ## Open issues
 - #9 C07 Catch rules: toe-taps, batted balls, catch button, dive/jump catches
 - #10 C09 Offense depth: formations, audibles, hot routes, pre-snap motion
-- #11 C10 Throw readability: landing marker, aim-zoom
+- #11 C10 Throw readability: landing marker, aim-zoom (aim-zoom shipped as #109)

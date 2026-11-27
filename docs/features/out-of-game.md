@@ -6,8 +6,9 @@ Feature-level doc: how this works **today** on `main`. The in-match game is in t
 ## Identity
 - **Name: Crater Bowl.** The stadium is built inside a lunar crater, which matches the graphics pass (lunar dome stadium, HELIOS vs NEBULA).
   No video game with this name was found (2026-11-25 search). The low-gravity football space is crowded (Gridiron's Chaosball, G-Ball, Zero-G), so the name leans on *crater/bowl*, not *gravity*.
-- **Mark:** a gold football launching out of a cyan-rimmed crater. Wordmark: "CRATER" in cream + "BOWL" in cyan, set in Oswald Bold (OFL), converted to paths.
+- **Mark:** a gold football launching out of a cyan-rimmed crater. Wordmark: "CRATER" in cream + "BOWL" in cyan, set in Graduate (OFL, collegiate block), converted to paths.
   - Sources: `tools/brand/build_logo.py` → `assets/brand/*.svg`; `tools/brand/rasterize.gd` → PNGs (icon 64/256/512, wide and stacked logos).
+  - Type (#125): three roles, all OFL. **Graduate** (collegiate block) for the wordmark, PLAY, nameplates and jersey/yard numbers; **Teko** (broadcast scorebug style) for nav, buttons, headings and the HUD (the default); **Barlow Semi Condensed** for paragraphs. Helpers: `UITheme.display_font()`, `font()`/`ui_font()`, `body_font()`. Teko and Barlow are rescaled by `tools/brand/scale_fonts.py` so their capitals match the sizes the layouts were tuned for. Credits are listed in Settings and `ASSETS.md`.
   - Palette (shared with art direction): space `#07080F`, navy `#0E1424`, cream `#FFF4E0`, cyan `#5CE1FF`, orange `#FF6A1F`, gold `#F2BF26`. Constants are in `src/ui/ui_theme.gd`.
 - **User data** lives in a fixed dir, `crater-bowl` (`config/use_custom_user_dir`), so a future rename can't orphan profiles. On first windowed launch, `Launch.migrate()` copies data from the old `Fourth & Long` dir. It never overwrites, skips `test_*`, and runs once (`.migrated` marker).
 
@@ -28,8 +29,14 @@ Feature-level doc: how this works **today** on `main`. The in-match game is in t
 | Practice | Passing / catching / tackling / scrimmage drills |
 | Locker | Level/XP, equip unlocked cosmetics + number |
 | Leaderboards | Ranked rating + per-position career tables |
+| Last game | Reopen the postgame overview. Team stats keep both columns clear of the scrollbar. |
 | Replays | Saved match replays, newest first |
 | Settings | Player, video, audio, online, controls (click to rebind; conflicts swap) |
+
+### Design decisions
+
+- The postgame box score leaves a 12 px inset before the scrollbar so both teams' right-aligned values stay readable when the overview scrolls (#115).
+- **Menu statuses get their own tab on top of the footer** (#221). A status is any one-line message the menu shows: why a match ended (a refusal, "Host disconnected", "Couldn't reach the matchmaker"), an invite-code or name error, the UPnP result. It shows in orange in a small tab centered on the footer's top edge, sized to the text, and hidden when there is no status. It wraps only past the window width, so every status is shown in full. Why: statuses used to sit in the footer row between the links and the build label, a slot only about 190 px wide (about 22 characters) once the music player joined the footer, and they were clipped there ("Update Crater Bowl to pl"). Rejected: wrapping inside that slot (a 60-character reason needs three lines; the footer has room for two), a tooltip with the full text (mouse-only, and the part that gets cut is the instruction the player needs), and a timed toast (a player who looks away misses the reason). The tab overlaps the 22 px gap between the footer and the Play button or panel above it, and click-through is on so it never blocks them. Covered by `tests/visual/menu_long_status_test.gd` (captures `menu-long-status-refusal`, `menu-long-status-invite`).
 
 ## Finding games + internet play
 - **Matchmaker** (`--matchmaker`) does queues (casual/competitive, parties, Chaosball) and now also the **server browser**: hosts `register` their lobby every 5 s (`src/net/lobby_advertiser.gd`); entries expire after 20 s (`src/net/lobby_registry.gd`).

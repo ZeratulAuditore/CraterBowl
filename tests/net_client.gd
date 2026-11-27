@@ -3,7 +3,8 @@ extends SceneTree
 ## against a host started with: -- --host --port=N --playclock=4
 ## --host-loss (#56): join, print "NET HOSTLOSS ARMED" once in the match, then expect the
 ## host to be killed (net_test.sh does it) and assert we land on the menu with
-## "Host disconnected".
+## "Host disconnected". #86: within NetSession.DROP_AFTER (+ slack) of the host's last
+## snapshot, after the "Connection to host lost…" banner (ENet alone took 5.8-9.7 s).
 
 var main
 var f := 0
@@ -16,6 +17,8 @@ var start_x := INF
 var max_dx := 0.0
 var got_snap_event := false
 var saw_live := false
+var opening_play_clock := -1.0
+var next_play_clock := -1.0
 var bad_snap_sent_at := -1
 var bad_snap_rejected := false
 var last_server_x := INF
@@ -44,8 +47,18 @@ var snapped_run := false
 var sent_handoff := false
 var handoff_to := -1
 var remote_handoff_confirmed := false
+var xp_before := 0
+var games_before := 0
+var had_first_td := false
+var had_first_win := false
+var got_awards := false
 var host_loss := false      # #56 mode
 var armed_at := -1
+var last_host_ms := -1      # #86: wall clock of the last snapshot from the host
+var stall_banner_seen := false
+var lost_after := -1.0      # s from the last snapshot to host_lost
+const NetSession := preload("res://src/net/net_session.gd")
+const HOST_LOSS_SLACK := 0.75   # s over DROP_AFTER: frame granularity + the kill landing mid-gap
 
 func check(cond: bool, msg: String) -> void:
 	print(("  NET OK   " if cond else "  NET FAIL ") + msg)
@@ -65,6 +78,11 @@ func _on_snap(s: Dictionary) -> void:
 		quarter_clock_seen = true
 	if s["ph"] == 1:
 		saw_live = true
+	elif s["ph"] == 0:
+		if not saw_live and opening_play_clock < 0.0:
+			opening_play_clock = s["c"][2]
+		elif saw_live and next_play_clock < 0.0:
+			next_play_clock = s["c"][2]
 
 func _on_lobby(st: Dictionary) -> void:
 	if not saw_lobby and st.get("phase", 1) == 0:
@@ -89,6 +107,10 @@ func _on_event(n: String, _d: Dictionary) -> void:
 		got_timeout_event = true
 	if n == "handoff" and _d.get("by") == aid:
 		handoff_to = int(_d["to"])
+	if n == "awards":
+		got_awards = true
+		check(main.player_name == "Ann" and not _d["xp"].has("Ann"),
+			"same-named players receive seat awards without a shared name entry")
 
 func _initialize() -> void:
 	host_loss = OS.get_cmdline_user_args().has("--host-loss")
@@ -102,6 +124,10 @@ func _physics_process(_dt: float) -> bool:
 	if host_loss:
 		return _host_loss_step()
 	if f == 2:
+		xp_before = main.profile.xp
+		games_before = main.profile.games
+		had_first_td = main.profile.achievements.has("first_td")
+		had_first_win = main.profile.achievements.has("first_win")
 		main.net.lobby_received.connect(_on_lobby)
 		main.net.welcomed.connect(_on_welcome)
 		main.net.snapshot_received.connect(_on_snap)
@@ -113,9 +139,10 @@ func _physics_process(_dt: float) -> bool:
 			main.do_action({"a": "defense", "p": "edge_blitz"})
 			var me = main.world.get_athlete(aid)
 			was_locked = me.set_lock or me.role == main.Athlete.Role.DL
-			main.do_action({"a": "snap"})          # defense Space: break stance over the wire
+			_key(KEY_SPACE)   # #142: one press alone does nothing on a set defender...
+			_key(KEY_SPACE)   # ...the double-tap sends one snap action: break stance over the wire
 			main.input_override = Vector2(1, 0)  # strafe right (legal presnap once roaming)
-		if not broke_stance and main.world.phase == 0 and not main.world.get_athlete(aid).set_lock:
+		if not broke_stance and not saw_live and main.world.phase == 0 and not main.world.get_athlete(aid).set_lock:
 			broke_stance = true
 		var a = main.world.get_athlete(aid)
 		if main.world.phase == 0 and a.team != main.world.offense_team and a.position.y < main.world.los_y + 0.5 - 0.001:
@@ -146,7 +173,7 @@ func _physics_process(_dt: float) -> bool:
 		equipped_number = main.views[aid].number_text
 	if bad_snap_sent_at > 0 and f > bad_snap_sent_at + 90:
 		_test_remote_handoff()
-	if f == 1500 or remote_handoff_confirmed:
+	if f == 1500 or (remote_handoff_confirmed and got_awards):
 		check(saw_lobby and lobby_size == 5 and lobby_code.length() == 11, "joined by code into the private lobby (5v5, code %s)" % lobby_code)
 		check(quarter_lobby_seen and quarter_clock_seen, "host lobby Q and H select three-minute quarters on both machines")
 		check(aid >= 0, "readied up -> match started -> welcomed with athlete %d" % aid)
@@ -160,15 +187,24 @@ func _physics_process(_dt: float) -> bool:
 		check(not crossed_line, "predicted defender never past the neutral zone")
 		check(lead_samples > 10, "own athlete predicted ahead of server state (%d frames)" % lead_samples)
 		check(saw_live and got_snap_event, "host auto-snap reached client (snapshot LIVE + reliable event)")
+		check(opening_play_clock > 0.0 and opening_play_clock <= 4.0,
+			"lobby match opens with the host's short play clock (%.2f s)" % opening_play_clock)
+		check(next_play_clock >= 3.0 and next_play_clock <= 4.0,
+			"client sees the short play clock reset on the next down (%.2f s)" % next_play_clock)
 		check(defense_recall_seen, "remote defender recalled the previous snap's call")
 		check(defense_call_seen, "defensive selection reached host and returned in a snapshot")
 		check(bad_snap_rejected, "defense snap rejected by server")
 		check(team_swap_rejected, "legacy team request preserves the host assignment")
 		check(equipped_number == "88", "my equipped #88 round-tripped through the host (%s)" % equipped_number)
 		check(pick_rejected, "legacy slot request preserves the host assignment")
-		check(timeout_confirmed and got_timeout_event, "remote U decrements only its team's timeouts and broadcasts the event")
+		check(timeout_confirmed and got_timeout_event, "remote T decrements only its team's timeouts and broadcasts the event")
 		check(remote_handoff_confirmed, "client QB hands off through G and sees the host's RB possession")
 		check(remote_handoff_confirmed and main.controlled_id == aid, "online QB keeps the same athlete after the handoff")
+		check(got_awards and main.profile.xp == xp_before + 100 and main.profile.games == games_before + 1,
+			"same-named losing client receives only its own 100 XP")
+		check(main.profile.achievements.has("first_td") == had_first_td
+			and main.profile.achievements.has("first_win") == had_first_win,
+			"host's touchdown and win leave the client's achievements as they were")
 		print("NET FLOW " + ("PASS" if ok else "FAIL"))
 		quit(0 if ok else 1)
 	return false
@@ -181,7 +217,7 @@ func _test_remote_handoff() -> void:
 	if w.offense_team != 1 or me.role != main.Athlete.Role.QB:
 		return
 	if not sent_timeout and w.phase == w.Phase.PRESNAP:
-		_key(KEY_U)
+		_key(KEY_T)
 		sent_timeout = true
 	if sent_timeout and main.series.clock.timeouts == [3, 2]:
 		timeout_confirmed = true
@@ -195,13 +231,19 @@ func _test_remote_handoff() -> void:
 		_key(KEY_G)
 		sent_handoff = true
 	var back = w.find_role(1, main.Athlete.Role.RB)
-	remote_handoff_confirmed = sent_handoff and back != null and back.id == handoff_to and w.ball.is_held_by(back.id)
+	remote_handoff_confirmed = remote_handoff_confirmed or (
+		sent_handoff and back != null and back.id == handoff_to and w.ball.is_held_by(back.id))
 
 ## #56: in the match, then the host dies -> back on the menu saying why.
 func _host_loss_step() -> bool:
 	if f == 2:
 		main.net.welcomed.connect(_on_welcome)
 		main.net.snapshot_received.connect(_on_snap)
+		main.net.snapshot_received.connect(func(_s): last_host_ms = Time.get_ticks_msec())
+		main.net.host_stalled.connect(func():
+			var b = main.get_node_or_null("LinkBanner")
+			stall_banner_seen = b != null and b.visible, CONNECT_DEFERRED)
+		main.net.host_lost.connect(func(): lost_after = (Time.get_ticks_msec() - last_host_ms) / 1000.0)
 	if armed_at < 0 and aid >= 0 and snaps > 5:
 		armed_at = f
 		print("NET HOSTLOSS ARMED")
@@ -211,10 +253,15 @@ func _host_loss_step() -> bool:
 	var scene = current_scene
 	var on_menu: bool = scene != null and scene.scene_file_path == "res://scenes/menu.tscn" and scene.get("status_label") != null
 	if on_menu or f == 3000:
+		var silent := (Time.get_ticks_msec() - last_host_ms) / 1000.0
+		print("NET HOSTLOSS detected %.2fs after the host's last snapshot (menu up after %.2fs)" % [lost_after, silent])
 		check(armed_at > 0, "in the match (athlete %d, %d snapshots) before the host died" % [aid, snaps])
 		check(on_menu, "client left the frozen match for the menu after losing the host (%.1fs after arming)" % ((f - armed_at) / 60.0))
 		var status: String = scene.status_label.text if on_menu else ""
 		check(status == "Host disconnected", "menu status says why: '%s'" % status)
+		var bound: float = NetSession.DROP_AFTER + HOST_LOSS_SLACK
+		check(lost_after > 0.0 and lost_after <= bound, "host loss detected within %.2fs of the last snapshot (%.2fs)" % [bound, lost_after])
+		check(stall_banner_seen, "'Connection to host lost…' showed before the drop")
 		print("NET HOSTLOSS " + ("PASS" if ok else "FAIL"))
 		quit(0 if ok else 1)
 	return false

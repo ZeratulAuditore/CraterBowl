@@ -10,20 +10,58 @@ const DT := 1.0 / 60.0
 const R := Athlete.Role
 
 var owners := {}
+var player_ids := {}
 
 func _setup() -> Array:
 	owners = {}
+	player_ids = {}
 	var w := World.new()
 	Roster.new().build(w, 7)
 	var m := Match.new(w)
 	m.start(0, 25.0)
 	var s := Stats.new()
-	s.attach(w, func(aid): return owners.get(aid, "Bot"))
+	s.attach(w, func(aid): return owners.get(aid, "Bot"), null, func(aid): return player_ids.get(aid, -1))
 	return [w, m, s]
 
 func _ids(w) -> Dictionary:
 	return {"qb": w.find_role(0, R.QB).id, "wr": w.find_role(0, R.WR).id, "rb": w.find_role(0, R.RB).id,
 		"lb": w.find_role(1, R.LB).id, "cb": w.find_role(1, R.CB).id}
+
+func test_award_stats_separate_same_named_players() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	owners[i["qb"]] = "Ann"
+	owners[i["lb"]] = "Ann"
+	player_ids[i["qb"]] = 1
+	player_ids[i["lb"]] = 2
+	w.event.emit("snap", {})
+	w.event.emit("tackle", {"by": i["lb"], "carrier": i["qb"], "spot": Vector2(26, 30), "team": 0})
+	w.event.emit("snap", {})
+	w.event.emit("touchdown", {"carrier": i["qb"], "spot": Vector2(26, 100), "team": 0, "points": 7})
+	w.event.emit("snap", {})
+	w.event.emit("touchdown", {"carrier": i["qb"], "spot": Vector2(26, 100), "team": 0, "points": 6})
+	assert_eq(s.award_stats[1]["rush_td"], 2.0)
+	assert_eq(s.award_stats[1]["max_td_pts"], 7.0)
+	assert_eq(s.award_stats[1].get("tkl", 0.0), 0.0)
+	assert_eq(s.award_stats[2], {"tkl": 1.0})
+
+func test_award_stats_follow_owner_when_a_seat_is_reused() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var qb: int = _ids(w)["qb"]
+	w.event.emit("throw", {"by": qb})
+	assert_true(s.award_stats.is_empty(), "bot play earns no award stats")
+	owners[qb] = "Ann"
+	player_ids[qb] = 1
+	w.event.emit("throw", {"by": qb})
+	player_ids[qb] = 2
+	w.event.emit("throw", {"by": qb})
+	assert_eq(s.award_stats[1], {"att": 1.0})
+	assert_eq(s.award_stats[2], {"att": 1.0})
+	assert_eq(s.get_line("Ann", "QB")["att"], 2.0, "career line keeps the display-name format")
 
 func test_completion_line() -> void:
 	var r := _setup()

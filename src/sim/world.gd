@@ -64,6 +64,7 @@ var kick_live := false   # a kick is in the air
 var kick_free := false   # kicked ball not yet possessed by anyone (and not blocked)
 var kick_blocked := false
 var kick_spot := Vector2.ZERO
+var fair_catch_id := -1  # returner who signaled a fair catch on this kick (#189), else -1
 var _kick_rest_t := 0.0
 
 func _init() -> void:
@@ -128,7 +129,7 @@ func setup_formation(los: float) -> void:
 	var cx := field.width / 2.0
 	for a in athletes:
 		a.reset_state()
-		a.set_lock = a.team != offense_team   # defense lines up set; Space breaks stance
+		a.set_lock = true   # everyone lines up set (#142): offense until the snap, defense non-DL until break_stance
 		var depth: float = FORMATION_DEPTH.get(a.role, 1.0)
 		var y := los - depth if a.team == offense_team else los + depth
 		a.position = Vector2(a.home_x, y)
@@ -164,7 +165,27 @@ func _reset_kick() -> void:
 	kick_live = false
 	kick_free = false
 	kick_blocked = false
+	fair_catch_id = -1
 	_kick_rest_t = 0.0
+
+## Fair catch (#189): a return-team athlete waves off the return while a punt or
+## kickoff is in the air and untouched. One signal per kick. The signaler can't be
+## blocked; if he catches it in the air the play is dead there (`fair_catch`).
+func can_signal_fair_catch(id: int) -> bool:
+	var a := get_athlete(id)
+	return a != null and kick_in_air() and fair_catch_id < 0 and a.team != offense_team and a.can_act()
+
+## A punt or kickoff still in the air and untouched. Any touch (a catch, a block)
+## or landing changes the ball state, so this also holds on a client from snapshots.
+func kick_in_air() -> bool:
+	return phase == Phase.LIVE and kicked and ball.state == Ball.State.IN_FLIGHT and kick_play in ["punt", "kickoff"]
+
+func signal_fair_catch(id: int) -> bool:
+	if not can_signal_fair_catch(id):
+		return false
+	fair_catch_id = id
+	event.emit("fair_catch_signal", {"by": id, "team": get_athlete(id).team})
+	return true
 
 func kicker() -> Athlete:
 	return find_role(offense_team, Athlete.Role.QB)
@@ -460,10 +481,16 @@ func set_route(id: int, route: String) -> bool:
 	route_of[id] = route
 	return true
 
-## Defense pre-snap: stand up out of stance and roam (non-DL only, one-way per play).
+## A set defender who may stand up and roam: pre-snap, non-DL, still locked.
+## The offense never can: it stays set until the snap (#142).
+func can_break_stance(a: Athlete) -> bool:
+	return a != null and phase == Phase.PRESNAP and a.team != offense_team and a.role != Athlete.Role.DL and a.set_lock
+
+## Defense pre-snap: stand up out of stance and roam (one-way per play). The
+## client asks for it only on a Space double-tap (DoubleTap); the action is one press.
 func break_stance(id: int) -> bool:
 	var a := get_athlete(id)
-	if a == null or phase != Phase.PRESNAP or a.team == offense_team or a.role == Athlete.Role.DL or not a.set_lock:
+	if not can_break_stance(a):
 		return false
 	a.set_lock = false
 	event.emit("break_stance", {"id": id})
@@ -477,6 +504,7 @@ func is_stance_locked(a: Athlete) -> bool:
 func step_athlete(a: Athlete, dir: Vector2, sprint: bool, dt: float, block := false) -> void:
 	if is_stance_locked(a):
 		a.face(dir)
+		a.emote_cd = maxf(0.0, a.emote_cd - dt)   # taunts still recharge while set (#240)
 	else:
 		var start := a.position
 		var moving_special := a.move_t > 0.0
@@ -732,6 +760,8 @@ func _can_block(a: Athlete) -> bool:
 	return c != null and (c.role != Athlete.Role.QB or c.position.y > los_y)
 
 func _can_be_blocked(d: Athlete) -> bool:
+	if d.id == fair_catch_id and kick_live:
+		return false   # fair-catch protection: nobody touches the signaling returner (#189)
 	return d.team != possession_team() and not d.is_grounded() and not d.is_spinning() and d.engaged_with < 0 and d.immune_t <= 0.0
 
 func _step_blocks(prev: Array, inputs: Dictionary, dt: float) -> void:
@@ -1224,7 +1254,7 @@ func _step_kick(dt: float) -> void:
 				best_d = d
 				best = a
 		if best:
-			_field_kick(best, bp)
+			_field_kick(best, bp, true)
 			return
 	if ball.position.z <= 0.0:
 		ball.position.z = 0.0
@@ -1240,12 +1270,21 @@ func _step_kick(dt: float) -> void:
 		event.emit("kick_land", {"at": bp})
 
 ## The return team gets the ball (catch in the air or a clean pickup).
-func _field_kick(a: Athlete, bp: Vector2) -> void:
+## After a fair-catch signal there is no return: the signaler's catch in the air is
+## a fair catch, and any other return-team possession (a teammate's catch, or a
+## pickup after a muff) is dead where it happened, as in the NFL.
+func _field_kick(a: Athlete, bp: Vector2, in_air := false) -> void:
 	kick_live = false
 	kick_free = false
 	if a.position.y > field.length:
 		ball.state = Ball.State.DEAD   # fielded in the end zone: downed for a touchback
 		_kick_dead("touchback", a.position, {"by": a.id})
+		return
+	if fair_catch_id >= 0:
+		ball.hold(a.id)
+		last_possession = a.team
+		var fair: bool = in_air and a.id == fair_catch_id
+		_kick_dead("fair_catch" if fair else "kick_downed", a.position, {"by": a.id, "fair_catch": fair})
 		return
 	ball.hold(a.id)
 	last_possession = a.team
@@ -1255,6 +1294,7 @@ func _block_kick(a: Athlete) -> void:
 	kick_live = false
 	kick_free = false
 	kick_blocked = true
+	fair_catch_id = -1   # a blocked kick is a loose ball; the signal no longer applies
 	ball.state = Ball.State.LOOSE
 	var side := signf(ball.position.x - a.position.x)
 	ball.velocity = Vector3(side * 2.5, -absf(ball.velocity.y) * 0.25 - 2.0, 3.0)
@@ -1295,7 +1335,7 @@ func _step_free_kick(bp: Vector2, dt: float) -> void:
 	else:
 		_kick_dead("kick_downed", bp, {"by": best.id})   # kicking team downs it
 
-## Kick play over. `reason`: field_goal, touchback, kick_out_of_bounds, kick_downed.
+## Kick play over. `reason`: field_goal, touchback, kick_out_of_bounds, kick_downed, fair_catch.
 func _kick_dead(reason: String, at: Vector2, extra: Dictionary) -> void:
 	kick_live = false
 	kick_free = false

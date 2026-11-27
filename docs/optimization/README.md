@@ -73,7 +73,8 @@ The renderer's cost is roughly **draw calls x passes** plus **skinned vertices**
   frame, re-text at 10–20 Hz. `Label.text = same_string` is already a no-op, but the string
   formatting that builds it is not.
 - No allocation churn per frame: no `.new()` of nodes, meshes or materials in `_process`, and no
-  `duplicate()` of big arrays per tick. `perf.sh` fails on object growth over 600 frames.
+  `duplicate()` of big arrays per tick. `perf.sh` fails on object growth that repeats across two
+  600-frame windows (after a 1200-frame warm-up; see the budget table).
 - No `print()` in per-frame paths (stdout is flushed on every print: `run/flush_stdout_on_print`).
 - Avoid O(n²) over athletes in per-tick code unless n ≤ 14 and it's measured. AI is the
   usual suspect; `tools/bench.gd` times each stage.
@@ -89,10 +90,19 @@ The renderer's cost is roughly **draw calls x passes** plus **skinned vertices**
 | Skinned meshes | 14 | 14 | same |
 | Sim tick p50 (7v7 bots) | 800 µs | 130–320 µs | `tools/bench.gd` |
 | Scene tick p50 (headless, whole frame) | 8 ms | 2.5–4 ms | same |
-| Object growth (min of two 400-frame windows; first-use allocations excluded) | 50 | about ±5 (a planted per-frame leak reads 405) | same |
+| Object growth (min of two 600-frame windows after a 1200-frame warm-up, coin toss pinned; first-use allocations excluded) | 50 | 5 (a planted per-frame leak reads 605, a planted 30-node-per-snap leak 69) | same |
+
+The object-growth scenario is fixed: `tools/bench.gd` pins the opening coin toss (`--toss`,
+default 1), so the same plays and the same first-use allocations happen on every run. The
+first half of the run is warm-up because the game builds some UI lazily and keeps it: the replay
+hint bar (about 107 objects, first replay) and the play-picker buttons (about 52, first time the
+picker shows). Those are bounded; an 8000-frame run plateaus at the same object count. When the
+gate fails it prints both windows and the node classes that grew in each.
 
 The render budgets are counts, not timings. They're identical on every machine, so they never
-flake. The CPU budgets use medians at about 3–5x the measured cost, so a busy machine doesn't
+flake. That holds only for a fixed scene: `tests/render_budget.gd` pins the coin toss
+(`toss_seed = 1`), as `tools/bench.gd` does, because the two outcomes differ by one instance and
+one material (#180). The CPU budgets use medians at about 3–5x the measured cost, so a busy machine doesn't
 fail them but an order-of-magnitude regression does.
 
 **Ratchet rule:** when you make something cheaper, lower the budget to about 1.25x the new

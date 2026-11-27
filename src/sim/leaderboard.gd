@@ -3,6 +3,7 @@ extends RefCounted
 
 const DEFAULT_PATH := "user://leaderboard.json"
 const MAX_ROWS := 100
+const Stats := preload("res://src/sim/stats.gd")
 
 var careers := {}   # "player|POS" -> {"games": n, field: sum, ...}
 
@@ -16,7 +17,8 @@ func record_match(lines: Dictionary) -> void:
 			careers[k] = {"games": 0}
 		careers[k]["games"] += 1
 		for f in lines[k]:
-			careers[k][f] = careers[k].get(f, 0.0) + float(lines[k][f])
+			var v := float(lines[k][f])
+			careers[k][f] = maxf(careers[k].get(f, 0.0), v) if f in Stats.MAX_FIELDS else careers[k].get(f, 0.0) + v
 
 static func score(pos: String, l: Dictionary) -> float:
 	var g := func(f): return float(l.get(f, 0.0))

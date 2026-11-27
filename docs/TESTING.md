@@ -14,7 +14,7 @@ Run the full one before every commit that touches code. The pre-commit hook runs
 | Rules/sim logic is right | `./scripts/test.sh` | ~10s |
 | Nothing got slower (render budget + CPU medians) | `./scripts/perf.sh` | ~30s |
 | Scene boots clean + scripted play works | `./scripts/smoke.sh` (also runs net + mm) | ~2–3 min |
-| Networked behavior | `./scripts/net_test.sh` (host + client flow, then a host-loss phase that SIGKILLs a second host, #56), `./scripts/mm_test.sh`; lobby seat cap: `godot --headless --path . -s res://tests/net_capacity.gd` (one process, host + 8 joiners; run by smoke.sh) | ~15s each |
+| Networked behavior | `./scripts/net_test.sh` (host + client flow, then a host-loss phase that SIGKILLs a second host, #56, then a client forced to `--protocol-version=0` that must be refused with the version reason, #165), `./scripts/mm_test.sh`; lobby seat cap: `godot --headless --path . -s res://tests/net_capacity.gd` (one process, host + 8 joiners; run by smoke.sh) | ~15s each |
 | **What it looks like** (visuals, HUD, camera, art) | `./scripts/shot.sh ...` then view the PNGs | ~30s |
 | **What changed visually** (PR evidence) | `./scripts/before_after.sh ...` then `./scripts/pr_evidence.sh <PR#> <out>` | ~1–4 min |
 
@@ -32,11 +32,15 @@ for every test process is throwaway. Tests can't touch the player's saves or set
 (or another session) changing settings mid-run can't fail the guard. Running `smoke.sh` alone still
 uses the real dir plus its before/after guard, so prefer `check.sh`.
 
-**Pre-commit hook (optional, off by default).** `./scripts/install-hooks.sh` sets `core.hooksPath=scripts/githooks`
-(shared by all worktrees): commits touching `.gd/.tscn/.tres/.sh/.godot` then run `check.sh --fast`.
-It's off because of the commit-everything rule (`AGENTS.md`): another session's half-finished files
-ride along in your commit and would block it. Turn it on for a solo clone or CI-like use. Either way,
-**run `./scripts/check.sh` yourself before committing your change.**
+**Pre-commit hook (opt-in).** Nothing enables it on clone. `./scripts/install-hooks.sh` sets
+`core.hooksPath=scripts/githooks` in the clone's git config, so it applies to every worktree at once,
+including other sessions' (a branch without `scripts/githooks` simply has no hook). Once installed,
+`scripts/githooks/pre-commit` exits immediately unless the staged files include a `.gd`, `.tscn`, `.tres`,
+`.sh` or `.godot` path (docs-only commits stay instant). Otherwise it runs `./scripts/check.sh --fast`
+against the worktree as it sits on disk, unstaged edits included, and blocks the commit if that fails.
+Bypass with `git commit --no-verify` and say why in the commit message. To turn it off again:
+`git config --unset core.hooksPath`. Hook or not, **run `./scripts/check.sh` yourself before committing
+your change**, and stage only your own paths (`AGENTS.md` "Shipping").
 
 **Writing tests that catch real bugs:**
 - Test through the real entry point the player uses (`_key()` / `--press`), not internals.
@@ -62,7 +66,9 @@ ride along in your commit and would block it. Turn it on for a solo clone or CI-
    `--headless`) holds such meshes until the node is gone, so headless runs are clean. smoke.sh
    fails the boot, game_flow and menu_flow steps if that line reappears (#92). Freeing a mesh node
    outside the tree skips the guard: keep its mesh referenced until after `free()`
-   (see `CharacterArt.instance()`).
+   (see `CharacterArt.instance()`). A Label3D frees its own mesh, so a test that builds and
+   frees Label3Ds outside the tree frees them with `HeadlessMeshGuard.free_node()` (#179).
+   test.sh fails on any `ERROR:` line in the unit run and names the test that printed it.
 2. **Xvfb + Mesa software GL** (`scripts/shot.sh`). Real Compatibility (OpenGL 3) renderer on
    `llvmpipe` (CPU) inside a private virtual X display. You get real lighting, shadows, materials
    and HUD, and nothing appears on screen. It is slower (~6–7 fps), so capture a few frames rather
@@ -189,7 +195,9 @@ when the question is visual: does it look right, is it visible, is the camera fr
 legible, does the new art read.
 
 Input rule (from LOOP.md): player-facing input must be exercised through the real key handler.
-In game_flow that's `_key()`; in shot.sh that's `--press`.
+In game_flow that's `_key()`; in shot.sh that's `--press`. Mouse motion goes through `_mouse(rel)`
+(`main._unhandled_input`). Headless can't capture the mouse, so a step that needs mouse-look sets
+`main.mouse_captured_override = true` and clears it after (the #139 taunt-wheel step does).
 
 Scripted contact: to make one body push another, place the pusher at a fixed overlap each frame
 (e.g. 0.75 yd). Moving it a fixed step per frame lets it pass through the other body on the software-GL

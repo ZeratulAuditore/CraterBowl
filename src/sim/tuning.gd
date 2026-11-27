@@ -103,6 +103,7 @@ const RECOVER_MAX_HEIGHT := 1.0
 
 # Bots
 const NEUTRAL_ZONE_HALF := 0.5     # pre-snap: each side stops this far from the LOS
+const STANCE_DOUBLE_TAP := 0.35    # s: a set defender's two Space presses within this break stance (#142)
 const BARRIER_HEIGHT := 2.4        # LOS barrier wall height (m)
 const BARRIER_REVEAL_DIST := 3.0   # barrier brightens near athletes within this (yd)
 const BARRIER_DROP_TIME := 0.3     # barrier dissolve after the snap (s)
@@ -158,3 +159,4 @@ const PUNT_RETURNER_DEPTH := 38.0  # yd past the LOS
 const KICKOFF_DEFAULT_POWER := 0.85    # Space / play clock kickoff
 const AI_FG_MAX := 50.0            # longest field goal (kick distance) a bot tries
 const AI_GO_FOR_IT := 2.0          # bots go for it on 4th & this or less past midfield
+const AI_FAIR_CATCH_PRESSURE := 5.0    # bot returner fair-catches when coverage is this close to the landing spot (#189)
