@@ -59,6 +59,10 @@ your change**, and stage only your own paths (`AGENTS.md` "Shipping").
   several sessions run `smoke.sh` at once, and a fixed port made `menu_flow` fail whenever two overlapped.
 - Timing checks use medians and generous budgets. Count-based checks (triangles, nodes, events) are preferred
   because they're identical on every machine.
+- A wall-clock bound on a frame-driven timer must discount time the code under test deliberately doesn't
+  count. The net_test.sh host-loss check subtracts the client's own frame gaps beyond
+  `SILENCE_STEP_MAX`, because the watchdog caps each frame at that. Without it, a starved test
+  process failed the bound under load while the watchdog fired on time (#279).
 
 ## Two ways to run Godot offscreen
 
