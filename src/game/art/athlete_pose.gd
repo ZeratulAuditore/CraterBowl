@@ -20,6 +20,12 @@ const HOLD_POLE_L := Vector3(1.0, -1.0, -0.3)
 ## Hand orientation for the hold, in spine_03 space: fingers forward (bone +Y = +Z) and
 ## palms in (palm is -X of hand_r and +X of hand_l, so both map bone +X to spine -X).
 const HOLD_HAND_BASIS := Basis(Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 1, 0))
+## Securing the ball going down (tackle_fall.gd): both arms clamp it to the chest, elbows in.
+const SECURE_BALL := Vector3(0.0, -0.05, 0.2)
+const SECURE_WRIST_R := SECURE_BALL + Vector3(-0.15, -0.02, -0.05)
+const SECURE_WRIST_L := SECURE_BALL + Vector3(0.15, 0.02, -0.05)
+const SECURE_POLE_R := Vector3(-0.6, -1.0, -0.8)
+const SECURE_POLE_L := Vector3(0.6, -1.0, -0.8)
 
 ## Catch stance (#246), in the upright catch frame (see _upright): wrists up in front of the
 ## chest, palms forward. Upright, not the chest's own frame: a sprinting chest leans ~40 deg
@@ -73,6 +79,7 @@ const NECK_SHARE := 0.4   # the rest of the turn is the head's
 
 var weight := 0.0      # 0 = clip pose, 1 = full carry pose
 var two_hand := false  # passer holding before the throw
+var secure := false    # going down: both arms clamp the ball to the chest (tackle_fall.gd)
 var look_target := Vector3.ZERO   # skeleton space
 var look_weight := 0.0            # 0 = clip's head, 1 = full look
 var catch_weight := 0.0           # 0 = no catch pose, 1 = full stance/reach
@@ -120,7 +127,12 @@ func apply(sk: Skeleton3D) -> void:
 	if weight <= 0.0:
 		return
 	var chest := _g(sk, _bones.spine_03)
-	if two_hand:
+	if secure:
+		var palms := chest.basis * HOLD_HAND_BASIS
+		_reach(sk, "_r", chest * SECURE_WRIST_R, chest.basis * SECURE_POLE_R, weight, palms)
+		_reach(sk, "_l", chest * SECURE_WRIST_L, chest.basis * SECURE_POLE_L, weight, palms)
+		_open_hand(sk, "_l", weight)
+	elif two_hand:
 		var palms_in := chest.basis * HOLD_HAND_BASIS
 		_reach(sk, "_r", chest * HOLD_WRIST_R, chest.basis * HOLD_POLE_R, weight, palms_in)
 		_reach(sk, "_l", chest * HOLD_WRIST_L, chest.basis * HOLD_POLE_L, weight, palms_in)
@@ -267,9 +279,9 @@ func _reach(sk: Skeleton3D, side: String, target: Vector3, pole: Vector3, w: flo
 ## Where the held ball sits, in skeleton space: in front of the chest for the two-hand hold,
 ## else null (the right palm's socket, player.gd). Only valid during the skeleton update.
 func hold_ball(sk: Skeleton3D):
-	if not two_hand or weight <= 0.0 or not _rig_ok:
+	if not (two_hand or secure) or weight <= 0.0 or not _rig_ok:
 		return null
-	return sk.get_bone_global_pose(_bones.spine_03) * Transform3D(Basis(), HOLD_BALL)
+	return sk.get_bone_global_pose(_bones.spine_03) * Transform3D(Basis(), SECURE_BALL if secure else HOLD_BALL)
 
 func _blend(sk: Skeleton3D, bone: int, local: Basis, w: float) -> void:
 	var q := local.orthonormalized().get_rotation_quaternion()

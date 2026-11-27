@@ -17,6 +17,7 @@ const Uniforms := preload("res://src/game/art/football_uniforms.gd")
 const RC := preload("res://src/game/render_cache.gd")
 const Pose := preload("res://src/game/art/athlete_pose.gd")
 const Ball := preload("res://src/sim/ball.gd")
+const TackleFall := preload("res://src/game/art/tackle_fall.gd")
 ## A view that moves more than this (yards) in one tick teleported (new play, replay
 ## seek, swap): snap instead of gliding across the field.
 const TELEPORT_DIST := 2.0
@@ -104,6 +105,7 @@ var _last_pos := Vector3.ZERO
 var _vel := Vector3.ZERO
 var _role := ""
 var _hit_t := 0.0
+var fall    # tackle_fall.gd, built on the first tackle
 var _release_t := 0.0
 var _cur := ""
 var _was_down := false
@@ -319,6 +321,20 @@ func is_celebrating() -> bool:
 func hit() -> void:
 	_hit_t = 0.6
 
+## Tackled while carrying: go down hugging the ball (tackle_fall.gd). run = this athlete's
+## velocity, contact = the velocity the hit drives the contact point to (yd/s, world),
+## contact_h = the hit's height (yd).
+func tackled(run: Vector3, contact: Vector3, contact_h: float) -> void:
+	if pose == null or _skel == null:
+		hit()
+		return
+	if fall == null:
+		fall = TackleFall.new(self)
+	fall.start(run, contact, contact_h)
+
+func is_falling() -> bool:
+	return fall != null and fall.active
+
 ## Follow-through after the ball leaves the hand.
 func throw_release() -> void:
 	_release_t = 0.55
@@ -484,7 +500,7 @@ func _process(delta: float) -> void:
 		v = Vector3.ZERO
 	_vel = _vel.lerp(v, clampf(delta * 12.0, 0.0, 1.0))
 	var spd := Vector2(_vel.x, _vel.z).length()
-	var down: bool = athlete.is_diving() or athlete.is_grounded()
+	var down: bool = athlete.is_diving() or athlete.is_grounded() or is_falling()
 	if spd > 0.4 and not down and not athlete.blocking:
 		rotation.y = lerp_angle(rotation.y, atan2(-_vel.x, -_vel.z), clampf(delta * 14.0, 0.0, 1.0))
 	_hit_t = maxf(0.0, _hit_t - delta)
@@ -526,10 +542,16 @@ func _process(delta: float) -> void:
 		# Spin move: one full turn toward the spin side (left = counter-clockwise from above).
 		var k := 1.0 - spin_vis_t / T.SPIN_TIME
 		body.rotation.y = -float(spin_vis_side) * TAU * ease(k, -1.6)
+	if is_falling():
+		fall.update(delta)
 
 func _choose_anim(spd: float, down: bool) -> void:
 	if celebrate_t > 0.0:
 		_play({"hop": "Jump", "flip": "Roll"}.get(celebrate_kind, "Dance"))
+		return
+	if is_falling():
+		if not fall.holding():   # hit-stop: keep the contact frame
+			_play("Idle", 0.1)   # under the ragdoll: only the neck and clavicles still follow a clip
 		return
 	if athlete.is_diving():
 		_play("u2/Slide_Start", 0.08, 1.6)
@@ -574,9 +596,13 @@ func _choose_anim(spd: float, down: bool) -> void:
 ## Record a new sim (or replay) pose, once per physics tick. Big jumps snap.
 func place(p: Vector3, yaw: float) -> void:
 	if not _has_pose or p.distance_to(_cur_pos) > TELEPORT_DIST:
+		if is_falling():
+			fall.stop()   # next play: back on his feet
 		_prev_pos = p
 		_prev_yaw = yaw
 		_has_pose = true
+	elif is_falling():
+		return   # the falling body owns where it lies; moving the node would drag the physics bones
 	else:
 		_prev_pos = _cur_pos
 		_prev_yaw = _cur_yaw
@@ -588,6 +614,8 @@ func place(p: Vector3, yaw: float) -> void:
 ## Per render frame (main._render_frame, before this node's _process):
 ## f = Engine.get_physics_interpolation_fraction() in [0, 1].
 func interpolate(f: float) -> void:
+	if is_falling():
+		return
 	position = _prev_pos.lerp(_cur_pos, f)
 	rotation.y = lerp_angle(_prev_yaw, _cur_yaw, f)
 

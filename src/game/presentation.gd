@@ -194,7 +194,10 @@ func on_event(n: String, d: Dictionary) -> void:
 			_dust(at, 22)
 			shake = maxf(shake, 0.35)
 			if id >= 0 and id < main.views.size():
-				main.views[id].hit()
+				if d.has("carrier"):
+					_tackle_fall(id, int(d.get("by", -1)))
+				else:
+					main.views[id].hit()
 		"touchdown":
 			excite = 1.0
 			shake = maxf(shake, 0.25)
@@ -211,6 +214,31 @@ func on_event(n: String, d: Dictionary) -> void:
 		"breakup":
 			_dust(_athlete_pos(int(d.get("by", -1))), 8)
 	overlay.on_event(n, d)
+
+## A tackled carrier's fall (tackle_fall.gd), from the collision: carrier and tackler meet like
+## two equal bodies that stick, so the contact point leaves at their average velocity. IMPACT
+## exaggerates that change so a hit reads from the game camera. Every tackle is a dive
+## (world.gd), which wraps the thighs at CONTACT_HEIGHT.
+const IMPACT := 1.4
+const CONTACT_HEIGHT := 0.55   # yd
+
+func _tackle_fall(carrier: int, by: int) -> void:
+	var w = main.world
+	var run := _sim_velocity(carrier)
+	var contact := run   # no tackler (the carrier's own dive): he just goes down
+	if w.get_athlete(by) != null:
+		contact = run + ((run + _sim_velocity(by)) * 0.5 - run) * IMPACT
+	main.views[carrier].tackled(run, contact, CONTACT_HEIGHT)
+
+## The sim stops everyone at the whistle, before this event: fall back to how the view was
+## actually moving (smoothed over the last frames, so it holds the speed at contact).
+func _sim_velocity(id: int) -> Vector3:
+	var a = main.world.get_athlete(id)
+	var v := Vector3(a.velocity.x, 0.0, -a.velocity.y) if a != null else Vector3.ZERO
+	if v.length() < 0.5 and id >= 0 and id < main.views.size():
+		v = main.views[id]._vel
+		v.y = 0.0
+	return v
 
 func _athlete_pos(id: int) -> Vector3:
 	if id >= 0 and id < main.views.size():
