@@ -8,6 +8,24 @@ Machine for all entries so far: WSL2 Ubuntu 24.04, i7-11800H (16 threads), RTX 3
 
 ---
 
+## 2026-11-26 — perf-10: the football is one mesh (#159)
+
+The old ball was a SphereMesh stretched 1.75x plus a lace box and two `TorusMesh` stripes at the
+default 64x32 tessellation (~4k triangles each). The new ball (`src/game/art/football.gd`) is one
+code-built 20x14 mesh (560 triangles) with the seams, laces and stripes drawn by
+`football.gdshader`. `perf.sh` render budget, same machine (native Windows, Godot 4.3, opengl3),
+`feat/244-ball-carry-pose` @ d56023a vs this branch:
+
+| | before | after |
+|---|---|---|
+| triangles | 204,060 | 196,064 (−7,996) |
+| instances | 226 | 223 |
+| shadow casters | 85 | 82 |
+| materials | 142 | 141 |
+
+Budgets in `tests/render_budget.gd` ratcheted down by the same amounts. CPU medians unchanged
+within noise (scene_frame_p50 965 µs after; the ball has no per-frame work beyond its transform).
+
 ## 2026-11-26 — perf-03: flaky object-growth check from play-picker churn (#169)
 
 `perf.sh` failed about half the time on origin/main c50b2ba with "objects grew by >= 51/52 in each of two

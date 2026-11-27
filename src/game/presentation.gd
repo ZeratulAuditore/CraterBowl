@@ -7,6 +7,7 @@ extends Node3D
 const RC := preload("res://src/game/render_cache.gd")
 const Mats := preload("res://src/game/art/materials.gd")
 const Stadium := preload("res://src/game/art/stadium.gd")
+const Football := preload("res://src/game/art/football.gd")
 const Overlay := preload("res://src/game/overlay.gd")
 const LosBarrier := preload("res://src/game/art/los_barrier.gd")
 const FieldArt := preload("res://src/game/art/field_art.gd")
@@ -83,42 +84,12 @@ func _ground_quad(n: String, size: float, shader: String) -> MeshInstance3D:
 	add_child(mi)
 	return mi
 
-## Football: prolate leather spheroid with laces and end stripes.
+## Football: pointed leather spheroid with seams, laces and end stripes (art/football.gd, #159).
 static func make_ball() -> MeshInstance3D:
 	var ball := MeshInstance3D.new()
 	ball.name = "Ball"
-	var sm := SphereMesh.new()
-	sm.radius = 0.15
-	sm.height = 0.3
-	sm.radial_segments = 16
-	sm.rings = 10
-	ball.mesh = sm
-	var leather := StandardMaterial3D.new()
-	leather.albedo_color = Color(0.5, 0.24, 0.1)
-	leather.roughness = 0.55
-	leather.rim_enabled = true
-	leather.rim = 0.3
-	ball.material_override = leather
-	ball.scale = Vector3(1, 1, 1.75)
-	var white := Mats.cloth(Color(0.97, 0.97, 0.95))
-	var laces := MeshInstance3D.new()
-	var lb := BoxMesh.new()
-	lb.size = Vector3(0.03, 0.025, 0.11)
-	laces.mesh = lb
-	laces.material_override = white
-	laces.position = Vector3(0, 0.148, 0)
-	ball.add_child(laces)
-	for z in [-0.085, 0.085]:
-		var band := MeshInstance3D.new()
-		var tm := TorusMesh.new()
-		tm.inner_radius = 0.105
-		tm.outer_radius = 0.125
-		band.mesh = tm
-		band.material_override = white
-		band.position.z = z
-		band.rotation.x = PI / 2.0
-		band.scale = Vector3(1, 0.35, 1)
-		ball.add_child(band)
+	ball.mesh = Football.mesh()
+	ball.material_override = Football.material()
 	return ball
 
 func _build_chains(root: Node3D) -> Node3D:
@@ -374,7 +345,6 @@ func _update_ball(delta: float, w) -> void:
 	_set_carrier(held_view, holder != null and holder.role == Athlete.Role.QB and w.can_throw(b.holder_id))
 	if held_view != null:
 		# Seated in the carrier's palm; the view re-pins it after its skeleton updates (#244).
-		bv.scale = Vector3.ONE
 		bv.global_transform = held_view.ball_transform()
 		spin = 0.0
 	elif st == 1:   # in flight: point along velocity, spiral
@@ -383,11 +353,14 @@ func _update_ball(delta: float, w) -> void:
 			var t := Transform3D(Basis.looking_at(v.normalized(), Vector3.UP), bv.global_position)
 			spin += delta * 28.0
 			t.basis = t.basis.rotated(v.normalized(), spin)
-			bv.global_transform = t.scaled_local(Vector3(1, 1, 1.75))
-	elif st == 2:   # loose: tumble
-		bv.scale = Vector3.ONE
+			bv.global_transform = t
+	elif st == 2:   # loose: rolls about its long axis and slews, lying on the turf (#159)
 		spin += delta * 9.0
-		bv.rotation = Vector3(spin, spin * 0.7, 0)
+		bv.basis = Basis(Vector3.UP, spin * 0.7) * Basis(Vector3.BACK, spin)
+		bv.position.y = maxf(bv.position.y, Football.RADIUS)   # the sim's ball centre is at z 0 on the ground
+	elif st == 3:   # dead, nobody holding it: lying on the spot, pointing downfield
+		bv.basis = Basis()
+		bv.position.y = maxf(bv.position.y, Football.RADIUS)
 	# Trail while airborne. (Skip the GPU re-upload when there's no trail at all.)
 	if trail_pts.is_empty() and st != 1:
 		if trail_mesh.get_surface_count() > 0:
