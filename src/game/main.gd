@@ -44,6 +44,7 @@ const StadiumArt := preload("res://src/game/art/stadium.gd")
 const ArtMats := preload("res://src/game/art/materials.gd")
 const ArtQuality := preload("res://src/game/art/quality.gd")
 const TauntWheel := preload("res://src/game/taunt_wheel.gd")
+const CameraZoom := preload("res://src/game/camera_zoom.gd")
 const TrainingArt := preload("res://src/game/art/training_art.gd")
 const CoinToss := preload("res://src/game/coin_toss.gd")
 const ARC_DOTS := 24
@@ -81,8 +82,8 @@ const AIM_ZOOM_FOV := 45.0          # FOV at full charge
 const AIM_ZOOM_RATE := 8.0          # 1/s easing rate (frame-rate independent)
 ## Camera framing (#128). Offsets are (right, up, back) from the controlled player. The
 ## follow look is clamped (_framed_look) so the player's ring never drops below
-## FRAME_FEET_MAX of the screen height, whatever the offset, FOV or aim range; a future
-## camera zoom (#140) only has to scale FOLLOW_CAM_OFFSET.
+## FRAME_FEET_MAX of the screen height, whatever the offset, FOV or aim range, so the
+## mouse-wheel zoom (#140, camera_zoom.gd) only scales the follow offset.
 const FOLLOW_CAM_OFFSET := Vector3(0, 6, 9)
 const FOLLOW_CAM_OFFSET_BLOCKING := Vector3(0, 10, 13)   # blocking drill: both lines in view
 const POV_CAM_OFFSET := Vector3(0.9, 2.8, 5.4)           # over the passer's right shoulder
@@ -174,6 +175,12 @@ var cam_yaw := 0.0
 var camera_follow := Vector3.ZERO
 var camera_orbit := 0.0
 var aim_distance := 22.0
+## Mouse-wheel zoom (#140): cam_zoom is the target (persisted in settings), cam_zoom_shown
+## eases toward it. Scales the follow-camera boom only: POV aim, replays and cutscenes ignore it.
+var cam_zoom := CameraZoom.DEFAULT
+var cam_zoom_shown := CameraZoom.DEFAULT
+var _mid_drag := 0.0          # mouse travel while the middle button is held (click vs orbit-drag)
+const MID_CLICK_SLOP := 6.0   # px: a middle press that moves less than this is a click (reset zoom)
 var scoreboard_held := false
 var play_picker_open := true
 var hud: Label
@@ -243,6 +250,10 @@ func _ready() -> void:
 	camera.name = "FollowCamera"
 	camera.fov = CAMERA_FOV
 	add_child(camera)
+	var zl := get_node_or_null("/root/Launch")
+	if zl != null:
+		cam_zoom = CameraZoom.clamp_zoom(zl.settings.camera_zoom)
+		cam_zoom_shown = cam_zoom
 	camera.make_current()
 	hud = Label.new()
 	hud.name = "HUD"
@@ -1174,6 +1185,8 @@ func _unhandled_input(e: InputEvent) -> void:
 		look(e.relative)   # passer: mouse X = direction, mouse Y = loft
 	elif e is InputEventMouseMotion and (mouse_captured()
 			or Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE)):
+		if Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE):
+			_mid_drag += e.relative.length()
 		camera_orbit = wrapf(camera_orbit - e.relative.x * 0.004, -PI, PI)
 		cam_yaw = _camera_target_yaw()
 		aim_distance = clampf(aim_distance - e.relative.y * 0.22, 2.0, 65.0)
@@ -1183,7 +1196,46 @@ func _unhandled_input(e: InputEvent) -> void:
 			_set_charging(e.pressed)   # hold = power (distance), release = throw
 		elif e.pressed:
 			throw_pass()
-	# The mouse wheel is unbound (#139 took it off taunts; #140 plans camera zoom).
+	elif e is InputEventMouseButton and e.pressed and e.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+		var notches: float = e.factor if e.factor > 0.0 else 1.0   # trackpads send fractions
+		zoom_camera(notches if e.button_index == MOUSE_BUTTON_WHEEL_UP else -notches)
+	elif e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_MIDDLE:
+		if e.pressed:
+			_mid_drag = 0.0
+		elif _mid_drag < MID_CLICK_SLOP:
+			reset_camera_zoom()   # a middle click (not an orbit drag) resets the zoom
+
+## Wheel zoom (#140): + notches = wheel up = closer. Ignored (returns false) in the passer's
+## POV aim (the wheel must never move a throw), while the taunt wheel is open, in replays and
+## during the coin-toss cutscene (#129 poses the camera itself).
+func zoom_camera(notches: float) -> bool:
+	if not _zoom_input_ok():
+		return false
+	set_camera_zoom(CameraZoom.step(cam_zoom, notches))
+	return true
+
+func reset_camera_zoom() -> bool:
+	if not _zoom_input_ok():
+		return false
+	set_camera_zoom(CameraZoom.DEFAULT)
+	return true
+
+func _zoom_input_ok() -> bool:
+	return not (pov_active() or taunt_wheel.open or replay_active or in_lobby() or coin_toss != null)
+
+## Sets the target zoom (clamped) and saves it with the player's settings. Headless runs
+## save only to an explicit --settings-file, like Launch loads (tests never touch real saves).
+func set_camera_zoom(z: float) -> void:
+	z = CameraZoom.clamp_zoom(z)
+	if z == cam_zoom:
+		return
+	cam_zoom = z
+	var launch := get_node_or_null("/root/Launch")
+	if launch == null:
+		return
+	launch.settings.camera_zoom = cam_zoom
+	if DisplayServer.get_name() != "headless" or launch.settings_path != launch.SettingsStore.DEFAULT_PATH:
+		launch.settings.save(launch.settings_path)
 
 ## Tests set this: headless can't capture the mouse, so mouse-look would never run.
 var mouse_captured_override = null
@@ -1329,7 +1381,8 @@ func _update_camera(delta: float) -> void:
 		camera_follow = target
 	camera_follow = camera_follow.lerp(target, 1.0 - exp(-10.0 * delta))
 	var offset := FOLLOW_CAM_OFFSET_BLOCKING if drill != null and drill.kind == "blocking" else FOLLOW_CAM_OFFSET
-	var follow_pos := camera_follow + rot * offset
+	cam_zoom_shown = CameraZoom.ease_toward(cam_zoom_shown, cam_zoom, delta)
+	var follow_pos := camera_follow + rot * offset * (1.0 if replay_active else cam_zoom_shown)   # replays: default framing
 	var follow_look := _framed_look(follow_pos, target + rot * Vector3(0, 0, -aim_distance), target, camera.fov)
 	if pov_w <= 0.0:
 		camera.global_position = follow_pos

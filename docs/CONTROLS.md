@@ -12,7 +12,7 @@
 | Hold RMB | | Block (shield) |
 | LMB / J | | Throw. Passer: **hold to charge distance, release to throw** |
 | **Hold C** | Taunt wheel: drag toward a taunt, release to perform | Taunt wheel |
-| Mouse wheel | Unbound (#140: camera zoom) | Unbound |
+| Mouse wheel | **Camera zoom**: up = closer, down = further (clamped, saved). Middle click resets. Does nothing in QB POV aim | Camera zoom (same) |
 | **T** | Team timeout (outside live play) | |
 | G | | Handoff |
 | Hold Tab | Scoreboard | Scoreboard |
@@ -34,8 +34,8 @@ Taunts are cosmetic. There are 8, rate-limited to one per second, and everyone i
 - **Tap C** (under 0.25 s, never leaving the dead zone) repeats your last taunt (the first time: Bring It).
   Picked over "tap cancels" so the one-key quick taunt from before #139 keeps working; cancelling is still
   one drag back to the centre.
-- The mouse wheel no longer touches taunts (it used to scroll a list at the right edge). It's unbound
-  until #140 makes it camera zoom.
+- The mouse wheel no longer touches taunts (it used to scroll a list at the right edge). It zooms the
+  camera (#140), but not while the taunt wheel is open.
 - Opening the menu (Esc), a replay starting or the window losing focus closes the wheel without a taunt.
   Online, only the chosen taunt id is sent (`emote` action), as before.
 - The 1 s taunt cooldown also runs while you're stance-locked before the snap, so you can taunt more than
@@ -64,6 +64,17 @@ Chaosball) the mouse is captured and steers an over-the-shoulder camera:
 Everyone else uses the orbit camera: mouse X orbits, mouse Y sets how far ahead it looks
 (middle-drag before the snap). The ESC menu releases the mouse. On a gamepad, the right stick aims.
 
+## Camera zoom (#140)
+- **Mouse wheel** dollies the follow camera in (wheel up) or out (wheel down), 10% of the default
+  distance per notch, eased over about a quarter second. Limits: **0.6x** (3.6 m up, 5.4 m back) to
+  **1.6x** (9.6 m up, 14.4 m back). Works pre-snap, live and after the whistle.
+- **Middle click** (press and release without dragging) resets to 1.0x. A middle *drag* still orbits.
+- The level is saved in `user://settings.cfg` (`[camera] zoom`) and comes back next match.
+- **Ignored in QB POV aim**: the wheel and middle click do nothing while you're the passer, so they
+  can never move a throw. The POV camera has its own fixed framing and aim-zoom (#109).
+- Ignored while the taunt wheel is open, in menus, the lobby, replays and the coin-toss cutscene. Replays and cutscenes
+  (POTG, coin toss) use their own cameras at the default framing.
+
 ## Gamepad
 Left stick move · right stick QB aim · A snap · B dive · X / Y spin left / right · D-pad down dash ·
 D-pad up next play · RT pass · LT sprint · LB scoreboard · RB lob. Taunts are not on the pad yet.
@@ -72,6 +83,6 @@ D-pad up next play · RT pass · LT sprint · LB scoreboard · RB lob. Taunts ar
 - Sim: `src/sim/athlete.gd` (move charges, spin/dash, block), `src/sim/world.gd` (`spin(side)`, `evade`,
   `throw_dir`, `emote`, carrier-dive whistle), `src/sim/passing.gd` (`velocity_for`), `src/sim/emotes.gd`.
 - Wire: `src/net/protocol.gd` (`spin {s}` / `spin|dash {dir}` / `emote` / POV `throw {d, ang, p}`; flags BLOCK 8, SPIN 16, SPIN_LEFT 32).
-- View: `src/game/main.gd` (POV + orbit camera, mouse capture, keys), `src/game/taunt_wheel.gd` (wheel UI + release rules), `src/game/radial_select.gd` (direction → slice math), `src/game/player.gd`.
-- Tests: `tests/test_moves.gd`, `tests/test_live_controls.gd`, `tests/test_taunt_wheel.gd`; real-input steps in `tests/game_flow.gd`
-  (taunt wheel: frames 12730-12800); wheel capture `tests/visual/taunt_wheel_test.gd`.
+- View: `src/game/main.gd` (POV + orbit camera, wheel zoom, mouse capture, keys), `src/game/camera_zoom.gd` (zoom step/clamp/ease), `src/game/taunt_wheel.gd` (wheel UI + release rules), `src/game/radial_select.gd` (direction → slice math), `src/game/player.gd`.
+- Tests: `tests/test_moves.gd`, `tests/test_live_controls.gd`, `tests/test_taunt_wheel.gd`, `tests/test_camera_zoom.gd`; real-input steps in `tests/game_flow.gd`
+  (camera zoom: frames 12300-12390; taunt wheel: frames 12730-12800); captures `tests/visual/taunt_wheel_test.gd`, `tests/visual/camera_zoom_test.gd`.
