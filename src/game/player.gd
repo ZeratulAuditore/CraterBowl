@@ -14,6 +14,7 @@ const CharacterArt := preload("res://src/game/art/character_art.gd")
 const Emotes := preload("res://src/sim/emotes.gd")
 const Uniforms := preload("res://src/game/art/football_uniforms.gd")
 const RC := preload("res://src/game/render_cache.gd")
+const Pose := preload("res://src/game/art/athlete_pose.gd")
 ## A view that moves more than this (yards) in one tick teleported (new play, replay
 ## seek, swap): snap instead of gliding across the field.
 const TELEPORT_DIST := 2.0
@@ -27,6 +28,10 @@ const ROLE_NAMES := ["QB", "C", "WR", "RB", "LB", "CB", "S", "OL", "DL"]
 const LINEMEN := ["OL", "DL", "C"]
 const MODEL_SCALE := 1.08
 const BLEND := 0.18
+## Carry pose blend rate (1/s): about 0.2 s to tuck the ball in or out.
+const CARRY_K := 14.0
+## Ball seat in hand_r bone space: in the palm, long axis along the forearm (#244).
+const BALL_SOCKET := Transform3D(Basis(Vector3.RIGHT, -PI / 2.0), Vector3(-0.13, 0.08, 0.0))
 
 var athlete  # sim athlete
 var color := Color(0.9, 0.75, 0.2)
@@ -55,6 +60,10 @@ var model: Node3D
 var mesh_i: MeshInstance3D
 var anim: AnimationPlayer
 var hand_r: Node3D
+var pose: Node              # athlete_pose.gd (null without a rig)
+var ball_node: Node3D       # the ball while this athlete carries it (presentation.gd sets it)
+var _ball_xf := Transform3D()   # palm socket (world), cached at each skeleton update
+var _ball_xf_ok := false
 var trim_mat: StandardMaterial3D
 var is_opponent := false
 
@@ -108,6 +117,11 @@ func _ready() -> void:
 	var chest := _attach(skel, "spine_03")
 	var head_bone := _bone(skel, "Head")
 	hand_r = _attach(skel, "hand_r")
+	if skel:
+		pose = Pose.new()
+		skel.add_child(pose)
+		# Pin the ball after the clip and pose modifier have run, so it never trails the hand.
+		skel.skeleton_updated.connect(_pin_ball)
 	_open_gear = Node3D.new()
 	chest.add_child(_open_gear)
 	var pads := _part(_open_gear, RC.sphere(0.5, 1.0), Mats.cloth(color), Vector3(0, 0.1, -0.01))
@@ -278,6 +292,9 @@ func hit() -> void:
 ## Follow-through after the ball leaves the hand.
 func throw_release() -> void:
 	_release_t = 0.55
+	set_carry(null)
+	if pose:
+		pose.weight = 0.0   # the throw clip plays untouched from its first frame
 	_play("u2/OverhandThrow", 0.05, 1.4)
 	if anim and anim.has_animation("u2/OverhandThrow"):
 		anim.seek(anim.get_animation("u2/OverhandThrow").length * 0.42, true)
@@ -285,6 +302,34 @@ func throw_release() -> void:
 ## Where the ball sits when this athlete carries it (world space).
 func hand_position() -> Vector3:
 	return hand_r.global_position if hand_r and hand_r.is_inside_tree() else global_position + Vector3(0, 1.1, 0)
+
+## Carry the ball (`ball` = the ball view) or stop (null). two_hand: passer holding before the throw.
+func set_carry(ball: Node3D, two_hand := false) -> void:
+	ball_node = ball
+	if pose:
+		pose.two_hand = two_hand
+
+## The held ball's world transform: seated in the right palm (unit scale), as of the
+## last skeleton update. Godot 4.3 applies the pose modifier only during that update;
+## read the bones at any other time and you get the plain clip pose.
+func ball_transform() -> Transform3D:
+	if _ball_xf_ok:
+		return _ball_xf
+	return Transform3D(global_basis.orthonormalized(), hand_position() - global_basis.z.normalized() * 0.15)
+
+## The held ball in skeleton space: between both hands for a passer's hold, else the right palm.
+func ball_local(sk: Skeleton3D) -> Transform3D:
+	var held = pose.hold_ball(sk) if pose else null
+	return held if held != null else sk.get_bone_global_pose(sk.find_bone("hand_r")) * BALL_SOCKET
+
+func _pin_ball() -> void:
+	if ball_node == null or not is_instance_valid(ball_node):
+		return   # only the carrier pays for this (per-frame work is change-driven)
+	var sk: Skeleton3D = mesh_i.get_parent()
+	var xf := sk.global_transform * ball_local(sk)
+	_ball_xf = Transform3D(xf.basis.orthonormalized(), xf.origin)
+	_ball_xf_ok = true
+	ball_node.global_transform = _ball_xf
 
 func _role_name() -> String:
 	var r := int(athlete.role)
@@ -345,6 +390,11 @@ func _process(delta: float) -> void:
 		_show_fair_catch(fc)
 	_choose_anim(spd, down)
 	_was_down = down
+	if pose:
+		var target := 1.0 if ball_node != null else 0.0
+		pose.weight = lerpf(pose.weight, target, 1.0 - exp(-CARRY_K * delta))
+		if absf(pose.weight - target) < 0.01:
+			pose.weight = target
 	# Celebration flourishes on top of the dance.
 	body.rotation = Vector3.ZERO
 	body.position = Vector3.ZERO
