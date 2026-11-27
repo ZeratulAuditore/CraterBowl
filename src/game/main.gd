@@ -1819,8 +1819,10 @@ func _render_replay() -> void:
 	if smp.is_empty():
 		return
 	var pos: Array = smp["pos"]
+	var flags: Array = smp["flags"]
 	for i in mini(pos.size(), views.size()):
 		views[i].place(Vector3(pos[i].x, 0, -pos[i].y), views[i].rotation.y)
+		views[i].replay_flags = flags[i]   # clips from the recording, not the live athlete
 	var b: Vector3 = smp["ball"]
 	_place_ball(Vector3(b.x, b.z, -b.y))
 
