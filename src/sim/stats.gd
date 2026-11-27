@@ -19,9 +19,12 @@ var award_stats := {}      # player id -> {field: value}, across positions
 var player_lines := {}     # player id -> {"POS": {field: value}}: your own post-game lines (#200)
 var _los := 0.0
 var _passer := -1
-var _passer_key := ""
-var _passer_player := -1
 var _receiver := -1
+## Who gets a delayed result (#202, #276): the athlete's line key and player when the action
+## that earns it was completed (throw, catch, kick, fielding or takeaway). Seat changes after
+## that don't move the credit. Rule: docs/features/progression.md "Match awards follow the player in the seat".
+var _passer_credit := {}
+var _receiver_credit := {}
 var _thrown := false
 var _handoff_runner := -1
 var _rushing_fumble := false
@@ -29,9 +32,11 @@ var _rushing_fumble := false
 var _returner := -1
 var _ret_from := 0.0
 var _ret_field := ""
+var _returner_credit := {}
 ## Kick in progress (#67): "fg", "xp" (a PAT try), "punt" or "kickoff", and the kicker.
 var _kick_kind := ""
 var _kicker := -1
+var _kicker_credit := {}
 var match_ref = null       # optional Match: tells a PAT try from a field goal
 
 func attach(w, owner: Callable, m = null, player: Callable = Callable()) -> void:
@@ -71,11 +76,21 @@ func _add_player_credit(key: String, player: int, field: String, value: float) -
 		player_lines[player][pos] = _blank()
 	_add_field(player_lines[player][pos], field, value)
 
-## The attempt already created the athlete's line. The delayed result updates its
-## totals without changing which player is shown as the athlete's last human owner.
-func _add_pass_result(field: String, value: float = 1.0) -> void:
-	_add_player_credit(_passer_key, _passer_player, field, value)
-	_add_field(athletes[_passer], field, value)
+## Snapshot who owns `aid` now, for a result that arrives later in the play.
+func _credit_for(aid: int) -> Dictionary:
+	if aid < 0 or world.get_athlete(aid) == null:
+		return {}
+	return {"aid": aid, "key": _key(aid), "player": _player_id(aid)}
+
+## Add a delayed result to the owner in `credit`. The action that started it already created the
+## athlete's line; this updates its totals without changing who is shown as its last human owner.
+func _add_credit(credit: Dictionary, field: String, value: float = 1.0) -> void:
+	if credit.is_empty():
+		return
+	_add_player_credit(credit["key"], credit["player"], field, value)
+	if not athletes.has(credit["aid"]):
+		_add_athlete(credit["aid"], field, 0.0)
+	_add_field(athletes[credit["aid"]], field, value)
 
 static func _blank() -> Dictionary:
 	var line := {}
@@ -112,6 +127,10 @@ func _on_event(n: String, d: Dictionary) -> void:
 			_returner = -1
 			_kick_kind = ""
 			_kicker = -1
+			_passer_credit = {}
+			_receiver_credit = {}
+			_returner_credit = {}
+			_kicker_credit = {}
 		"kick":
 			_on_kick(d)
 		"field_goal":
@@ -136,18 +155,18 @@ func _on_event(n: String, d: Dictionary) -> void:
 				_credit_return(world.get_athlete(_returner).position.y)
 			if not _thrown:
 				_passer = d["by"]
-				_passer_key = _key(_passer)
-				_passer_player = _player_id(_passer)
+				_passer_credit = _credit_for(_passer)
 			_thrown = true
 			_add(d["by"], "att")
 		"catch":
 			if _passer >= 0 and world.get_athlete(d["by"]).team == world.get_athlete(_passer).team:
 				_receiver = d["by"]
-				_add_pass_result("comp")
+				_receiver_credit = _credit_for(_receiver)
+				_add_credit(_passer_credit, "comp")
 				_add(_receiver, "rec")
 		"interception":
 			if _passer >= 0:
-				_add_pass_result("int_thrown")
+				_add_credit(_passer_credit, "int_thrown")
 			_add(d["by"], "int")
 			var at: Vector2 = d.get("at", world.get_athlete(d["by"]).position)
 			_start_return(d["by"], at.y, "int_ret_yds")
@@ -178,7 +197,12 @@ func _end_play(n: String, d: Dictionary) -> void:
 	var on_offense: bool = c.team == world.offense_team
 	if n == "tackle":
 		_add(d.get("by", -1), "tkl")
+	# A return or a run after the catch is credited to whoever owned the runner when it began.
+	var credit := _credit_for(carrier)
+	if carrier == _receiver:
+		credit = _receiver_credit
 	if carrier == _returner:
+		credit = _returner_credit
 		var end_y: float = d["spot"].y
 		if n == "touchdown":
 			end_y = world.field.length if on_offense else 0.0
@@ -191,30 +215,31 @@ func _end_play(n: String, d: Dictionary) -> void:
 		return
 	if not on_offense:
 		if n == "touchdown":
-			_add(carrier, "pts", d.get("points", 6))
+			_add_credit(credit, "pts", d.get("points", 6))
 			var kick_return: bool = world.kicked and world.kick_play in ["kickoff", "punt"]
-			_add(carrier, "ret_td" if kick_return else "def_td")
-			_note_td_points(carrier, d.get("points", 6))
+			_add_credit(credit, "ret_td" if kick_return else "def_td")
+			_note_td_points(credit, d.get("points", 6))
 		return   # returns (kick, punt, takeaway) are credited above
 	if _receiver >= 0 and carrier == _receiver:
-		_add_pass_result("pass_yds", gain)
-		_add(_receiver, "rec_yds", gain)
+		_add_credit(_passer_credit, "pass_yds", gain)
+		_add_credit(_receiver_credit, "rec_yds", gain)
 		if n == "touchdown":
-			_add_pass_result("pass_td")
-			_add(_receiver, "rec_td")
+			_add_credit(_passer_credit, "pass_td")
+			_add_credit(_receiver_credit, "rec_td")
 	elif not _thrown and not _rushing_fumble:
 		_add(carrier, "car")
 		_add(carrier, "rush_yds", gain)
 		if n == "touchdown":
 			_add(carrier, "rush_td")
 	if n == "touchdown":
-		_add(carrier, "pts", d.get("points", 6))
-		_note_td_points(carrier, d.get("points", 6))
+		_add_credit(credit, "pts", d.get("points", 6))
+		_note_td_points(credit, d.get("points", 6))
 
 ## A takeaway (interception or a fumble recovered by the other team) starts a return at
 ## the catch / recovery spot. The returner may be on either team (a double turnover).
 func _start_return(aid: int, from_y: float, field: String) -> void:
 	_returner = aid
+	_returner_credit = _credit_for(aid)
 	_ret_from = from_y
 	_ret_field = field
 
@@ -223,16 +248,17 @@ func _start_return(aid: int, from_y: float, field: String) -> void:
 func _credit_return(end_y: float) -> void:
 	var a = world.get_athlete(_returner)
 	if a:
-		_add(_returner, _ret_field, (end_y - _ret_from) * world.attack_sign(a.team))
+		_add_credit(_returner_credit, _ret_field, (end_y - _ret_from) * world.attack_sign(a.team))
 	_returner = -1
 
-func _note_td_points(aid: int, pts) -> void:
-	_add(aid, "max_td_pts", float(pts))
+func _note_td_points(credit: Dictionary, pts) -> void:
+	_add_credit(credit, "max_td_pts", float(pts))
 
 ## A kick is away (#67). Field goals and PATs count the attempt now (a blocked kick is a miss);
 ## a punt counts now and gets its yards when the ball is fielded or dies.
 func _on_kick(d: Dictionary) -> void:
 	_kicker = d["by"]
+	_kicker_credit = _credit_for(_kicker)
 	_kick_kind = str(d.get("kind", ""))
 	if _kick_kind == "fg" and match_ref != null and match_ref.state == match_ref.State.TRY:
 		_kick_kind = "xp"
@@ -248,16 +274,16 @@ func _on_field_goal(d: Dictionary) -> void:
 	if not d.get("good", false) or _kicker < 0:
 		return
 	if _kick_kind == "xp":
-		_add(_kicker, "xp_made")
+		_add_credit(_kicker_credit, "xp_made")
 	elif _kick_kind == "fg":
-		_add(_kicker, "fg_made")
-		_add(_kicker, "fg_long", roundf(float(d.get("distance", 0.0))))
+		_add_credit(_kicker_credit, "fg_made")
+		_add_credit(_kicker_credit, "fg_long", roundf(float(d.get("distance", 0.0))))
 
 ## Gross punt yards: line of scrimmage to where the punt is fielded or dies. Credited once.
 func _end_punt(end_y: float) -> void:
 	if _kick_kind != "punt" or _kicker < 0:
 		return
-	_add(_kicker, "punt_yds", end_y - _los)
+	_add_credit(_kicker_credit, "punt_yds", end_y - _los)
 	_kick_kind = "punt_done"
 
 func get_line(owner: String, pos: String) -> Dictionary:

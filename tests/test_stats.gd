@@ -198,6 +198,156 @@ func test_replacement_human_does_not_inherit_a_bot_pass() -> void:
 	assert_eq(s.get_line("Bot", "QB")["pass_yds"], 12.0)
 	assert_true(s.get_line("Ann", "QB").is_empty())
 
+## #276: give the athlete to a new player (Ben, id 2) mid-play.
+func _replace_owner(aid: int) -> void:
+	owners[aid] = "Ben"
+	player_ids[aid] = 2
+
+func _own(aid: int) -> void:
+	owners[aid] = "Ann"
+	player_ids[aid] = 1
+
+func test_run_after_the_catch_stays_with_the_receiver_who_caught() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	var wr: int = i["wr"]
+	_own(wr)
+	w.event.emit("snap", {})
+	w.event.emit("throw", {"by": i["qb"]})
+	w.event.emit("catch", {"by": wr})
+	_replace_owner(wr)
+	w.event.emit("touchdown", {"carrier": wr, "spot": Vector2(20, 100), "team": 0, "points": 6})
+	var catch_td := {"rec": 1.0, "rec_yds": 75.0, "rec_td": 1.0, "pts": 6.0, "max_td_pts": 6.0}
+	assert_eq(s.award_stats[1], catch_td)
+	assert_true(not s.award_stats.has(2), "the replacement inherits nothing from the catch")
+	assert_true(s.get_line("Ben", "WR").is_empty())
+	assert_true(s.player_summary(2).is_empty())
+	assert_eq(s.athletes[wr]["owner"], "Ann")
+	for field in catch_td:
+		assert_eq(s.get_line("Ann", "WR")[field], catch_td[field], field)
+		assert_eq(s.athletes[wr][field], catch_td[field], field)
+	# The next catch belongs to the new owner.
+	w.event.emit("snap", {})
+	w.event.emit("throw", {"by": i["qb"]})
+	w.event.emit("catch", {"by": wr})
+	w.event.emit("tackle", {"by": i["lb"], "carrier": wr, "spot": Vector2(20, 37), "team": 0})
+	assert_eq(s.award_stats[1], catch_td)
+	assert_eq(s.award_stats.get(2), {"rec": 1.0, "rec_yds": 12.0})
+
+func test_field_goal_result_stays_with_the_kicker() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var k: int = _ids(w)["qb"]
+	_own(k)
+	w.event.emit("snap", {})
+	w.event.emit("kick", {"by": k, "kind": "fg"})
+	_replace_owner(k)
+	w.event.emit("field_goal", {"good": true, "distance": 41.6})
+	assert_eq(s.award_stats[1], {"fg_att": 1.0, "fg_made": 1.0, "fg_long": 42.0})
+	assert_true(not s.award_stats.has(2), "the replacement didn't kick it")
+	assert_true(s.get_line("Ben", "QB").is_empty())
+	assert_eq(s.athletes[k]["owner"], "Ann")
+	assert_eq(s.athletes[k]["fg_made"], 1.0)
+
+func test_pat_result_stays_with_the_kicker() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var m: Match = r[1]
+	var s: Stats = r[2]
+	var k: int = _ids(w)["qb"]
+	s.match_ref = m
+	m.state = Match.State.TRY
+	_own(k)
+	w.event.emit("snap", {})
+	w.event.emit("kick", {"by": k, "kind": "fg"})
+	_replace_owner(k)
+	w.event.emit("field_goal", {"good": true, "distance": 20.0})
+	assert_eq(s.award_stats[1], {"xp_att": 1.0, "xp_made": 1.0})
+	assert_true(not s.award_stats.has(2))
+
+func test_punt_yards_stay_with_the_punter() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var k: int = _ids(w)["qb"]
+	_own(k)
+	w.event.emit("snap", {})
+	w.event.emit("kick", {"by": k, "kind": "punt"})
+	_replace_owner(k)
+	w.event.emit("kick_downed", {"spot": Vector2(20, 68)})
+	assert_eq(s.award_stats[1], {"punts": 1.0, "punt_yds": 43.0})
+	assert_true(not s.award_stats.has(2), "the replacement didn't punt it")
+	assert_eq(s.athletes[k]["punt_yds"], 43.0)
+
+func test_replacement_human_does_not_inherit_a_bot_kick() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var k: int = _ids(w)["qb"]
+	w.event.emit("snap", {})
+	w.event.emit("kick", {"by": k, "kind": "punt"})
+	_own(k)
+	w.event.emit("touchback", {"spot": Vector2(20, 80)})
+	assert_true(s.award_stats.is_empty())
+	assert_eq(s.get_line("Bot", "QB")["punt_yds"], 75.0)
+	assert_true(s.get_line("Ann", "QB").is_empty())
+
+func test_kick_return_stays_with_the_player_who_fielded_it() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var k: int = _ids(w)["qb"]
+	var ret: int = _ids(w)["cb"]
+	_own(ret)
+	w.event.emit("snap", {})
+	w.event.emit("kick", {"by": k, "kind": "punt"})
+	w.event.emit("kick_catch", {"by": ret, "team": 1, "at": Vector2(20, 80)})
+	_replace_owner(ret)
+	w.event.emit("tackle", {"by": _ids(w)["lb"], "carrier": ret, "spot": Vector2(20, 66), "team": 1})
+	assert_eq(s.award_stats[1], {"pr": 1.0, "pr_yds": 14.0})
+	assert_true(not s.award_stats.has(2), "the replacement didn't field the punt")
+	# A return touchdown: the score belongs to whoever ran that return.
+	_own(ret)
+	w.event.emit("snap", {})
+	w.kicked = true
+	w.kick_play = "kickoff"
+	w.event.emit("kick", {"by": k, "kind": "kickoff"})
+	w.event.emit("kick_catch", {"by": ret, "team": 1, "at": Vector2(20, 95)})
+	_replace_owner(ret)
+	w.event.emit("touchdown", {"carrier": ret, "spot": Vector2(20, -2), "team": 1, "points": 6})
+	assert_eq(s.award_stats[1], {"pr": 1.0, "pr_yds": 14.0, "kr": 1.0, "kr_yds": 95.0, "pts": 6.0,
+		"ret_td": 1.0, "max_td_pts": 6.0})
+	assert_true(not s.award_stats.has(2))
+	assert_eq(s.athletes[ret]["owner"], "Ann")
+
+func test_takeaway_return_stays_with_the_player_who_made_it() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	_own(i["cb"])
+	w.event.emit("snap", {})
+	w.event.emit("throw", {"by": i["qb"]})
+	w.event.emit("interception", {"by": i["cb"], "at": Vector2(20, 40), "team": 1})
+	_replace_owner(i["cb"])
+	w.event.emit("touchdown", {"carrier": i["cb"], "spot": Vector2(20, -3), "team": 1, "points": 6})
+	assert_eq(s.award_stats[1], {"int": 1.0, "int_ret_yds": 40.0, "pts": 6.0, "def_td": 1.0, "max_td_pts": 6.0})
+	assert_true(not s.award_stats.has(2), "the replacement didn't make the pick")
+	# Fumble return, ended by a tackle.
+	_own(i["lb"])
+	w.event.emit("snap", {})
+	w.event.emit("handoff", {"to": i["rb"]})
+	w.event.emit("fumble", {"carrier": i["rb"], "by": i["cb"], "at": Vector2(26, 30)})
+	w.get_athlete(i["lb"]).position = Vector2(27, 33)
+	w.event.emit("recovery", {"by": i["lb"], "team": 1, "turnover": true})
+	_replace_owner(i["lb"])
+	w.event.emit("tackle", {"by": i["wr"], "carrier": i["lb"], "spot": Vector2(20, 21), "team": 1})
+	assert_eq(s.award_stats[1].get("fr_ret_yds", 0.0), 12.0)
+	assert_true(not s.award_stats[2].has("fr_ret_yds"), "the replacement didn't recover it")
+
 func test_completion_line() -> void:
 	var r := _setup()
 	var w: World = r[0]
