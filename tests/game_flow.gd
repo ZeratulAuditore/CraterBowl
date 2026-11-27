@@ -719,6 +719,26 @@ func _initialize() -> void:
 			var ov = main.pres.overlay
 			check(ov.flag_pill.visible and ov.flag_l.text == "FLAG · ILLEGAL MAN DOWNFIELD · OFFENSE · 10 YD · REPLAY 1ST DOWN", "ruling on the HUD (%s)" % ov.flag_l.text)],
 		[16620, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE and not main.pres.overlay.flag_pill.visible, "the next snap clears the ruling")],
+		# #312: a QB keeper cannot use the real throw control after retreating.
+		[16800, func():
+			main.configure(7)
+			main.auto_next = false
+			main.pov_enabled = true
+			main.ai.defense_enabled = false
+			main.series.start(0, 35.0)
+			_key(KEY_SPACE)],
+		[16830, func():
+			var qb = main.world.get_athlete(main.my_id)
+			check(main.world.ball.is_held_by(qb.id), "keeper receives the real snap")
+			qb.position = Vector2(6.0, main.world.los_y + 2.0)],
+		[16832, func():
+			var qb = main.world.get_athlete(main.my_id)
+			check(main.world.ball_crossed_los, "keeper crosses the line of scrimmage")
+			qb.position.y = main.world.los_y - 3.0],
+		[16834, func():
+			_key(KEY_J)
+			check(main.world.ball.is_held_by(main.my_id) and not main.charging and not main.pov_active(),
+				"J cannot charge or throw a pass after the keeper retreats")],
 	]
 	for f in range(13431, 13470):   # the LB keeps walking into the QB (bodies collide, QB gives ground)
 		steps.append([f, _fp_push])
