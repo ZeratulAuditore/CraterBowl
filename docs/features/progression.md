@@ -20,12 +20,13 @@ Progress is stored in JSON files on each player's own machine. Ratings use a ran
 
 ### Stats (`src/sim/stats.gd`)
 - Career lines are keyed `name|POSITION`. When a player fills multiple positions, each position gets its own career line. Bots are recorded as `Bot` and excluded from leaderboards and XP.
-- Fields: passing att/comp/yds/TD/INT thrown, receptions/yds/TD, carries/rush yds/TD, tackles, sacks, INTs, PBUs, forced and recovered fumbles, INT return yards, fumble return yards, points, block engagements, defensive TDs, best Chaosball TD value, and kicking (#67): field goals made/attempted and long, PATs made/attempted (XP), punts and gross punt yards, kick returns and yards, punt returns and yards.
-- A sack is a QB tackled behind the LOS before he throws. A defensive TD is a touchdown scored by a carrier from the team on defense.
+- Fields: passing att/comp/yds/TD/INT thrown, receptions/yds/TD, carries/rush yds/TD, tackles, sacks, INTs, PBUs, forced and recovered fumbles, INT return yards, fumble return yards, points, block engagements, defensive TDs, best Chaosball TD value, kick/punt return TDs, and kicking (#67): field goals made/attempted and long, PATs made/attempted (XP), punts and gross punt yards, kick returns and yards, punt returns and yards.
+- A sack is a QB tackled behind the LOS before he throws. Kickoff and punt return touchdowns go in the return TD field (`ret_td`) and appear as **RET TD** on Players of the Game cards. Scrimmage takeaway touchdowns go in `def_td`.
 - Scrimmage yards are measured from the snap LOS. Takeaway return yards (#100) run from the takeaway spot (the interception's catch point, or where the recovering player stood) to the dead-ball spot, measured toward the returner's scoring end zone, so a returner driven back gets negative yards. A return touchdown is credited to the goal line, not to where he stopped in the end zone. A return ends at a fumble or a throw (Chaosball swings), and a re-recovery by the other team starts its own return. Own-team recoveries aren't takeaways and get no return yards. Kick and punt returns (#67) use the same return rules from the spot the returner fields the ball (`kr`/`kr_yds` on kickoffs, `pr`/`pr_yds` on punts); a ball fielded in the end zone is a touchback, not a return.
 - Kicking (#67): every field-goal kick counts an attempt when it leaves the foot, so a blocked kick is a miss. A make adds `fg_made` and, if longer, sets `fg_long` (kick spot to the posts, rounded, the NFL convention). A kick on a 1-point try is a PAT (`xp_made`/`xp_att`), not a field goal; Stats tells them apart from the Match it is attached with. Punt yards are gross: LOS to where the punt is fielded, rolls dead or goes out, to the goal line on a touchback, and 0 for a blocked punt. The kicker is whoever kicked, usually the QB (`world.kicker()`), so kicking stats live on that position line.
 - `fg_long` and `max_td_pts` are best-of fields (`Stats.MAX_FIELDS`): match lines, achievement contexts and career leaderboard lines keep the max instead of summing (#171).
 - Return yards show in the post-game stat lines: the FINAL screen and the overview's "Your game" (`34yd int ret`, `12yd fum ret`) and the players-of-the-game cards (`34 INT RET YDS`, `12 FUM RET YDS`). A zero-yard return shows nothing.
+- "Your game" lists only your own lines (#200). They're keyed by your player id, not your display name, so two players both named Ann never see each other's lines, and two Anns at one position each keep a separate line. The FINAL screen's summary and the career table stay keyed by name.
 - Kicking shows the same way (#67): "Your game" gets `2/3 FG long 47, 1/1 XP, 4 punt 43.5 avg, 2 kick ret 51yd, 1 punt ret 8yd` (parts only when non-zero), and the cards show `2/3 FG  LONG 47`, `51 KR YDS`, `8 PR YDS`. The team stats grid is unchanged.
 
 ### Leaderboard (`src/sim/leaderboard.gd`)
@@ -67,7 +68,7 @@ Progress is stored in JSON files on each player's own machine. Ratings use a ran
 ### Achievements (`src/sim/achievements.gd`)
 | Achievement | Condition (one match unless noted) | XP |
 |---|---|---|
-| First Touchdown | any TD | 100 |
+| First Touchdown | any TD, including kickoff and punt returns | 100 |
 | First Win | win | 100 |
 | Gunslinger | 300+ pass yds | 250 |
 | Sure Hands | 8+ catches | 200 |
@@ -95,11 +96,13 @@ User data dir `crater-bowl` (see [out-of-game.md](out-of-game.md)). Tests pass t
 - **Local files over an online service.** A service needs accounts and anti-cheat; for a friend group the host is the league office.
 - **Host is the authority for the match result.** Clients trust the host's XP and achievement context. That's fine among friends but not tamper-proof, and names aren't authenticated (#28).
 - **Match awards follow the player in the seat (#156).** Stats for awards are credited to the player who controls the athlete when the play event occurs. A player who takes over a seat starts with their own totals. At the final whistle, the host uses each player's seated athlete ID to deliver the award.
+- **"Your game" follows match identity, not the display name (#200).** It used to pick the shared `name POS: …` summary lines that began with your name. Two Anns then saw each other's lines, and two Anns at one position shared one merged line. `Stats` now also keeps lines by player id and position (`player_lines`, credited like the #156 award stats). The host reads its own lines by player id. Clients get theirs from the `summary` event's `mine` map, keyed by athlete id like `awards`. The career table keeps the `name|POS` key. Moving it to identity is a format change that loses every saved table, and the leaderboard is meant to show names. Rejected: making names unique in the lobby (`Ann (2)`). That changes what players typed and doesn't help an older build's career table.
 - **Ratings keyed by install id, kept on the host (#102).** Display names aren't unique, so the host keys each rating by a 16-hex-char id the player's install mints once (`main.gd:install_id()`, saved in `profile.json` with the first ranked result). The host keeps peers' ids in a private map and never broadcasts them: the `ranked` event is keyed by athlete id, so nobody can read another player's id and claim their rating. It isn't authentication. A tampered client can still send any id it likes (#28).
 - **No pay-to-win:** cosmetics are view-only and checked by a determinism test (identical worlds regardless of looks).
 - **Original achievement set** (12 milestones), not copied from any other game.
+- **Kick return touchdowns have their own category (#172).** A return TD counts once in the team's touchdown total and carries the same player-card weight as a defensive TD. It can earn **SPECIAL TEAMS STANDOUT** and qualifies for First Touchdown.
 - **Return yards are their own fields** (`int_ret_yds`, `fr_ret_yds`), not added to rush yards. Folding them into rushing would inflate RB/QB rushing lines and the scrimmage-yard totals that players-of-the-game and the box score compare. Players of the game weight them like scrimmage yards (0.1 per yard) under DEFENSIVE STANDOUT. The leaderboard score and team box score leave them out for now, so career tables from before #100 stay comparable.
-- **Kicking in players of the game (#67):** a made field goal weighs 3.0 (its points, on the same scale as a TD at ~6), kick and punt return yards 0.04 per yard (fantasy return-yard scoring, a fraction of scrimmage yards because a kickoff return of 20+ yards is routine), under a new SPECIAL TEAMS category. Punts and PATs carry no weight: a punter or a PAT shouldn't outrank a scorer. Rejected: folding kicking into the QB's passing category (the card would call a kicker a TOP PASSER). Kicking stays out of the leaderboard score, XP and the team grid (#115 owns that grid). Return touchdowns are still recorded as `def_td` (#172).
+- **Kicking in players of the game (#67):** a made field goal weighs 3.0 (its points, on the same scale as a TD at ~6), kick and punt return yards 0.04 per yard (fantasy return-yard scoring, a fraction of scrimmage yards because a kickoff return of 20+ yards is routine), under the SPECIAL TEAMS STANDOUT category (shared with return TDs, #172). Punts and PATs carry no weight: a punter or a PAT shouldn't outrank a scorer. Rejected: folding kicking into the QB's passing category (the card would call a kicker a TOP PASSER). Kicking stays out of the leaderboard score, XP and the team grid (#115 owns that grid).
 - Not done: cross-machine ratings and leaderboards. Each machine's tables only contain matches it hosted or played offline.
 
 ## Code and tests
@@ -107,7 +110,7 @@ User data dir `crater-bowl` (see [out-of-game.md](out-of-game.md)). Tests pass t
 - `src/sim/leaderboard.gd`, `src/sim/ranked.gd`, `src/sim/cosmetics.gd`, `src/sim/achievements.gd`.
 - `src/game/main.gd` (`_on_match_event` "final", `_record_leaderboard`, `_record_ranked`, `_match_awards`, `_apply_award`).
 - `src/ui/main_menu.gd` (`_screen_locker`, `_screen_leaders`, profile chip), `src/ui/game_overview.gd`.
-- Tests: `tests/test_stats.gd`, `tests/test_leaderboard.gd`, `tests/test_ranked.gd`, `tests/test_cosmetics.gd`, `tests/test_achievements.gd`, `tests/test_potg.gd`, `tests/game_flow.gd` (final records files, HUD rank/rating/XP lines), `tests/net_client.gd` (looks and same-name awards), `scripts/mm_test.sh` `MODE=competitive`.
+- Tests: `tests/test_stats.gd`, `tests/test_leaderboard.gd`, `tests/test_ranked.gd`, `tests/test_cosmetics.gd`, `tests/test_achievements.gd`, `tests/test_potg.gd`, `tests/game_flow.gd` (final records files, HUD rank/rating/XP lines), `tests/net_client.gd` (looks, same-name awards and "Your game"), `tests/visual/same_name_overview_test.gd` (#200), `scripts/mm_test.sh` `MODE=competitive`.
 
 ## Open issues
 - #8 C06 Spotting: forward progress, return yards, fumble variety
@@ -116,6 +119,5 @@ User data dir `crater-bowl` (see [out-of-game.md](out-of-game.md)). Tests pass t
 - #30 C24 Match history and profile
 - #37 B05 Friend-group seasons + persistent stats
 - #41 C26 Archetypes (one passive each)
-- #200 Personal overview stats for players with the same display name
 - #202 Credit for a throw that ends after its athlete changes owners
 - #172 Kick and punt return touchdowns are credited as defensive TDs

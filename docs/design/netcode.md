@@ -76,6 +76,11 @@ award use the player ID at the time of each event, so a new occupant earns their
 For mixed builds, the host also includes a display-name entry when the name is unique. Clients
 can read the name entry from an older host.
 
+The `summary` event carries `lines` (the name-keyed `name POS: …` summary), `potg`, `teams`
+and, since #200 (protocol v2), `mine`: `{athlete id: ["POS: …", …]}`, each occupied seat's own
+lines by player id. A client shows `mine[my_id]` under "Your game", so a same-named player's lines
+never show up there.
+
 ## Validation
 
 - `protocol.gd:sanitize_input`: non-finite `dir` → zero, length clamped to 1; `seq` must be a
