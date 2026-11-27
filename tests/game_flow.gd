@@ -723,6 +723,35 @@ func _initialize() -> void:
 			var ov = main.pres.overlay
 			check(ov.flag_pill.visible and ov.flag_l.text == "FLAG · ILLEGAL MAN DOWNFIELD · OFFENSE · 10 YD · REPLAY 1ST DOWN", "ruling on the HUD (%s)" % ov.flag_l.text)],
 		[16620, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE and not main.pres.overlay.flag_pill.visible, "the next snap clears the ruling")],
+		# #337: window 17400–17452. A short defensive tip spends a down but leaves the ball at the LOS.
+		[17400, func():
+			main.opening_kickoff = false
+			main.configure(3)
+			main.auto_next = false
+			main.pov_enabled = false
+			main.ai.defense_enabled = false
+			main.ai.offense_enabled = false
+			main.series.start(0, 40.0)
+			main.set_controlled(main.my_id)],
+		[17402, func():
+			_key(KEY_SPACE)
+			check(main.world.ball.is_held_by(main.my_id) and main.world.phase == main.World.Phase.LIVE, "Space snaps the short-pass play")
+			var w = main.world
+			for a in w.athletes:
+				a.position = Vector2(25.0, 40.0 + a.id * 2.0)
+			var qb = w.carrier()
+			qb.position = Vector2(12.0, 35.0)
+			w.find_role(1, main.Athlete.Role.CB).position = qb.position + Vector2(0.0, 4.25)
+			main.aim_point = qb.position + Vector2(0.0, 6.0)
+			_key(KEY_J)
+			check(w.forward_pass_thrown, "J releases the short pass")],
+		[17432, func():
+			check(main.world.phase == main.World.Phase.DEAD and main.last_whistle == "BREAKUP", "short defensive touch ends the play as a breakup")
+			check(main.pres.overlay.status_l.text == "PASS BROKEN UP", "HUD shows the breakup ruling")],
+		[17452, func():
+			_key(KEY_ENTER)
+			var d = main.series.downs
+			check(d.offense_team == 0 and is_equal_approx(d.los, 40.0) and d.down == 2, "tip spends the down at the old spot without changing possession")],
 	]
 	for f in range(13431, 13470):   # the LB keeps walking into the QB (bodies collide, QB gives ground)
 		steps.append([f, _fp_push])

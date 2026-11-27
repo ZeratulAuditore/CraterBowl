@@ -4,6 +4,7 @@ extends SceneTree
 
 var main
 var saw_live := false
+var threw_opening_pass := false
 var presnap_time := 0.0
 var prepared_handoff := false
 var set_quarters := false
@@ -28,6 +29,8 @@ func _physics_process(dt: float) -> bool:
 			print("NET host got install id %s" % main.peer_installs[peer])
 	if main.world.phase == main.World.Phase.LIVE:
 		saw_live = true
+		if not threw_opening_pass and main.world.ball.is_held_by(main.my_id):
+			_throw_opening_pass()
 	if saw_live and main.world.phase == main.World.Phase.PRESNAP:
 		presnap_time += dt
 		if presnap_time >= 2.0:
@@ -36,6 +39,18 @@ func _physics_process(dt: float) -> bool:
 			prepared_handoff = true
 			main.world.event.connect(_finish_after_handoff)
 	return false
+
+func _throw_opening_pass() -> void:
+	threw_opening_pass = true
+	var world = main.world
+	var qb = world.carrier()
+	var tipper = world.find_role(1, main.Athlete.Role.LB)
+	for a in world.athletes:
+		a.position = Vector2(30.0, 25.0 + 3.0 * a.id)
+		a.velocity = Vector2.ZERO
+	qb.position = Vector2(12.0, world.los_y - 5.0)
+	tipper.position = qb.position + Vector2(0.0, 4.25)
+	world.throw(qb.id, qb.position + Vector2(0.0, 6.0), main.T.PLAYER_PASS_POWER)
 
 func _finish_after_handoff(event: String, _data: Dictionary) -> void:
 	if event != "handoff":
