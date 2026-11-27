@@ -766,6 +766,15 @@ func _initialize() -> void:
 			_key(KEY_ENTER)
 			var d = main.series.downs
 			check(d.offense_team == 0 and is_equal_approx(d.los, 40.0) and d.down == 2, "tip spends the down at the old spot without changing possession")],
+		# #346: window 17500–17502. The picker replaces the pre-snap call and locks on Space.
+		[17500, func():
+			main.configure(3)
+			main.auto_next = false
+			main.ai.defense_enabled = false
+			main.ai.offense_enabled = false
+			main.series.start(0, 25.0)
+			main.set_controlled(main.my_id)],
+		[17502, _check_audible],
 		# #323: window 17900–17904. A fumbled keeper still appears in the QB's match stats.
 		[17900, func():
 			main.configure(3)
@@ -781,6 +790,29 @@ func _initialize() -> void:
 	]
 	for f in range(13431, 13470):   # the LB keeps walking into the QB (bodies collide, QB gives ground)
 		steps.append([f, _fp_push])
+
+func _check_audible() -> void:
+	var overlay = main.pres.overlay
+	_key(KEY_Q)
+	overlay._refresh_picker(main, false)
+	check(not overlay.picker.visible, "Q closes the pre-snap play picker")
+	_key(KEY_Q)
+	overlay._refresh_picker(main, false)
+	check(overlay.picker.visible, "Q reopens the pre-snap play picker")
+	var slants: Button = overlay.picker_grid.get_children().filter(func(b): return b.text == "Slants")[0]
+	var flood: Button = overlay.picker_grid.get_children().filter(func(b): return b.text == "Flood")[0]
+	slants.pressed.emit()
+	flood.pressed.emit()
+	overlay._refresh_picker(main, false)
+	main._draw_routes()
+	check(main.world.play_name == "Flood" and flood.button_pressed and not slants.button_pressed, "the second picker call selects Flood")
+	check(main.route_mesh.get_surface_count() > 0, "the offense sees the audible's routes")
+	_key(KEY_SPACE)
+	slants.pressed.emit()
+	overlay._refresh_picker(main, false)
+	main._draw_routes()
+	check(main.world.phase == main.World.Phase.LIVE and main.world.play_name == "Flood", "a stale picker action cannot change a live call")
+	check(not overlay.picker.visible and main.route_mesh.get_surface_count() == 0, "Space hides the picker and route art")
 
 func _fumble_keeper() -> void:
 	_key(KEY_SPACE)
