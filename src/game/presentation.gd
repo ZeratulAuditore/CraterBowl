@@ -215,20 +215,23 @@ func on_event(n: String, d: Dictionary) -> void:
 			_dust(_athlete_pos(int(d.get("by", -1))), 8)
 	overlay.on_event(n, d)
 
-## A tackled carrier's fall (tackle_fall.gd), from the collision: carrier and tackler meet like
-## two equal bodies that stick, so the contact point leaves at their average velocity. IMPACT
-## exaggerates that change so a hit reads from the game camera. Every tackle is a dive
-## (world.gd), which wraps the thighs at CONTACT_HEIGHT.
-const IMPACT := 1.4
+## A tackled carrier's fall (tackle_fall.gd), from the collision: the tackler hits him at
+## CONTACT_HEIGHT on the side he came from, with an impulse of TACKLE_MASS times their closing
+## velocity. Every tackle is a dive (world.gd), which wraps the thighs.
+const TACKLE_MASS := 18.0   # the carrier's ragdoll weighs 82; tuned so a hit reads from the game camera
 const CONTACT_HEIGHT := 0.55   # yd
 
 func _tackle_fall(carrier: int, by: int) -> void:
-	var w = main.world
 	var run := _sim_velocity(carrier)
-	var contact := run   # no tackler (the carrier's own dive): he just goes down
-	if w.get_athlete(by) != null:
-		contact = run + ((run + _sim_velocity(by)) * 0.5 - run) * IMPACT
-	main.views[carrier].tackled(run, contact, CONTACT_HEIGHT)
+	var at: Vector3 = main.views[carrier].global_position
+	var impulse := Vector3.ZERO   # no tackler (the carrier's own dive): he just goes down
+	var side := -run.normalized()
+	if main.world.get_athlete(by) != null:
+		impulse = (_sim_velocity(by) - run) * TACKLE_MASS
+		side = main.views[by].global_position - at
+		side.y = 0.0
+		side = side.normalized()
+	main.views[carrier].tackled(run, impulse, at + Vector3.UP * CONTACT_HEIGHT + side * 0.2)
 
 ## The sim stops everyone at the whistle, before this event: fall back to how the view was
 ## actually moving (smoothed over the last frames, so it holds the speed at contact).

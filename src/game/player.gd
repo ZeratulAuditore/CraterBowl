@@ -324,13 +324,13 @@ func hit() -> void:
 ## Tackled while carrying: go down hugging the ball (tackle_fall.gd). run = this athlete's
 ## velocity, contact = the velocity the hit drives the contact point to (yd/s, world),
 ## contact_h = the hit's height (yd).
-func tackled(run: Vector3, contact: Vector3, contact_h: float) -> void:
+func tackled(run: Vector3, impulse: Vector3, point: Vector3) -> void:
 	if pose == null or _skel == null:
 		hit()
 		return
 	if fall == null:
 		fall = TackleFall.new(self)
-	fall.start(run, contact, contact_h)
+	fall.start(run, impulse, point)
 
 func is_falling() -> bool:
 	return fall != null and fall.active

@@ -4,11 +4,11 @@ extends RefCounted
 ## athlete_pose "secure" hug, so the ball stays tucked whatever the body does. View-only (no sim
 ## state): every client runs its own, and replays may differ slightly.
 ##
-## Impact: the carrier freezes for HIT_STOP on contact, then the hit lands where it was made.
-## Bones near the contact height take the contact velocity (presentation.gd works it out from the
-## two athletes' momentum); the rest of the body keeps running. So a dive from the front stops
-## the legs and the runner falls forward over the tackler, and one from the side sweeps the legs
-## sideways and he falls the other way. Any spin comes from that difference, never a random push.
+## Impact: the carrier freezes for HIT_STOP on contact, then the whole body keeps its run and one
+## impulse lands at the hit point, shared by the bones nearest it (each pushed at that point, so
+## an off-centre hit also turns them). A low hit from the front stops the legs and he falls
+## forward over it; a high one knocks the chest back; one on the hip spins him. The fall comes
+## only from where and how hard he was hit, never a random push.
 
 ## Simulated bones: [bone, child (capsule end), radius, mass, bend limits (deg, lower, upper),
 ## side bend +- (deg), twist +- (deg)].
@@ -38,10 +38,9 @@ const MAX_SPEED := 12.0
 const MAX_SPIN := 14.0
 ## Contact freeze (s): the carrier holds the frame of impact before the hit lands.
 const HIT_STOP := 0.07
-## Bones this far (yd) above or below the contact height still take some of the hit.
-const CONTACT_SPREAD := 0.8
-## The contact region is lifted a little by the hit (yd/s), so it leaves the turf.
-const LIFT := 1.2
+## How far (yd) the hit spreads through the body: a bone this far from the hit point takes
+## e^-1 of the share the nearest bone takes.
+const HIT_SPREAD := 0.35
 
 var view          # player.gd
 var active := false
@@ -49,22 +48,22 @@ var t := 0.0
 var _sim: PhysicalBoneSimulator3D
 var _turf: StaticBody3D
 var _run := Vector3.ZERO
-var _contact := Vector3.ZERO
-var _contact_h := 1.0
+var _impulse := Vector3.ZERO
+var _point := Vector3.ZERO
 var _pending := false   # in the hit-stop: the ragdoll starts when it ends
 
 func _init(v) -> void:
 	view = v
 
-## run: the carrier's velocity before the hit; contact: the velocity the hit drives the contact
-## point to (both yd/s, world); contact_h: how high the hit lands (yd above the turf).
-func start(run: Vector3, contact: Vector3, contact_h: float) -> void:
+## run: the carrier's velocity before the hit (yd/s); impulse: the hit (mass x yd/s, world);
+## point: where it lands on him (world).
+func start(run: Vector3, impulse: Vector3, point: Vector3) -> void:
 	stop()
 	active = true
 	t = 0.0
 	_run = run
-	_contact = contact
-	_contact_h = contact_h
+	_impulse = impulse
+	_point = point
 	_pending = true
 	view.pose.secure = true
 	if view.anim:
@@ -166,14 +165,24 @@ func _start_ragdoll() -> void:
 	_turf.global_transform = Transform3D()
 	_sim.physical_bones_start_simulation(names)
 	view.get_tree().physics_frame.connect(_cap_speeds)
-	# The contact region moves with the hit, the rest keeps running.
+	# Everyone keeps running; the hit lands where it was made, on the bones nearest it. Bone
+	# segments come from the contact-frame pose (the hit-stop held it).
+	var parts := []
+	var total := 0.0
 	for b in BONES:
 		var pb := _sim.get_node_or_null("PB_" + b[0]) as PhysicalBone3D
 		if pb == null:
 			continue
-		var h: float = (sk.global_transform * sk.get_bone_global_rest(sk.find_bone(b[0]))).origin.y - sk.global_position.y
-		var w := clampf(1.0 - absf(h - _contact_h) / CONTACT_SPREAD, 0.0, 1.0)
-		pb.linear_velocity = _run.lerp(_contact, w) + Vector3.UP * LIFT * w
+		pb.linear_velocity = _run
+		var pose := sk.global_transform * sk.get_bone_global_pose(sk.find_bone(b[0]))
+		var child := sk.find_bone(b[1]) if b[1] != "" else -1
+		var tip: Vector3 = (sk.global_transform * sk.get_bone_global_pose(child)).origin if child >= 0 else pose * Vector3(0, 0.22, 0.02)
+		var d := _point.distance_to(Geometry3D.get_closest_point_to_segment(_point, pose.origin, tip))
+		var w := exp(-pow(d / HIT_SPREAD, 2.0))
+		parts.append([pb, w, (pose.origin + tip) * 0.5])
+		total += w
+	for p in parts:
+		p[0].apply_impulse(_impulse * p[1] / total, _point - p[2])
 
 func _cap_speeds() -> void:
 	if _sim == null:
