@@ -25,6 +25,8 @@ var fc_ret = null   # #189 fair-catch step's returner
 var fp_lb = null          # C06a forward progress: the defender driving the carrier back
 var fp_contact_y := INF
 var fp_driven_y := 0.0
+const ZOOM_SETTINGS := "user://test_flow_settings.cfg"   # #140 zoom step
+var zoom_path0 := ""
 var bot_snap_clock := INF   # #136: play clock when the bot offense snapped (frames 4171-4481)
 
 func check(cond: bool, msg: String) -> void:
@@ -325,6 +327,70 @@ func _initialize() -> void:
 		[9002, func(): var t: Vector2 = main.Drills.target_list(main.field)[0]["pos"]; main.world.get_athlete(main.my_id).position = t - Vector2(0, 10); main.aim_point = t],
 		[9030, func(): _key(KEY_J); check(main.drill.throws == 1, "practice-field throw with the real throw path")],
 		[9200, func(): check(main.drill.hits == 1 and main.drill.points >= 1, "hit the short target (%s)" % main.drill.last_result); check(main.world.ball.is_held_by(main.my_id), "ball back in your hands"); DirAccess.remove_absolute(ProjectSettings.globalize_path(main.training_path))],
+		# #140 mouse-wheel camera zoom through the real mouse handler: pre-snap and live on the
+		# follow camera, clamped both ways, saved to settings, middle click resets; ignored in
+		# the passer's POV aim, with the taunt wheel open and in replays. Window 12300-12390.
+		[12300, func():
+			main.configure(7); main.ai.defense_enabled = false; main.pov_enabled = false
+			var launch = root.get_node("/root/Launch")
+			zoom_path0 = launch.settings_path
+			launch.settings_path = ZOOM_SETTINGS
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(ZOOM_SETTINGS))
+			main.set_camera_zoom(main.CameraZoom.DEFAULT); main.cam_zoom_shown = main.cam_zoom],
+		[12302, func():
+			var Z = main.CameraZoom
+			check(main.world.phase == main.World.Phase.PRESNAP and not main.pov_active(), "zoom step: pre-snap on the follow camera")
+			_wheel(true)
+			check(is_equal_approx(main.cam_zoom, Z.DEFAULT - Z.STEP), "wheel up zooms in pre-snap (%.2f)" % main.cam_zoom)
+			check(main.cam_zoom_shown == Z.DEFAULT, "the zoom eases (not applied until the camera updates)")
+			var saved = load("res://src/ui/settings_store.gd").new(); saved.load_file(ZOOM_SETTINGS)
+			check(is_equal_approx(saved.camera_zoom, main.cam_zoom), "the zoom level is saved to settings (%.2f)" % saved.camera_zoom)
+			for i in 30: _wheel(true)
+			check(main.cam_zoom == Z.MIN, "wheel up stops at the near limit %.1f" % Z.MIN)
+			for i in 30: _wheel(false)
+			check(main.cam_zoom == Z.MAX, "wheel down stops at the far limit %.1f" % Z.MAX)
+			_middle_click()
+			check(main.cam_zoom == Z.DEFAULT, "middle click resets the zoom")
+			_wheel(false); _wheel(false)
+			check(is_equal_approx(main.cam_zoom, 1.2), "two notches down = 1.2 (%.2f)" % main.cam_zoom)],
+		[12340, func():
+			var d: float = main.camera.global_position.distance_to(main.player.global_position)
+			var want: float = main.FOLLOW_CAM_OFFSET.length() * 1.2
+			check(absf(main.cam_zoom_shown - 1.2) < 0.001 and absf(d - want) < 0.6, "the follow camera eased out to 1.2x (%.1f m from the player, want %.1f)" % [d, want])
+			_key(KEY_SPACE)],
+		[12350, func():
+			check(main.world.phase == main.World.Phase.LIVE, "zoom step: snapped")
+			_wheel(true)
+			check(is_equal_approx(main.cam_zoom, 1.1), "wheel zooms during live play (%.2f)" % main.cam_zoom)
+			var launch = root.get_node("/root/Launch")
+			main.replay_active = true
+			check(not main.zoom_camera(1.0) and is_equal_approx(main.cam_zoom, 1.1), "wheel ignored during a replay")
+			main.camera_follow = main.player.global_position
+			main._update_camera(1.0 / 60.0)
+			var d: float = main.camera.global_position.distance_to(main.player.global_position)
+			check(absf(d - main.FOLLOW_CAM_OFFSET.length()) < 0.01, "the replay Player cam uses the default framing (%.2f m)" % d)
+			main.replay_active = false
+			check(launch.settings.camera_zoom == main.cam_zoom, "Launch settings hold the live zoom")],
+		[12360, func(): _force_dead_if_live(); main.configure(7); main.pov_enabled = true; main.mouse_captured_override = true],
+		[12362, func():
+			check(main.pov_active(), "zoom step: QB in POV aim")
+			var before := [main.cam_zoom, main.aim_yaw, main.aim_pitch, main.charge, main.charging]
+			_wheel(true); _wheel(false); _wheel(false); _middle_click()
+			check([main.cam_zoom, main.aim_yaw, main.aim_pitch, main.charge, main.charging] == before, "wheel and middle click do nothing in POV aim (zoom, aim, charge unchanged)")
+			main.pov_enabled = false
+			main.mouse_captured_override = null
+			_key(KEY_C)
+			check(main.taunt_wheel.open and not main.pov_active(), "taunt wheel open on the follow camera")
+			_wheel(true); _middle_click()
+			check(is_equal_approx(main.cam_zoom, 1.1), "wheel and middle click do nothing while the taunt wheel is open")
+			main.taunt_wheel.close()
+			_wheel(true)
+			check(is_equal_approx(main.cam_zoom, 1.0), "the wheel zooms again once the taunt wheel closes")],
+		[12390, func():
+			var launch = root.get_node("/root/Launch")
+			launch.settings_path = zoom_path0
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(ZOOM_SETTINGS))
+			main.ai.defense_enabled = true],
 		# Gridiron controls: POV aim + throw (mouse look), Q/E spin, F dive, wheel/C taunt
 		[12400, func(): main.configure(7); main.ai.defense_enabled = false; main.pov_enabled = true],
 		[12402, func(): check(main.pov_active(), "QB presnap: POV aim active"); check(absf(main.aim_yaw) < 0.001, "aim starts downfield"); _key(KEY_SPACE)],
@@ -575,6 +641,25 @@ func _hold(code: int, pressed: bool) -> void:
 	ev.pressed = pressed
 	Input.parse_input_event(ev)
 	Input.flush_buffered_events()
+
+## One mouse-wheel notch through the real handler (#140 camera zoom).
+func _wheel(up: bool) -> void:
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_WHEEL_UP if up else MOUSE_BUTTON_WHEEL_DOWN
+	ev.factor = 1.0
+	ev.pressed = true
+	main._unhandled_input(ev)
+	ev = ev.duplicate()
+	ev.pressed = false
+	main._unhandled_input(ev)
+
+## Middle press + release with no drag through the real handler (#140 zoom reset).
+func _middle_click() -> void:
+	for down in [true, false]:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_MIDDLE
+		ev.pressed = down
+		main._unhandled_input(ev)
 
 ## Relative mouse motion through the real handler (#139 taunt wheel / mouse look).
 func _mouse(rel: Vector2) -> void:
