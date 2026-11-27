@@ -363,3 +363,14 @@ static func version_refusal(theirs, ours: int = local_version()) -> String:
 	if theirs < ours:
 		return "Update Crater Bowl to play online (server is v%d, you have v%d)" % [ours, theirs]
 	return "This server runs an older Crater Bowl (server is v%d, you have v%d)" % [ours, theirs]
+
+## Client side of the same check (#224): why we (`ours`) can't play on a host whose `welcome`
+## announced `theirs`; "" = compatible. No int `v` means a host from before the handshake.
+static func host_version_refusal(theirs, ours: int = local_version()) -> String:
+	if theirs is int and theirs == ours:
+		return ""
+	if not (theirs is int):
+		return "This server runs an older Crater Bowl (server is an older build, you have v%d)" % ours
+	if theirs < ours:
+		return "This server runs an older Crater Bowl (server is v%d, you have v%d)" % [theirs, ours]
+	return "Update Crater Bowl to play online (server is v%d, you have v%d)" % [theirs, ours]
