@@ -25,6 +25,8 @@ var fc_ret = null   # #189 fair-catch step's returner
 var fp_lb = null          # C06a forward progress: the defender driving the carrier back
 var fp_contact_y := INF
 var fp_driven_y := 0.0
+var catch_pose := []   # #246: [catch_weight, catch_reach, hand-to-ball, chest-to-ball] at the A04 catch
+var toss_close_clock := -1.0   # #129: kickoff play clock when the toss cutscene closed
 var bot_snap_clock := INF   # #136: play clock when the bot offense snapped (frames 4171-4481)
 
 func check(cond: bool, msg: String) -> void:
@@ -71,7 +73,12 @@ func _initialize() -> void:
 		[402, func(): main.ai.defense_enabled = false; main.world.snap()],
 		[480, func(): _lead_to_wr(); _key(KEY_J)],
 		[531, func(): check(main.world.forward_pass_thrown, "lead pass thrown")],
-		[800, func(): main.ai.defense_enabled = true; check(caught_by >= 0, "WR caught it"); check(main.controlled_id == main.my_id and main.controlled_id != caught_by, "assigned athlete retained after catch")],
+		[800, func():
+			main.ai.defense_enabled = true
+			check(caught_by >= 0, "WR caught it")
+			check(catch_pose.size() == 4 and catch_pose[0] > 0.8 and catch_pose[1] > 0.8 and catch_pose[2] < catch_pose[3] - 0.3,
+				"receiver reaches for the ball as it arrives (#246): weight/reach/hand-to-ball/chest-to-ball %s" % str(catch_pose))
+			check(main.controlled_id == main.my_id and main.controlled_id != caught_by, "assigned athlete retained after catch")],
 		# A05: idle receiver gets run down by AI pursuit and tackled
 		[1300, func():
 			check(tackled, "AI defender tackled the carrier")
@@ -97,6 +104,7 @@ func _initialize() -> void:
 		[2470, func(): var c = main.world.carrier(); c.position = Vector2(26, 101.0)],
 		[2472, func(): main.next_play(); check(main.series.score[0] == 8, "try good: 8"); check(main.series.state == main.Match.State.KICKOFF and main.world.offense_team == 0 and absf(main.world.los_y - 35.0) < 0.01, "kickoff: home kicks from its 35")],
 		# A09: play clock auto-snap, untimed down, halftime
+		[2474, func(): _check_look_snaps("kickoff reset after the try")],   # #245 (frame 2474 only)
 		[2473, func(): check(main.hud.text.find("Q1 ") >= 0 and main.hud.text.find("H1 ") < 0 and main.hud.text.find("PLAY ") >= 0, "HUD game + play clock"); main.series.clock.play_clock = 0.3],
 		[2500, func(): check(main.world.phase == main.World.Phase.LIVE, "play clock auto-snapped"); main.series.clock.quarter = 2; main.series.clock.remaining = 0.2],
 		[2530, func(): check(main.series.clock.expired(), "clock hit 0:00")],
@@ -515,6 +523,67 @@ func _initialize() -> void:
 			main.next_play()
 			check(absf(main.world.los_y - fp_contact_y) < 0.2 and main.series.downs.down == 2, "next snap from the forward-progress spot (%s)" % main.series.downs.label())
 			main.ai.defense_enabled = true],
+		[13500, _check_kick_return_touchdown],
+		# #129 coin-toss cutscene, window 14000-16220 (60 Hz: the coin lands 180 frames in).
+		# You win: Space / J do nothing in the air; at the reveal the title + cards show with no
+		# key hints and the play clock held; a real click on KICK picks; the field comes back with
+		# the kickoff clock untouched.
+		[14000, func(): _toss_setup(0)],
+		[14002, func():
+			var ct = main.coin_toss
+			check(ct != null and main.series.state == main.Match.State.TOSS, "coin-toss cutscene plays before the opening kickoff")
+			check(ct != null and not main.athlete_root.visible and not main.pres.overlay.visible, "the match and its HUD wait behind it")
+			_key(KEY_SPACE)
+			_key(KEY_J)
+			check(main.coin_toss != null and main.series.state == main.Match.State.TOSS and not main.world.kicked, "Space / J before the coin lands do nothing")],
+		[14220, func():
+			var ct = main.coin_toss
+			check(ct != null and ct.title.text == "YOU WON THE TOSS" and ct.card_row.visible, "you won: title + RECEIVE / KICK cards")
+			check(ct != null and _no_key_hints(ct.all_text()), "no key hints in the toss UI (%s)" % (ct.all_text() if ct else ""))
+			check(main.series.play_clock_shown() == -1 and absf(main.series.clock.play_clock - main.series.clock.PLAY_CLOCK) < 0.001, "the play clock doesn't run during the toss")
+			check(main.pres.excite > 0.5, "the crowd roars on the reveal (%.2f)" % main.pres.excite)
+			_click(ct.cards[1])
+			check(main.series.state == main.Match.State.KICKOFF and main.world.offense_team == _my_team(), "clicking KICK: you kick off")],
+		[14222, func(): check(main.coin_toss != null and main.coin_toss.sub.text == "HELIOS WILL KICK", "the pick holds on screen (%s)" % (main.coin_toss.sub.text if main.coin_toss else "gone"))],
+		[14290, func():
+			check(main.coin_toss == null and main.athlete_root.visible and main.pres.overlay.visible, "faded back to the kickoff, HUD back")
+			check(absf(toss_close_clock - main.series.clock.PLAY_CLOCK) < 0.001, "the kickoff's play clock is untouched when the field comes back (%.3f)" % toss_close_clock)
+			check(main.can_kick(), "you're on the tee")],
+		# Key 2 still works (no hint says so): 1 = receive.
+		[14300, func(): _toss_setup(0)],
+		[14490, func():
+			_key(KEY_1)
+			check(main.series.state == main.Match.State.KICKOFF and main.world.offense_team != _my_team(), "key 1 after the reveal: you receive")],
+		[14492, func(): check(main.coin_toss != null and main.coin_toss.sub.text == "HELIOS WILL RECEIVE", "receive shows (%s)" % (main.coin_toss.sub.text if main.coin_toss else "gone"))],
+		# AFK winner: receive when the window (from the reveal) runs out.
+		[14600, func(): _toss_setup(0)],
+		[15070, func(): check(main.series.state == main.Match.State.TOSS and main.coin_toss != null and main.coin_toss.timer_back.visible, "still choosing near the end of the window, timer shown")],
+		[15090, func(): check(main.series.state == main.Match.State.KICKOFF and main.series.toss_choice == "receive" and main.coin_toss != null and main.coin_toss.receiver == _my_team(), "no answer = receive, shown in the cutscene")],
+		# Bots win: you see them choose, they receive TOSS_BOT_PICK after the reveal.
+		[15200, func(): _toss_setup(1)],
+		[15420, func():
+			var ct = main.coin_toss
+			check(ct != null and ct.title.text == "NEBULA WINS THE TOSS" and ct.waiting_box.visible and ct.waiting.text == "NEBULA IS CHOOSING…" and not ct.card_row.visible, "bots won: they choose, you wait")
+			check(ct != null and _no_key_hints(ct.all_text()), "no key hints (%s)" % (ct.all_text() if ct else ""))
+			check(main.series.state == main.Match.State.TOSS, "bots still thinking")],
+		[15460, func(): check(main.series.state == main.Match.State.KICKOFF and main.series.toss_choice == "receive" and main.world.offense_team == _my_team() and main.coin_toss != null and main.coin_toss.sub.text == "NEBULA WILL RECEIVE", "bots auto-pick receive after the reveal (%s)" % (main.coin_toss.sub.text if main.coin_toss else "gone"))],
+		[15530, func(): check(main.coin_toss == null and absf(toss_close_clock - main.series.clock.PLAY_CLOCK) < 0.001, "you kick with a full play clock after the cutscene (%.3f)" % toss_close_clock)],
+		# Skip (Space) once the result shows: the loser just closes it and it doesn't come back.
+		[15600, func(): _toss_setup(1)],
+		[15800, func(): _key(KEY_SPACE)],
+		[15840, func():
+			check(main.coin_toss == null and main.series.state == main.Match.State.TOSS and main.pres.overlay.visible, "loser skipped: back on the field while they choose")
+			check(main.pres.overlay.status_l.text == "NEBULA IS CHOOSING", "the HUD pill says who's choosing (%s)" % main.pres.overlay.status_l.text)],
+		[15845, func(): check(main.coin_toss == null, "a skipped cutscene doesn't restart")],
+		# The winner's skip takes the default (receive).
+		[15900, func(): _toss_setup(0)],
+		[16100, func(): _key(KEY_SPACE); check(main.series.state == main.Match.State.KICKOFF and main.series.toss_choice == "receive", "winner's skip = receive")],
+		[16160, func(): check(main.coin_toss == null and main.athlete_root.visible, "skipped back to the field")],
+		# Training never shows it; neither does a match without the opening kickoff.
+		[16200, func(): main.start_practice("passing")],
+		[16202, func(): check(main.drill != null and main.coin_toss == null, "drills never show the coin toss")],
+		[16210, func(): main.opening_kickoff = false; main.configure(7)],
+		[16212, func(): check(main.coin_toss == null and main.series.state != main.Match.State.TOSS, "--no-kickoff: no toss, no cutscene")],
 	]
 	for f in range(13431, 13470):   # the LB keeps walking into the QB (bodies collide, QB gives ground)
 		steps.append([f, _fp_push])
@@ -526,6 +595,26 @@ func _fp_push() -> void:
 	fp_lb.position = c.position + Vector2(0, 0.75)   # keeps leaning in: bodies overlap, QB gives ground
 	if fp_contact_y == INF and fp_lb.position.distance_to(c.position) <= main.T.CONTACT_REACH:
 		fp_contact_y = c.position.y
+
+func _check_kick_return_touchdown() -> void:
+	main.opening_kickoff = true
+	main.toss_seed = 0
+	main.configure(7)
+	_key(KEY_2)
+	_key(KEY_SPACE)
+	var world = main.world
+	check(world.kicked and world.kick_play == "kickoff", "Space puts the kickoff in play")
+	var returner = world.returner()
+	if returner == null:
+		check(false, "kickoff returner exists")
+		return
+	world.ball.hold(returner.id)
+	returner.position = Vector2(world.field.width / 2.0, -0.5)
+	world.step({}, 1.0 / 60.0)
+	check(main.stats.summary_lines().any(func(line): return line.ends_with("1 ret TD")),
+		"match summary records the kick return touchdown")
+	main.next_play()
+	check(main.series.score[1] == 6, "kick return still scores six points")
 
 func _key_up(code: int) -> void:
 	var ev := InputEventKey.new()
@@ -612,10 +701,55 @@ func _connect_listeners() -> void:
 		if n == "catch":
 			caught_by = d["by"]
 			if frame >= 480 and frame < 800:
-				main.ai.defense_enabled = true)
+				main.ai.defense_enabled = true
+				# #246: the receiver's pose as the ball arrives (views still show the last frame).
+				var cv = main.views[caught_by]
+				var ball: Vector3 = main.ball_view.global_position
+				catch_pose = [cv.pose.catch_weight, cv.pose.catch_reach, ball.distance_to(cv.hand_r.global_position),
+					ball.distance_to(cv.global_position + Vector3.UP * cv.CATCH_HEIGHT)])
 	main.world.event.connect(func(n, d): if n == "tackle" and caught_by >= 0: tackled = true)
 	main.world.event.connect(func(n, _d): if n == "interception": picked = true)
 	main.world.event.connect(func(n, _d): if n == "snap" and frame > 4171 and frame <= 4481: bot_snap_clock = main.series.clock.play_clock)
+
+## #129: a fresh match with the opening coin toss (seed 0 = HELIOS, the local team, wins).
+func _toss_setup(seed: int) -> void:
+	main.auto_next = false
+	main.opening_kickoff = true
+	main.toss_seed = seed
+	main.configure(7)
+	toss_close_clock = -1.0
+
+## Record the kickoff play clock at the moment a toss cutscene closes.
+func _watch_toss() -> void:
+	var ct = main.coin_toss
+	if ct != null and not ct.closed.is_connected(_on_toss_closed):
+		ct.closed.connect(_on_toss_closed)
+
+func _on_toss_closed() -> void:
+	toss_close_clock = main.series.clock.play_clock
+
+func _my_team() -> int:
+	return main.world.get_athlete(main.my_id).team
+
+## True when `text` carries no key-hint words or bare key numbers.
+func _no_key_hints(text: String) -> bool:
+	var padded := " %s " % text.to_upper()
+	for h in ["PRESS", "KEY", "SPACE", "ENTER", "ESC", "CLICK", "[1]", "[2]", " 1 ", " 2 ", "(1", "(2"]:
+		if padded.contains(h):
+			return false
+	return true
+
+## A left click on a toss card, delivered to the card's own gui_input handler. Headless
+## viewports don't hit-test pushed mouse events, so the hit-tested click on the rendered
+## screen is covered by tests/visual/coin_toss_test.gd.
+func _click(card: Control) -> void:
+	for pressed in [true, false]:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_LEFT
+		ev.pressed = pressed
+		ev.position = card.size * 0.5
+		ev.global_position = card.get_global_rect().get_center()
+		card.gui_input.emit(ev)
 
 func _setup_ranked_rival() -> void:
 	main.ranked_match = true
@@ -695,6 +829,32 @@ func _check_carry_pose(two_hand: bool, context: String) -> void:
 	check(off < 0.05, "ball pinned to the palm socket (%s): %.3f m off" % [context, off])
 	var to_hand: float = main.ball_view.global_position.distance_to(v.hand_r.global_position)
 	check(to_hand < 0.3, "ball in the hand (%s): %.2f m from the wrist" % [context, to_hand])
+	# #245: heads far from the camera and the carrier don't look. Views within 15% of the
+	# cutoff are skipped (they may be fading). Near ones are checked by role below.
+	var cam: Camera3D = main.get_viewport().get_camera_3d()
+	var size := func(o): return o.global_position.distance_to(cam.global_position) * tan(deg_to_rad(cam.fov) * 0.5) / o.LOOK_VIEW_SIZE
+	var near: Array = main.views.filter(func(o): return o != v and size.call(o) < 0.85)
+	var far: Array = main.views.filter(func(o): return o != v and size.call(o) > 1.15)
+	var far_ok: int = far.filter(func(o): return o.pose.look_weight < 0.5).size()
+	check(v.pose.look_weight < 0.2 and far_ok == far.size(),   # the carrier's look fades over ~0.3 s
+		"heads far from the camera don't look (%s): %d/%d far don't, carrier %.2f" % [context, far_ok, far.size(), v.pose.look_weight])
+	# Live with the ball held: offensive linemen and route runners don't watch it; free defenders do.
+	var offense: int = main.world.offense_team
+	var o_look: int = main.views.filter(func(o): return o != v and o.athlete.team == offense and o.pose.look_weight > 0.5).size()
+	var d_free: Array = near.filter(func(o): return o.athlete.team != offense and o.athlete.engaged_with < 0 and not o.athlete.blocking)
+	check(main.views.all(func(o): return o.pose.catch_weight == 0.0), "nobody reaches without a pass in the air (%s)" % context)
+	check(o_look == 0 and d_free.all(func(o): return o.pose.look_weight > 0.5),
+		"only the defense watches a held ball (%s): %d offense look, %d free defenders near the camera all look" % [context, o_look, d_free.size()])
+
+## #245: after the ball teleports (new spot), heads point at it at once instead of
+## sweeping across the field: every looking view's look point is already at the ball.
+func _check_look_snaps(context: String) -> void:
+	var ball: Vector3 = main.ball_view.global_position
+	var worst := 0.0
+	for o in main.views:
+		if o.pose.look_weight > 0.0:
+			worst = maxf(worst, o._look_point.distance_to(ball))
+	check(worst < 1.0, "heads snap to the ball after a teleport (%s): worst %.1f m behind" % [context, worst])
 
 var _sorted := false
 func _physics_process(_dt: float) -> bool:
@@ -707,6 +867,7 @@ func _physics_process(_dt: float) -> bool:
 		return true
 	frame += 1
 	_chase_tick()
+	_watch_toss()
 	for s in steps:
 		if s[0] == frame:
 			s[1].call()
