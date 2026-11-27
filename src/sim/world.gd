@@ -1001,7 +1001,9 @@ func _step_loose(dt: float) -> void:
 func _whistle(reason: String, data: Dictionary) -> void:
 	var c := carrier()
 	dead_ball_spot = c.position
-	if reason == "tackle":
+	if reason == "tackle" or reason == "out_of_bounds":
+		# Forward progress (#98, #103): driven back then tackled or forced out, the ball goes back to
+		# where contact stopped him. Out of bounds keeps x where he crossed (spot = y only).
 		var credit := forward_progress_credit()
 		dead_ball_spot.y += credit * attack_sign(c.team)
 		c.position = dead_ball_spot   # the dead ball (and its carrier) sits at the spot
