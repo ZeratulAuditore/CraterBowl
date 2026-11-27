@@ -631,7 +631,7 @@ func _status_text(main) -> String:
 				var won: bool = s.toss_winner == w.get_athlete(main.my_id).team
 				return "YOU WON THE TOSS" if won else "%s IS CHOOSING" % TEAM_NAMES[clampi(s.toss_winner, 0, 1)]
 			# #131: the kicker keeps the J / click hint (the only place a new player learns to
-			# kick) until the kick meter (#68) carries it; the return team gets no narration.
+			# kick; #68's meter shows power, not the key); the return team gets no narration.
 			if w.kick_play == "kickoff":
 				return "PRESS J OR CLICK TO KICK" if mine else ""
 			if w.kick_play != "" and mine:
