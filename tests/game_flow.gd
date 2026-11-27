@@ -59,6 +59,7 @@ func _initialize() -> void:
 		[4, func(): main.opening_kickoff = false; main.series.start(0); main.set_controlled(main.my_id)],  # legacy steps start on a scrimmage snap
 		[5, func(): check(main.world.phase == main.World.Phase.PRESNAP, "starts presnap"); _check_team_uniforms("opening lineup")],
 		[6, func(): check(main.world.snap(), "snap")],
+		[39, func(): _check_carry_pose(true, "QB holding before the throw")],   # #244 (frame 39 only)
 		[40, func(): check(main.world.ball.is_held_by(main.controlled_id), "QB has ball")],
 		[41, func(): main.aim_point = Vector2(40, 45)],
 		[80, func(): check(main.arc_shown(), "pass preview shown before input")],
@@ -273,6 +274,7 @@ func _initialize() -> void:
 			_key(KEY_G)
 			var back = main.world.find_role(0, main.Athlete.Role.RB)
 			check(main.world.carrier() == back and main.controlled_id == main.my_id, "handoff keeps control of the assigned QB")],
+		[7900, func(): _check_carry_pose(false, "RB running after the handoff")],   # #244 (frame 7900 only)
 		[7930, func():
 			var back = main.world.carrier()
 			check(back != null and back.position.y > main.world.los_y and main.world.phase == main.World.Phase.LIVE, "bot RB runs across the LOS and stays live")
@@ -371,6 +373,11 @@ func _initialize() -> void:
 			var d: float = main.camera.global_position.distance_to(main.player.global_position)
 			check(absf(d - main.FOLLOW_CAM_OFFSET.length()) < 0.01, "the replay Player cam uses the default framing (%.2f m)" % d)
 			main.replay_active = false
+			var ct = main.CoinToss.new()   # stand-in: only "a toss cutscene is up" matters here
+			main.coin_toss = ct
+			check(not main.zoom_camera(-1.0) and is_equal_approx(main.cam_zoom, 1.1), "wheel ignored during the coin-toss cutscene (#129 poses the camera itself)")
+			main.coin_toss = null
+			ct.free()
 			check(launch.settings.camera_zoom == main.cam_zoom, "Launch settings hold the live zoom")],
 		[12360, func(): _force_dead_if_live(); main.configure(7); main.pov_enabled = true; main.mouse_captured_override = true],
 		[12362, func():
@@ -854,6 +861,21 @@ func _lead_to_wr() -> void:
 	var wr = main.world.find_role(0, main.Athlete.Role.WR)
 	var from: Vector3 = Vector3(qb.position.x, qb.position.y, main.T.RELEASE_HEIGHT)
 	main.aim_point = main.Passing.lead_target(from, wr.position, wr.velocity, main.T.PLAYER_PASS_POWER)
+
+## #244: the carrier's arm tucks the ball (both hands for a passer before the throw), and
+## the ball view sits in the palm socket in the same frame, not one frame behind the hand.
+func _check_carry_pose(two_hand: bool, context: String) -> void:
+	var c = main.world.carrier()
+	if c == null:
+		check(false, "carry pose: someone holds the ball (%s)" % context)
+		return
+	var v = main.views[c.id]
+	check(v.ball_node == main.ball_view and v.pose.weight > 0.9 and v.pose.two_hand == two_hand,
+		"carry pose on (%s): weight %.2f, two hands %s" % [context, v.pose.weight, v.pose.two_hand])
+	var off: float = main.ball_view.global_position.distance_to(v.ball_transform().origin)
+	check(off < 0.05, "ball pinned to the palm socket (%s): %.3f m off" % [context, off])
+	var to_hand: float = main.ball_view.global_position.distance_to(v.hand_r.global_position)
+	check(to_hand < 0.3, "ball in the hand (%s): %.2f m from the wrist" % [context, to_hand])
 
 var _sorted := false
 func _physics_process(_dt: float) -> bool:
