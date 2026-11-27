@@ -111,6 +111,9 @@ func _on_event(n: String, _d: Dictionary) -> void:
 		got_awards = true
 		check(main.player_name == "Ann" and not _d["xp"].has("Ann"),
 			"same-named players receive seat awards without a shared name entry")
+		var line: Dictionary = _d["ctx"].get(aid, {}).get("line", {})
+		check(line.get("comp", 0.0) == 0.0 and line.get("pass_yds", 0.0) == 0.0,
+			"replacement QB's network award excludes the previous player's completion and passing yards")
 
 func _initialize() -> void:
 	host_loss = OS.get_cmdline_user_args().has("--host-loss")
