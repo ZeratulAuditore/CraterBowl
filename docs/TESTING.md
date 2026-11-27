@@ -57,6 +57,12 @@ your change**, and stage only your own paths (`AGENTS.md` "Shipping").
   change it in the same commit as the behavior and say so in the message.
 - Anything that binds a port picks a random one per run (`net_test.sh`, `mm_test.sh`, `menu_flow.gd`):
   several sessions run `smoke.sh` at once, and a fixed port made `menu_flow` fail whenever two overlapped.
+- Never wait for a process to start with a fixed `sleep` or a fixed-count poll: on a loaded machine (load
+  average 20-60 on WSL) Godot boots many times slower, and the old 50 x 0.1 s invite-code poll gave up and
+  cascaded into a dozen unrelated NET failures (#283). Use `scripts/wait_lib.sh`: `wait_for` polls until a
+  generous deadline (`WAIT_SECS`, default 90 s) and stops early when the awaited process exits; on failure
+  name the step that never happened and `show_logs` the relevant logs. `timeout` caps are hang guards and
+  get the same headroom. This never loosens an assertion: a passing run waits only as long as it needs.
 - Timing checks use medians and generous budgets. Count-based checks (triangles, nodes, events) are preferred
   because they're identical on every machine.
 
