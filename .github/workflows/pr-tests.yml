@@ -25,6 +25,10 @@ jobs:
         env:
           VISUAL_OUTPUT: ${{ runner.temp }}/craterbowl-visual
         run: ./scripts/visual_test.sh
+      - name: Check before/after failure reporting
+        env:
+          BEFORE_AFTER_TEST_OUTPUT: ${{ runner.temp }}/craterbowl-visual/before-after-status
+        run: bash tests/before_after_test.sh
       - name: Upload test screenshots
         if: always()
         uses: actions/upload-artifact@v4
