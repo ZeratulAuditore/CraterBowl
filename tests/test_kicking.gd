@@ -8,6 +8,7 @@ const AI := preload("res://src/sim/ai.gd")
 const Passing := preload("res://src/sim/passing.gd")
 const P := preload("res://src/net/protocol.gd")
 const T := preload("res://src/sim/tuning.gd")
+const Stats := preload("res://src/sim/stats.gd")
 const DT := 1.0 / 60.0
 const R := Athlete.Role
 
@@ -250,6 +251,8 @@ func test_onside_recovery() -> void:
 func test_kickoff_return_touchdown() -> void:
 	var m := _kickoff_match(0)
 	var w := m.world
+	var stats := Stats.new()
+	stats.attach(w, func(_aid): return "Ace")
 	w.kick(w.kicker().id, Vector2(w.field.width / 2.0, 100.0), 0.75)
 	var ret := w.returner()
 	_park_all_but(w, [ret.id])
@@ -258,6 +261,7 @@ func test_kickoff_return_touchdown() -> void:
 	ret.position = Vector2(20, -0.5)
 	_steps(w, 2)
 	assert_true(events.has("touchdown"), "return TD")
+	_assert_return_touchdown(stats, ret)
 	var out := m.next_play()
 	assert_eq(m.score[1], 6, "return team +6")
 	assert_eq(out["outcome"], "try")
@@ -340,6 +344,53 @@ func test_punt_return_tackled() -> void:
 	var out := m.next_play()
 	assert_eq(out["outcome"], "punt_return")
 	assert_near(w.los_y, 40.0, 0.5, "return team at its 40")
+
+func test_punt_return_touchdown() -> void:
+	var m := _match(30.0)
+	var w := m.world
+	var stats := Stats.new()
+	stats.attach(w, func(_aid): return "Ace")
+	_fourth_down(m, 30.0)
+	m.call_kick("punt")
+	w.snap()
+	_steps(w, 30)
+	var ret := w.returner()
+	_park_all_but(w, [w.find_role(0, R.C).id, w.kicker().id, ret.id])
+	assert_true(w.kick(w.kicker().id, Vector2(w.field.width / 2.0, 70.0), 0.7))
+	ret.position = _landing(w)
+	_steps(w, 400)
+	assert_true(w.ball.is_held_by(ret.id), "returner fields the punt")
+	ret.position = Vector2(20, -0.5)
+	_steps(w, 2)
+	assert_true(events.has("touchdown"))
+	_assert_return_touchdown(stats, ret)
+	m.next_play()
+	assert_eq(m.score[1], 6)
+
+func _assert_return_touchdown(stats: Stats, ret: Athlete) -> void:
+	var line: Dictionary = stats.athletes.get(ret.id, {})
+	assert_eq(line.get("ret_td", 0.0), 1.0)
+	assert_eq(line.get("def_td", 0.0), 0.0)
+	assert_eq(line.get("pts", 0.0), 6.0)
+	assert_true(stats.summary_lines().any(func(s): return s.ends_with("1 ret TD")))
+
+func test_takeaway_touchdown_on_an_unkicked_punt_is_defensive() -> void:
+	var m := _match(30.0)
+	var w := m.world
+	var stats := Stats.new()
+	stats.attach(w, func(_aid): return "Ace")
+	_fourth_down(m, 30.0)
+	m.call_kick("punt")
+	w.snap()
+	_steps(w, 30)
+	var defender := w.returner()
+	assert_true(not w.kicked, "the punt hasn't been kicked")
+	w.ball.hold(defender.id)
+	defender.position = Vector2(20, -0.5)
+	_steps(w, 2)
+	var line: Dictionary = stats.athletes.get(defender.id, {})
+	assert_eq(line.get("ret_td", 0.0), 0.0)
+	assert_eq(line.get("def_td", 0.0), 1.0)
 
 func test_fake_punt_plays_normal_downs() -> void:
 	var m := _match(30.0)

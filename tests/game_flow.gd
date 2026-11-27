@@ -576,6 +576,7 @@ func _initialize() -> void:
 			main.next_play()
 			check(absf(main.world.los_y - fp_contact_y) < 0.2 and main.series.downs.down == 2, "next snap from the forward-progress spot (%s)" % main.series.downs.label())
 			main.ai.defense_enabled = true],
+		[13500, _check_kick_return_touchdown],
 	]
 	for f in range(13431, 13470):   # the LB keeps walking into the QB (bodies collide, QB gives ground)
 		steps.append([f, _fp_push])
@@ -587,6 +588,26 @@ func _fp_push() -> void:
 	fp_lb.position = c.position + Vector2(0, 0.75)   # keeps leaning in: bodies overlap, QB gives ground
 	if fp_contact_y == INF and fp_lb.position.distance_to(c.position) <= main.T.CONTACT_REACH:
 		fp_contact_y = c.position.y
+
+func _check_kick_return_touchdown() -> void:
+	main.opening_kickoff = true
+	main.toss_seed = 0
+	main.configure(7)
+	_key(KEY_2)
+	_key(KEY_SPACE)
+	var world = main.world
+	check(world.kicked and world.kick_play == "kickoff", "Space puts the kickoff in play")
+	var returner = world.returner()
+	if returner == null:
+		check(false, "kickoff returner exists")
+		return
+	world.ball.hold(returner.id)
+	returner.position = Vector2(world.field.width / 2.0, -0.5)
+	world.step({}, 1.0 / 60.0)
+	check(main.stats.summary_lines().any(func(line): return line.ends_with("1 ret TD")),
+		"match summary records the kick return touchdown")
+	main.next_play()
+	check(main.series.score[1] == 6, "kick return still scores six points")
 
 func _key_up(code: int) -> void:
 	var ev := InputEventKey.new()
