@@ -290,7 +290,11 @@ messages are reliable on channel 0.
 - Clients validate snapshot shape and accept integer match XP from 0 through 10,000. Malformed
   achievement context or XP leaves the local profile untouched. The host remains the authority on
   match outcomes and awards. Ratings and leaderboards live only on the host's disk (#28).
-- No reconnect, leaver handling or forfeit; a client doesn't react to losing the host (#17).
+- No reconnect, leaver handling or forfeit (#17). Losing the host ends the session for a client: ENet's
+  `server_disconnected` or, once seated in the match, the host-silence watchdog (#86: banner after
+  `STALL_AFTER` 2 s, drop after `DROP_AFTER` 4 s) emits `host_lost`, and the client returns to the menu
+  with "Host disconnected" (#56). In the lobby only ENet's timeout applies (#175). A client that leaves
+  is replaced by a bot. See [Peer / athlete assignment](#peer--athlete-assignment).
 - Prediction covers the local athlete's free movement only (#45). No snapshot deltas or compression.
 - No message rate limits on game or matchmaker sockets.
 
@@ -307,7 +311,6 @@ messages are reliable on channel 0.
 - #20 C14 Spectators
 - #26 C20 Rematch and keep-the-lobby
 - #55 No rate limits on client actions or matchmaker messages
-- #56 Client doesn't detect losing the host
 - #57 UPnP port mapping is never removed after hosting
 - #60 Client trusts host snapshots and awards
 - #61 Tick rate (60 Hz) hard-coded in several places
