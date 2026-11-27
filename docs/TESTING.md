@@ -75,6 +75,10 @@ your change**, and stage only your own paths (`AGENTS.md` "Shipping").
    than playing whole drives. Needs `xvfb-run` (`sudo apt install xvfb`; already installed here).
 
 `--write-movie` and other in-engine capture need a real renderer too, so they also need mode 2.
+3. **Native Windows (Git Bash)**: `shot.sh` detects MINGW/MSYS and skips Xvfb. It renders on the real
+   GPU (OpenGL 3) in a window parked at `-20000,-20000`, so nothing shows except a brief taskbar button.
+   Set `GODOT` to the Windows `*_console.exe` so stdout reaches the log. Display scaling enlarges
+   PNGs (1280x720 comes out about 2558x1438 at 200%).
 
 ## Automated screenshots for pull requests
 
