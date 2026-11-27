@@ -76,8 +76,34 @@ Everyone else uses the orbit camera: mouse X orbits, mouse Y sets how far ahead 
   (POTG, coin toss) use their own cameras at the default framing.
 
 ## Gamepad
-Left stick move · right stick QB aim · A snap · B dive · X / Y spin left / right · D-pad down dash ·
-D-pad up next play · RT pass · LT sprint · LB scoreboard · RB lob. Taunts are not on the pad yet.
+Xbox / SDL button names. The map is `PAD_BUTTONS` and `PAD_TRIGGERS` in `src/ui/controls.gd`. `src/ui/launch.gd`
+turns each pad input into the **default** key in the second column, so a button does whatever that key does at
+that moment. Keyboard rebinds don't move pad buttons, and the pad itself isn't rebindable.
+
+| Pad | Acts as | What it does |
+|---|---|---|
+| Left stick | WASD | Move (digital, past a 0.4 deadzone) |
+| Right stick | mouse look | QB POV aim while you're the passer (first connected pad). Nothing otherwise (#33) |
+| A | Space | Snap (offense). Defense: double-tap to break stance. Fair catch while a kick is in the air. Coin toss: skip once the result shows. Replay: pause |
+| B | F | Live: dive / tackle. Before the snap: cycle your route |
+| X | Q | Live: spin left. Before the snap: open / close the play picker |
+| Y | E | Spin right |
+| LT (hold) or L3 | Shift | Sprint |
+| RT | J | Throw (QB: hold to charge, release to throw) |
+| RB (hold) | Ctrl | Lob modifier |
+| LB (hold) | Tab | Scoreboard |
+| R3 | G | Handoff |
+| D-pad up | Enter | Next play (dead ball; offline or host). Lobby: ready. Coin toss: skip. Instant replay: exit |
+| D-pad down | R | Dash (live play, needs a charge) |
+| D-pad left | 1 | Try, before the snap: extra point kick. Coin toss winner: receive |
+| D-pad right | 2 | Try, before the snap: two-point try. Coin toss winner: kick |
+| Back | V | Instant replay outside a live play. At FINAL: highlight reel. Again: exit |
+| Start | Esc | Pause / match menu |
+
+Not on the pad yet (#207): block (right click), team timeout (T), the taunt wheel (C) and the kick call (K).
+
+In game, Pause (Esc / Start) → **Controls** shows a one-line gamepad summary from `Controls.OTHER_CONTROLS`. It is
+hand-written and misses several buttons above (#298). A gamepad tab built from the map is part of #134.
 
 ## Where it lives
 - Sim: `src/sim/athlete.gd` (move charges, spin/dash, block), `src/sim/world.gd` (`spin(side)`, `evade`,
