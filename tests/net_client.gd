@@ -18,6 +18,8 @@ var input_acks_valid := true
 var start_x := INF
 var max_dx := 0.0
 var got_snap_event := false
+var got_opening_tip := false
+var got_opening_interception := false
 var saw_live := false
 var opening_play_clock := -1.0
 var next_play_clock := -1.0
@@ -112,6 +114,11 @@ func _on_welcome(id: int) -> void:
 func _on_event(n: String, _d: Dictionary) -> void:
 	if n == "snap":
 		got_snap_event = true
+	if got_snap_event and bad_snap_sent_at < 0:
+		if n == "incomplete" and _d.get("reason") == "breakup":
+			got_opening_tip = true
+		if n == "interception":
+			got_opening_interception = true
 	if n == "timeout" and _d.get("team") == 1 and _d.get("remaining") == 2:
 		got_timeout_event = true
 	if n == "handoff" and _d.get("by") == aid:
@@ -202,6 +209,7 @@ func _physics_process(_dt: float) -> bool:
 		check(not crossed_line, "predicted defender never past the neutral zone")
 		check(lead_samples > 10, "own athlete predicted ahead of server state (%d frames)" % lead_samples)
 		check(saw_live and got_snap_event, "host auto-snap reached client (snapshot LIVE + reliable event)")
+		check(got_opening_tip and not got_opening_interception, "host's opening short pass reaches the client as a breakup")
 		check(opening_play_clock > 0.0 and opening_play_clock <= 4.0,
 			"lobby match opens with the host's short play clock (%.2f s)" % opening_play_clock)
 		check(next_play_clock >= 3.0 and next_play_clock <= 4.0,
