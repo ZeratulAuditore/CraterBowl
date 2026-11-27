@@ -19,6 +19,8 @@ var award_stats := {}      # player id -> {field: value}, across positions
 var player_lines := {}     # player id -> {"POS": {field: value}}: your own post-game lines (#200)
 var _los := 0.0
 var _passer := -1
+var _passer_key := ""
+var _passer_player := -1
 var _receiver := -1
 var _thrown := false
 var _handoff_runner := -1
@@ -44,26 +46,36 @@ func _key(aid: int) -> String:
 	var owner: String = owner_fn.call(aid) if owner_fn.is_valid() else "Bot"
 	return "%s|%s" % [owner, ROLE.get(a.role if a else -1, "?")]
 
+func _player_id(aid: int) -> int:
+	return player_fn.call(aid) if player_fn.is_valid() else -1
+
 func _add(aid: int, field: String, v: float = 1.0) -> void:
 	if aid < 0 or world.get_athlete(aid) == null:
 		return
-	var k := _key(aid)
-	if not lines.has(k):
-		lines[k] = _blank()
-	_add_field(lines[k], field, v)
+	_add_player_credit(_key(aid), _player_id(aid), field, v)
 	_add_athlete(aid, field, v)
-	if player_fn.is_valid():
-		var player: int = player_fn.call(aid)
-		if player >= 0:
-			if not award_stats.has(player):
-				award_stats[player] = {}
-			_add_field(award_stats[player], field, v)
-			var pos := k.get_slice("|", 1)
-			if not player_lines.has(player):
-				player_lines[player] = {}
-			if not player_lines[player].has(pos):
-				player_lines[player][pos] = _blank()
-			_add_field(player_lines[player][pos], field, v)
+
+func _add_player_credit(key: String, player: int, field: String, value: float) -> void:
+	if not lines.has(key):
+		lines[key] = _blank()
+	_add_field(lines[key], field, value)
+	if player < 0:
+		return
+	if not award_stats.has(player):
+		award_stats[player] = {}
+	_add_field(award_stats[player], field, value)
+	var pos := key.get_slice("|", 1)
+	if not player_lines.has(player):
+		player_lines[player] = {}
+	if not player_lines[player].has(pos):
+		player_lines[player][pos] = _blank()
+	_add_field(player_lines[player][pos], field, value)
+
+## The attempt already created the athlete's line. The delayed result updates its
+## totals without changing which player is shown as the athlete's last human owner.
+func _add_pass_result(field: String, value: float = 1.0) -> void:
+	_add_player_credit(_passer_key, _passer_player, field, value)
+	_add_field(athletes[_passer], field, value)
 
 static func _blank() -> Dictionary:
 	var line := {}
@@ -124,16 +136,18 @@ func _on_event(n: String, d: Dictionary) -> void:
 				_credit_return(world.get_athlete(_returner).position.y)
 			if not _thrown:
 				_passer = d["by"]
+				_passer_key = _key(_passer)
+				_passer_player = _player_id(_passer)
 			_thrown = true
 			_add(d["by"], "att")
 		"catch":
 			if _passer >= 0 and world.get_athlete(d["by"]).team == world.get_athlete(_passer).team:
 				_receiver = d["by"]
-				_add(_passer, "comp")
+				_add_pass_result("comp")
 				_add(_receiver, "rec")
 		"interception":
 			if _passer >= 0:
-				_add(_passer, "int_thrown")
+				_add_pass_result("int_thrown")
 			_add(d["by"], "int")
 			var at: Vector2 = d.get("at", world.get_athlete(d["by"]).position)
 			_start_return(d["by"], at.y, "int_ret_yds")
@@ -183,10 +197,10 @@ func _end_play(n: String, d: Dictionary) -> void:
 			_note_td_points(carrier, d.get("points", 6))
 		return   # returns (kick, punt, takeaway) are credited above
 	if _receiver >= 0 and carrier == _receiver:
-		_add(_passer, "pass_yds", gain)
+		_add_pass_result("pass_yds", gain)
 		_add(_receiver, "rec_yds", gain)
 		if n == "touchdown":
-			_add(_passer, "pass_td")
+			_add_pass_result("pass_td")
 			_add(_receiver, "rec_td")
 	elif not _thrown and not _rushing_fumble:
 		_add(carrier, "car")
@@ -288,7 +302,7 @@ func player_summary(player: int) -> Array:
 func summaries_for(aids: Array) -> Dictionary:
 	var out := {}
 	for aid in aids:
-		out[aid] = player_summary(player_fn.call(aid) if player_fn.is_valid() else -1)
+		out[aid] = player_summary(_player_id(aid))
 	return out
 
 ## The stat text of one line ("1/2 12yd 0TD 0INT | 1 car 5yd 1TD"), "" when it has no stats.

@@ -134,6 +134,70 @@ func test_player_summary_follows_owner_when_a_seat_is_reused() -> void:
 	assert_eq(s.player_summary(2), ["QB: 0/2 0yd 0TD 0INT"])
 	assert_eq(s.summaries_for([qb]), {qb: ["QB: 0/2 0yd 0TD 0INT"]}, "the broadcast follows the seat's current player")
 
+func test_completed_pass_credit_survives_a_replacement() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	var qb: int = i["qb"]
+	owners[qb] = "Ann"
+	player_ids[qb] = 1
+	w.event.emit("snap", {})
+	w.event.emit("throw", {"by": qb})
+	owners[qb] = "Ben"
+	player_ids[qb] = 2
+	w.event.emit("catch", {"by": i["wr"]})
+	w.event.emit("touchdown", {"carrier": i["wr"], "spot": Vector2(20, 100), "team": 0})
+	var passing_touchdown := {"att": 1.0, "comp": 1.0, "pass_yds": 75.0, "pass_td": 1.0}
+	assert_eq(s.award_stats[1], passing_touchdown)
+	assert_true(not s.award_stats.has(2), "the replacement earned no passing credit yet")
+	assert_true(s.get_line("Ben", "QB").is_empty())
+	assert_eq(s.player_summary(1), ["QB: 1/1 75yd 1TD 0INT"])
+	assert_eq(s.player_summary(2), [])
+	assert_eq(s.athletes[qb]["owner"], "Ann")
+	for field in passing_touchdown:
+		assert_eq(s.get_line("Ann", "QB")[field], passing_touchdown[field], field)
+		assert_eq(s.athletes[qb][field], passing_touchdown[field], field)
+
+	w.event.emit("snap", {})
+	w.event.emit("throw", {"by": qb})
+	w.event.emit("catch", {"by": i["wr"]})
+	w.event.emit("out_of_bounds", {"carrier": i["wr"], "spot": Vector2(0, 37), "team": 0})
+	assert_eq(s.award_stats[1], passing_touchdown, "the next pass belongs to the new owner")
+	assert_eq(s.award_stats.get(2), {"att": 1.0, "comp": 1.0, "pass_yds": 12.0})
+	assert_eq(s.player_summary(2), ["QB: 1/1 12yd 0TD 0INT"])
+
+func test_interception_stays_with_original_passer_even_with_the_same_name() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	owners[i["qb"]] = "Ann"
+	player_ids[i["qb"]] = 1
+	w.event.emit("snap", {})
+	w.event.emit("throw", {"by": i["qb"]})
+	player_ids[i["qb"]] = 2
+	w.event.emit("interception", {"by": i["cb"]})
+	assert_eq(s.award_stats[1], {"att": 1.0, "int_thrown": 1.0})
+	assert_true(not s.award_stats.has(2))
+	assert_eq(s.get_line("Ann", "QB")["int_thrown"], 1.0)
+
+func test_replacement_human_does_not_inherit_a_bot_pass() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	w.event.emit("snap", {})
+	w.event.emit("throw", {"by": i["qb"]})
+	owners[i["qb"]] = "Ann"
+	player_ids[i["qb"]] = 1
+	w.event.emit("catch", {"by": i["wr"]})
+	w.event.emit("out_of_bounds", {"carrier": i["wr"], "spot": Vector2(0, 37), "team": 0})
+	assert_true(s.award_stats.is_empty())
+	assert_eq(s.get_line("Bot", "QB")["comp"], 1.0)
+	assert_eq(s.get_line("Bot", "QB")["pass_yds"], 12.0)
+	assert_true(s.get_line("Ann", "QB").is_empty())
+
 func test_completion_line() -> void:
 	var r := _setup()
 	var w: World = r[0]

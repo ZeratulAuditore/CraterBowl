@@ -113,6 +113,9 @@ func _on_event(n: String, _d: Dictionary) -> void:
 		got_awards = true
 		check(main.player_name == "Ann" and not _d["xp"].has("Ann"),
 			"same-named players receive seat awards without a shared name entry")
+		var line: Dictionary = _d["ctx"].get(aid, {}).get("line", {})
+		check(line.get("comp", 0.0) == 0.0 and line.get("pass_yds", 0.0) == 0.0,
+			"replacement QB's network award excludes the previous player's completion and passing yards")
 	if n == "summary":
 		got_summary = _d.get("mine") is Dictionary and _d["mine"].has(aid)
 		shared_td_line = _d.get("lines", []).any(func(l): return str(l).begins_with("Ann ") and str(l).contains("1TD"))

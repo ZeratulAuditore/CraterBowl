@@ -44,6 +44,7 @@ func _finish_after_handoff(event: String, _data: Dictionary) -> void:
 	# Let the joiner observe the handoff before setting up the final score.
 	await create_timer(0.5).timeout
 	main.stats.award_stats.clear()
+	_record_pass_before_seat_replacement()
 	main.series.start(0, 95.0)
 	main.world.event.emit("snap", {"qb": main.my_id})
 	main.world.event.emit("touchdown", {"carrier": main.my_id, "spot": Vector2(26, 100), "team": 0, "points": 6})
@@ -54,6 +55,25 @@ func _finish_after_handoff(event: String, _data: Dictionary) -> void:
 	main.world.phase = main.World.Phase.DEAD
 	main.series.last_result = {"type": "incomplete"}
 	main.next_play()
+
+## Give the real client the QB seat between another player's throw and catch.
+func _record_pass_before_seat_replacement() -> void:
+	main.series.start(1, 25.0)
+	var world = main.world
+	var qb = world.find_role(1, main.Athlete.Role.QB)
+	var receiver = world.find_role(1, main.Athlete.Role.WR)
+	var slot: int = main.roster.slot_of_athlete(qb.id)
+	var replacement: int = main.roster.slots[slot]["owner"]
+	var original := 99
+	assert(replacement > 1 and replacement != original)
+	main.roster.release(replacement)
+	main.roster.claim(original, slot)
+	world.event.emit("snap", {"qb": qb.id})
+	world.event.emit("throw", {"by": qb.id})
+	main.roster.release(original)
+	main.roster.claim(replacement, slot)
+	world.event.emit("catch", {"by": receiver.id})
+	world.event.emit("out_of_bounds", {"carrier": receiver.id, "spot": Vector2(0, 45), "team": 1})
 
 func _key(code: int) -> void:
 	var event := InputEventKey.new()

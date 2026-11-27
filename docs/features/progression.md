@@ -95,7 +95,7 @@ User data dir `crater-bowl` (see [out-of-game.md](out-of-game.md)). Tests pass t
 - **Pure rules, JSON stores.** Stats, scoring, Elo, XP and achievements are pure `src/sim` code with unit tests. Persistence is a plain file per concern.
 - **Local files over an online service.** A service needs accounts and anti-cheat; for a friend group the host is the league office.
 - **Host is the authority for the match result.** Clients trust the host's XP and achievement context. That's fine among friends but not tamper-proof, and names aren't authenticated (#28).
-- **Match awards follow the player in the seat (#156).** Stats for awards are credited to the player who controls the athlete when the play event occurs. A player who takes over a seat starts with their own totals. At the final whistle, the host uses each player's seated athlete ID to deliver the award.
+- **Match awards follow the player in the seat (#156).** Stats for awards are credited to the player who controls the athlete when the play event occurs. Pass completions, yards, touchdowns and interceptions are credited to the player who threw the ball (#202). A player who takes over a seat starts with their own totals. At the final whistle, the host uses each player's seated athlete ID to deliver the award.
 - **"Your game" follows match identity, not the display name (#200).** It used to pick the shared `name POS: …` summary lines that began with your name. Two Anns then saw each other's lines, and two Anns at one position shared one merged line. `Stats` now also keeps lines by player id and position (`player_lines`, credited like the #156 award stats). The host reads its own lines by player id. Clients get theirs from the `summary` event's `mine` map, keyed by athlete id like `awards`. The career table keeps the `name|POS` key. Moving it to identity is a format change that loses every saved table, and the leaderboard is meant to show names. Rejected: making names unique in the lobby (`Ann (2)`). That changes what players typed and doesn't help an older build's career table.
 - **Ratings keyed by install id, kept on the host (#102).** Display names aren't unique, so the host keys each rating by a 16-hex-char id the player's install mints once (`main.gd:install_id()`, saved in `profile.json` with the first ranked result). The host keeps peers' ids in a private map and never broadcasts them: the `ranked` event is keyed by athlete id, so nobody can read another player's id and claim their rating. It isn't authentication. A tampered client can still send any id it likes (#28).
 - **No pay-to-win:** cosmetics are view-only and checked by a determinism test (identical worlds regardless of looks).
@@ -119,5 +119,5 @@ User data dir `crater-bowl` (see [out-of-game.md](out-of-game.md)). Tests pass t
 - #30 C24 Match history and profile
 - #37 B05 Friend-group seasons + persistent stats
 - #41 C26 Archetypes (one passive each)
-- #202 Credit for a throw that ends after its athlete changes owners
+- #276 Credit for deferred receiver, kick and return results after a seat changes owners
 - #172 Kick and punt return touchdowns are credited as defensive TDs
