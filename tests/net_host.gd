@@ -43,6 +43,7 @@ func _finish_after_handoff(event: String, _data: Dictionary) -> void:
 	main.world.event.disconnect(_finish_after_handoff)
 	# Let the joiner observe the handoff before setting up the final score.
 	await create_timer(0.5).timeout
+	await _send_sideline_results()
 	main.stats.award_stats.clear()
 	_record_pass_before_seat_replacement()
 	main.series.start(0, 95.0)
@@ -55,6 +56,25 @@ func _finish_after_handoff(event: String, _data: Dictionary) -> void:
 	main.world.phase = main.World.Phase.DEAD
 	main.series.last_result = {"type": "incomplete"}
 	main.next_play()
+
+## Same airborne pass, opposite rulings based on where the receiver stands.
+func _send_sideline_results() -> void:
+	var w = main.world
+	for receiver_x in [0.55, -0.55]:
+		main.series.start(0, 25.0)
+		var qb = w.find_role(0, main.Athlete.Role.QB)
+		for a in w.athletes:
+			a.position = Vector2(32.0, 26.0 + 2.0 * a.id)
+		qb.position = Vector2(5.0, 20.0)
+		w.start_live_with(qb.id)
+		assert(w.throw(qb.id, Vector2(-0.75, 38.0), 0.8))
+		for tick in 100:
+			if w.ball.position.x < -0.2 or w.phase == w.Phase.DEAD:
+				break
+			w.step({}, 1.0 / w.Tick.HZ)
+		w.find_role(0, main.Athlete.Role.WR).position = Vector2(receiver_x, w.ball.position.y)
+		w.step({}, 1.0 / w.Tick.HZ)
+		await create_timer(0.25).timeout
 
 ## Give the real client the QB seat between another player's throw and catch.
 func _record_pass_before_seat_replacement() -> void:

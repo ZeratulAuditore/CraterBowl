@@ -55,6 +55,8 @@ var had_first_td := false
 var had_first_win := false
 var got_awards := false
 var got_summary := false
+var sideline_catch := false
+var sideline_incomplete := false
 var shared_td_line := false   # the host Ann's touchdown sits in the name-keyed summary (#200)
 var host_loss := false      # #56 mode
 var armed_at := -1
@@ -116,6 +118,10 @@ func _on_event(n: String, _d: Dictionary) -> void:
 		got_timeout_event = true
 	if n == "handoff" and _d.get("by") == aid:
 		handoff_to = int(_d["to"])
+	if n == "catch" and (_d.get("at", Vector2.ZERO) as Vector2).x < 0.0:
+		sideline_catch = true
+	if n == "incomplete" and _d.get("reason") == "caught_out_of_bounds":
+		sideline_incomplete = true
 	if n == "awards":
 		got_awards = true
 		check(main.player_name == "Ann" and not _d["xp"].has("Ann"),
@@ -213,6 +219,7 @@ func _physics_process(_dt: float) -> bool:
 		check(equipped_number == "88", "my equipped #88 round-tripped through the host (%s)" % equipped_number)
 		check(pick_rejected, "legacy slot request preserves the host assignment")
 		check(timeout_confirmed and got_timeout_event, "remote T decrements only its team's timeouts and broadcasts the event")
+		check(sideline_catch and sideline_incomplete, "client receives both sideline catch rulings from the host")
 		check(remote_handoff_confirmed, "client QB hands off through G and sees the host's RB possession")
 		check(remote_handoff_confirmed and main.controlled_id == aid, "online QB keeps the same athlete after the handoff")
 		check(got_awards and main.profile.xp == xp_before + 100 and main.profile.games == games_before + 1,
