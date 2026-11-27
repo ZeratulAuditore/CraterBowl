@@ -12,9 +12,11 @@ const Ball := preload("res://src/sim/ball.gd")
 const TackleFall := preload("res://src/game/art/tackle_fall.gd")
 const JOG_FRAMES := 5
 const MAX_PELVIS_STEP := 0.3   # yd per frame (60 fps): faster than any fall the speed cap allows
+const MAX_BALL_STEP := 0.15   # yd per frame the held ball may move against the body (hug -> carry)
 const MAX_RISE_DRIFT := 0.35   # yd the pelvis may move over the ground while he gets up
 
 var _pelvis := Vector3.ZERO
+var _ball := Vector3.ZERO   # the held ball, relative to the pelvis
 var _seen_pelvis := false
 
 func _initialize() -> void:
@@ -63,6 +65,7 @@ func _case(kind: String, lb_at: Vector2, lb_face: Vector2) -> void:
 	var sk: Skeleton3D = v._skel
 	sk.skeleton_updated.connect(func():
 		_pelvis = sk.global_transform * sk.get_bone_global_pose(sk.find_bone("pelvis")).origin
+		_ball = game.ball_view.global_position - _pelvis   # pinned just before this (player.gd _pin_ball)
 		_seen_pelvis = true)
 	var seen := []
 	game.world.event.connect(func(n, _d): seen.append(n))
@@ -79,6 +82,8 @@ func _case(kind: String, lb_at: Vector2, lb_face: Vector2) -> void:
 	# Down, then up where he fell, then back onto the sim spot.
 	var last := Vector3.INF
 	var max_step := 0.0
+	var last_ball := Vector3.INF
+	var max_ball := 0.0
 	var lie := Vector3.INF
 	var max_drift := 0.0
 	var ring_off := 0.0
@@ -93,6 +98,10 @@ func _case(kind: String, lb_at: Vector2, lb_face: Vector2) -> void:
 		if last != Vector3.INF:
 			max_step = maxf(max_step, _pelvis.distance_to(last))
 		last = _pelvis
+		if rise_at >= 0 and v.ball_node != null:   # from the get-up on: the hug lets go into the carry
+			if last_ball != Vector3.INF:
+				max_ball = maxf(max_ball, _ball.distance_to(last_ball))
+			last_ball = _ball
 		var flat := Vector3(_pelvis.x, 0.0, _pelvis.z)
 		if v.is_falling() and not v.fall.rising():
 			ring_off = maxf(ring_off, Vector3(game.pres.ring.position.x, 0.0, game.pres.ring.position.z).distance_to(flat))
@@ -116,6 +125,8 @@ func _case(kind: String, lb_at: Vector2, lb_face: Vector2) -> void:
 	var want := TackleFall.RISE_FUMBLE if kind == "fumble" else TackleFall.RISE_DEAD
 	check(rise_at >= 0 and absf(rise_s - want) < 0.25, "%s: gets up %.2f s after the hit (want ~%.2f)" % [kind, rise_s, want])
 	check(max_step < MAX_PELVIS_STEP, "%s: no pop, pelvis moves at most %.3f yd/frame (< %.2f)" % [kind, max_step, MAX_PELVIS_STEP])
+	if kind == "dead":
+		check(max_ball > 0.0 and max_ball < MAX_BALL_STEP, "dead: ball eases from the hug into the carry, at most %.3f yd/frame (< %.2f)" % [max_ball, MAX_BALL_STEP])
 	check(max_drift < MAX_RISE_DRIFT, "%s: rises where he fell, pelvis drifts %.2f yd (< %.2f)" % [kind, max_drift, MAX_RISE_DRIFT])
 	check(ring_off < 0.35 and shadow_off < 0.35, "%s: ring %.2f / shadow %.2f yd from the body while down" % [kind, ring_off, shadow_off])
 	check(not v.is_falling() and not v.chase_sim, "%s: up and done" % kind)

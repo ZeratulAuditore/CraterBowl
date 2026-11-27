@@ -54,7 +54,7 @@ const RISE_CLIP := "u2/LayToIdle"   # starts on his back, head behind him; ends 
 const RISE_SPEED_DEAD := 1.6
 const RISE_SPEED_FUMBLE := 2.0
 const RISE_BLEND := 0.3     # s from the lying pose into the clip
-const RISE_ARMS_FREE := 0.7 # rise progress where the arms let go of the hug (carry pose fades back)
+const RISE_ARMS_FREE := 0.6 # rise progress where the arms start easing from the hug into the carry
 
 var view          # player.gd
 var active := false
@@ -121,7 +121,7 @@ func start(run: Vector3, impulse: Vector3, point: Vector3, fumble := false) -> v
 	_impulse = impulse
 	_point = point
 	_pending = true
-	view.pose.secure = true
+	view.pose.secure = 1.0
 	if view.anim:
 		view.anim.speed_scale = 0.0   # hit-stop: hold the contact frame
 
@@ -135,7 +135,7 @@ func stop() -> void:
 	if _hold:
 		_hold.queue_free()
 		_hold = null
-	view.pose.secure = false
+	view.pose.secure = 0.0
 	if view.anim:
 		view.anim.speed_scale = 1.0
 
@@ -162,10 +162,6 @@ func rising() -> bool:
 func rise_k() -> float:
 	return clampf(rise_t / rise_len, 0.0, 1.0) if rising() else 0.0
 
-## Late in the get-up the arms let go of the hug (player.gd fades the carry pose back in after).
-func arms_free() -> bool:
-	return rise_k() >= RISE_ARMS_FREE
-
 ## Where the body is on the ground (world, y = 0): the pelvis while he's down.
 func ground_position() -> Vector3:
 	if rising():
@@ -186,6 +182,7 @@ func update(delta: float) -> void:
 	if rise_t >= 0.0:
 		rise_t += delta
 		_hold.w = smoothstep(0.0, RISE_BLEND, rise_t)
+		view.pose.secure = 1.0 - smoothstep(RISE_ARMS_FREE, 1.0, rise_k())
 		if rise_t >= rise_len:
 			stop()
 			view.chase_sim = true   # up where he fell: jog back onto the sim spot

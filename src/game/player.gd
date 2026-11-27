@@ -376,7 +376,9 @@ func ball_transform() -> Transform3D:
 ## The held ball in skeleton space: between both hands for a passer's hold, else the right palm.
 func ball_local(sk: Skeleton3D) -> Transform3D:
 	var held = pose.hold_ball(sk) if pose else null
-	return held if held != null else sk.get_bone_global_pose(sk.find_bone("hand_r")) * BALL_SOCKET
+	var at: Transform3D = held if held != null else sk.get_bone_global_pose(sk.find_bone("hand_r")) * BALL_SOCKET
+	var hug = pose.secure_ball(sk) if pose else null
+	return at.interpolate_with(hug, pose.secure) if hug != null else at
 
 ## True when an athlete `dist` yd from a camera with vertical FOV `fov_deg` is close
 ## enough on screen for a head turn to be seen.
@@ -530,8 +532,7 @@ func _process(delta: float) -> void:
 	_choose_anim(spd, down)
 	_was_down = down
 	if pose:
-		# Getting up, the hug lets go and the carry pose fades back in after (tackle_fall.gd).
-		var target := 1.0 if ball_node != null and not (is_falling() and fall.arms_free()) else 0.0
+		var target := 1.0 if ball_node != null else 0.0
 		pose.weight = lerpf(pose.weight, target, 1.0 - exp(-CARRY_K * delta))
 		if absf(pose.weight - target) < 0.01:
 			pose.weight = target
