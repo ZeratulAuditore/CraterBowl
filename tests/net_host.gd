@@ -90,7 +90,13 @@ func _record_pass_before_seat_replacement() -> void:
 	main.roster.release(original)
 	main.roster.claim(replacement, slot)
 	world.event.emit("catch", {"by": receiver.id})
-	world.event.emit("out_of_bounds", {"carrier": receiver.id, "spot": Vector2(0, 45), "team": 1})
+	var defender = world.find_role(0, main.Athlete.Role.LB)
+	receiver.position = Vector2(5.0, 45.0)
+	defender.position = receiver.position
+	world._fumble(receiver, defender)
+	world.ball.position.z = 0.0
+	world._step_loose(0.0)
+	world.event.emit("out_of_bounds", {"carrier": defender.id, "spot": Vector2(0, 50), "team": 0})
 
 ## Replace the keeper after the snap, then leave the field for a 10-yard gain.
 func _record_run_before_seat_replacement() -> void:
