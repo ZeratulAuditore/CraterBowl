@@ -9,6 +9,11 @@ extends RefCounted
 ## an off-centre hit also turns them). A low hit from the front stops the legs and he falls
 ## forward over it; a high one knocks the chest back; one on the hip spins him. The fall comes
 ## only from where and how hard he was hit, never a random push.
+##
+## Get-up: `rise_after` s after the hit he gets up where he lies. The view root moves under the
+## settled body (pelvis and head lined up with the first frame of LayToIdle) and the ragdoll pose
+## blends into that clip (Hold, below). He rises where he lies, then jogs back onto the sim spot
+## (player.gd chase_sim): sliding the root while he rises reads as skating. A teleport (next snap, replay seek) still stops it all at once (player.gd place()).
 
 ## Simulated bones: [bone, child (capsule end), radius, mass, bend limits (deg, lower, upper),
 ## side bend +- (deg), twist +- (deg)].
@@ -41,6 +46,15 @@ const HIT_STOP := 0.07
 ## How far (yd) the hit spreads through the body: a bone this far from the hit point takes
 ## e^-1 of the share the nearest bone takes.
 const HIT_SPREAD := 0.35
+## Get-up (s after the hit): a dead ball lets him lie a moment; a fumbled carrier is live and
+## the sim frees him after T.FUMBLE_KNOCKDOWN, so he scrambles up.
+const RISE_DEAD := 1.0
+const RISE_FUMBLE := 0.45
+const RISE_CLIP := "u2/LayToIdle"   # starts on his back, head behind him; ends in Idle
+const RISE_SPEED_DEAD := 1.6
+const RISE_SPEED_FUMBLE := 2.0
+const RISE_BLEND := 0.3     # s from the lying pose into the clip
+const RISE_ARMS_FREE := 0.7 # rise progress where the arms let go of the hug (carry pose fades back)
 
 var view          # player.gd
 var active := false
@@ -51,16 +65,58 @@ var _run := Vector3.ZERO
 var _impulse := Vector3.ZERO
 var _point := Vector3.ZERO
 var _pending := false   # in the hit-stop: the ragdoll starts when it ends
+var _rise_at := RISE_DEAD
+var _rise_speed := RISE_SPEED_DEAD
+var _hold: Hold           # the lying pose, blended out as he rises
+var rise_t := -1.0        # s into the get-up; < 0 = not rising
+var rise_len := 1.0       # s the get-up takes
+var _lie_at := Vector3.ZERO     # pelvis on the ground when he started up
+
+## Pins every bone to the pose it had at the start of the get-up, fading into whatever the clip
+## does underneath as `w` goes 0 -> 1. Captures that pose itself on its first run (it runs last,
+## after the ragdoll and athlete_pose, so it sees the pose actually on screen). The pelvis is kept
+## in world space, so the body stays put while the view root moves under it; the rest blend
+## their local rotations, joint by joint.
+class Hold extends SkeletonModifier3D:
+	var w := 0.0
+	var captured := false
+	var world: Array[Transform3D] = []
+	var local: Array[Transform3D] = []
+
+	func _process_modification() -> void:
+		var sk := get_skeleton()
+		if sk == null:
+			return
+		var n := sk.get_bone_count()
+		if not captured:
+			world.resize(n)
+			local.resize(n)
+			for i in n:
+				world[i] = sk.global_transform * sk.get_bone_global_pose(i)
+				local[i] = sk.get_bone_pose(i)
+			captured = true
+			return
+		var inv := sk.global_transform.affine_inverse()
+		for i in n:
+			var up := sk.get_bone_parent(i)
+			if up < 0:
+				continue   # the rig's root bone (no mesh) follows the clip, under the moving view root
+			if sk.get_bone_parent(up) < 0:   # the pelvis: kept in world space, blended in skeleton space
+				sk.set_bone_global_pose(i, (inv * world[i]).interpolate_with(sk.get_bone_global_pose(i), w))
+			else:
+				sk.set_bone_pose(i, local[i].interpolate_with(sk.get_bone_pose(i), w))
 
 func _init(v) -> void:
 	view = v
 
 ## run: the carrier's velocity before the hit (yd/s); impulse: the hit (mass x yd/s, world);
-## point: where it lands on him (world).
-func start(run: Vector3, impulse: Vector3, point: Vector3) -> void:
+## point: where it lands on him (world). fumble: the ball is live, so he gets up quicker.
+func start(run: Vector3, impulse: Vector3, point: Vector3, fumble := false) -> void:
 	stop()
 	active = true
 	t = 0.0
+	_rise_at = RISE_FUMBLE if fumble else RISE_DEAD
+	_rise_speed = RISE_SPEED_FUMBLE if fumble else RISE_SPEED_DEAD
 	_run = run
 	_impulse = impulse
 	_point = point
@@ -74,6 +130,16 @@ func stop() -> void:
 		return
 	active = false
 	_pending = false
+	rise_t = -1.0
+	_free_ragdoll()
+	if _hold:
+		_hold.queue_free()
+		_hold = null
+	view.pose.secure = false
+	if view.anim:
+		view.anim.speed_scale = 1.0
+
+func _free_ragdoll() -> void:
 	if view.get_tree().physics_frame.is_connected(_cap_speeds):
 		view.get_tree().physics_frame.disconnect(_cap_speeds)
 	if _sim:
@@ -83,13 +149,30 @@ func stop() -> void:
 	if _turf:
 		_turf.queue_free()
 		_turf = null
-	view.pose.secure = false
-	if view.anim:
-		view.anim.speed_scale = 1.0
 
 ## True during the contact freeze (player.gd keeps the clip where it is).
 func holding() -> bool:
 	return active and _pending
+
+## True while getting up: the clip and the view root are this script's (player.gd).
+func rising() -> bool:
+	return active and rise_t >= 0.0
+
+## Rise progress 0..1 (0 when not rising).
+func rise_k() -> float:
+	return clampf(rise_t / rise_len, 0.0, 1.0) if rising() else 0.0
+
+## Late in the get-up the arms let go of the hug (player.gd fades the carry pose back in after).
+func arms_free() -> bool:
+	return rise_k() >= RISE_ARMS_FREE
+
+## Where the body is on the ground (world, y = 0): the pelvis while he's down.
+func ground_position() -> Vector3:
+	if rising():
+		return _lie_at.lerp(Vector3(view.global_position.x, 0.0, view.global_position.z), smoothstep(0.0, 1.0, rise_k()))
+	var pb := _sim.get_node_or_null("PB_pelvis") as PhysicalBone3D if _sim else null
+	var p: Vector3 = pb.global_position if pb else view.global_position
+	return Vector3(p.x, 0.0, p.z)
 
 func update(delta: float) -> void:
 	if not active:
@@ -100,6 +183,43 @@ func update(delta: float) -> void:
 		if view.anim:
 			view.anim.speed_scale = 1.0
 		_start_ragdoll()
+	if rise_t >= 0.0:
+		rise_t += delta
+		_hold.w = smoothstep(0.0, RISE_BLEND, rise_t)
+		if rise_t >= rise_len:
+			stop()
+			view.chase_sim = true   # up where he fell: jog back onto the sim spot
+	elif _hold == null and _sim and t >= _rise_at:
+		_hold = Hold.new()   # captures the lying pose on the next skeleton update
+		view._skel.add_child(_hold)
+	elif _hold and _hold.captured:
+		_begin_rise()
+
+## Swap the ragdoll for the get-up clip without a visible change: free the physics, move the
+## view root so the clip's first frame (on his back, head behind) lies where the body is, and let
+## Hold fade the lying pose into the clip.
+func _begin_rise() -> void:
+	_free_ragdoll()
+	var sk: Skeleton3D = view._skel
+	var pelvis := sk.find_bone("pelvis")
+	var head := sk.find_bone("Head")
+	var lie_p: Vector3 = _hold.world[pelvis].origin
+	var lie_dir: Vector3 = _hold.world[head].origin - lie_p
+	view._play(RISE_CLIP, 0.0, _rise_speed)
+	view.anim.seek(0.0, true)
+	var clip_p := sk.get_bone_global_pose(pelvis).origin   # outside the skeleton update: the plain clip pose
+	var clip_dir := sk.get_bone_global_pose(head).origin - clip_p
+	var to := Vector3(lie_dir.x, 0.0, lie_dir.z)
+	var from := sk.global_basis * clip_dir
+	from.y = 0.0
+	if to.length() > 0.01 and from.length() > 0.01:
+		view.rotation.y += from.signed_angle_to(to, Vector3.UP)
+	var at := sk.global_transform * clip_p
+	view.global_position += Vector3(lie_p.x - at.x, 0.0, lie_p.z - at.z)
+	_lie_at = Vector3(lie_p.x, 0.0, lie_p.z)
+	rise_len = view.anim.get_animation(RISE_CLIP).length / _rise_speed
+	rise_t = 0.0
+	_hold.w = 0.0
 
 func _start_ragdoll() -> void:
 	var sk: Skeleton3D = view._skel

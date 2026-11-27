@@ -106,6 +106,11 @@ var _vel := Vector3.ZERO
 var _role := ""
 var _hit_t := 0.0
 var fall    # tackle_fall.gd, built on the first tackle
+var _shadow: MeshInstance3D
+var chase_sim := false   # up after a tackle away from the sim spot: jogging back to it (interpolate)
+## Catch-up speed over the sim's own (yd/s) for chase_sim.
+const CHASE_SPEED := 4.0
+var _shadow_moved := false   # following a fallen body instead of sitting under the root
 var _release_t := 0.0
 var _cur := ""
 var _was_down := false
@@ -164,7 +169,8 @@ func _ready() -> void:
 	number_front = _number_label(chest, 0.205)
 	number_back = _number_label(chest, -0.205)
 	set_opponent(is_opponent)
-	add_child(_blob_shadow())
+	_shadow = _blob_shadow()
+	add_child(_shadow)
 	var shield_mesh := RC.sphere(0.5, 1.0)
 	var shield_mat := Mats.emissive(Color(0.3, 0.8, 1.0, 0.35), 0.9)
 	shield_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -323,17 +329,21 @@ func hit() -> void:
 
 ## Tackled while carrying: go down hugging the ball (tackle_fall.gd). run = this athlete's
 ## velocity, contact = the velocity the hit drives the contact point to (yd/s, world),
-## contact_h = the hit's height (yd).
-func tackled(run: Vector3, impulse: Vector3, point: Vector3) -> void:
+## contact_h = the hit's height (yd). fumble: the ball came out, so he scrambles up sooner.
+func tackled(run: Vector3, impulse: Vector3, point: Vector3, fumble := false) -> void:
 	if pose == null or _skel == null:
 		hit()
 		return
 	if fall == null:
 		fall = TackleFall.new(self)
-	fall.start(run, impulse, point)
+	fall.start(run, impulse, point, fumble)
 
 func is_falling() -> bool:
 	return fall != null and fall.active
+
+## Where this athlete is on the ground: under the body while he's down (ring, blob shadow).
+func ground_position() -> Vector3:
+	return fall.ground_position() if is_falling() else Vector3(global_position.x, 0.0, global_position.z)
 
 ## Follow-through after the ball leaves the hand.
 func throw_release() -> void:
@@ -520,7 +530,8 @@ func _process(delta: float) -> void:
 	_choose_anim(spd, down)
 	_was_down = down
 	if pose:
-		var target := 1.0 if ball_node != null else 0.0
+		# Getting up, the hug lets go and the carry pose fades back in after (tackle_fall.gd).
+		var target := 1.0 if ball_node != null and not (is_falling() and fall.arms_free()) else 0.0
 		pose.weight = lerpf(pose.weight, target, 1.0 - exp(-CARRY_K * delta))
 		if absf(pose.weight - target) < 0.01:
 			pose.weight = target
@@ -544,13 +555,16 @@ func _process(delta: float) -> void:
 		body.rotation.y = -float(spin_vis_side) * TAU * ease(k, -1.6)
 	if is_falling():
 		fall.update(delta)
+	if _shadow and (_shadow_moved or is_falling()):
+		_shadow_moved = is_falling()
+		_shadow.global_position = ground_position() + Vector3(0, 0.02, 0) if _shadow_moved else global_position + Vector3(0, 0.02, 0)
 
 func _choose_anim(spd: float, down: bool) -> void:
 	if celebrate_t > 0.0:
 		_play({"hop": "Jump", "flip": "Roll"}.get(celebrate_kind, "Dance"))
 		return
 	if is_falling():
-		if not fall.holding():   # hit-stop: keep the contact frame
+		if not fall.holding() and not fall.rising():   # hit-stop: keep the contact frame; getting up: tackle_fall plays it
 			_play("Idle", 0.1)   # under the ragdoll: only the neck and clavicles still follow a clip
 		return
 	if athlete.is_diving():
@@ -598,16 +612,17 @@ func place(p: Vector3, yaw: float) -> void:
 	if not _has_pose or p.distance_to(_cur_pos) > TELEPORT_DIST:
 		if is_falling():
 			fall.stop()   # next play: back on his feet
+		chase_sim = false
 		_prev_pos = p
 		_prev_yaw = yaw
 		_has_pose = true
-	elif is_falling():
-		return   # the falling body owns where it lies; moving the node would drag the physics bones
 	else:
 		_prev_pos = _cur_pos
 		_prev_yaw = _cur_yaw
 	_cur_pos = p
 	_cur_yaw = yaw
+	if is_falling() or chase_sim:
+		return   # the fallen body owns where it lies (moving the node would drag the physics bones)
 	position = p
 	rotation.y = yaw
 
@@ -615,6 +630,14 @@ func place(p: Vector3, yaw: float) -> void:
 ## f = Engine.get_physics_interpolation_fraction() in [0, 1].
 func interpolate(f: float) -> void:
 	if is_falling():
+		return
+	if chase_sim:
+		# Back on his feet where he fell: run to where the sim has him, a bit faster than the
+		# sim moves. _process turns him to face the way he goes and picks the run clip from it.
+		var to := _prev_pos.lerp(_cur_pos, f)
+		var spd := _prev_pos.distance_to(_cur_pos) * Tick.HZ + CHASE_SPEED
+		position = position.move_toward(to, spd * get_process_delta_time())
+		chase_sim = position.distance_to(to) > 0.01
 		return
 	position = _prev_pos.lerp(_cur_pos, f)
 	rotation.y = lerp_angle(_prev_yaw, _cur_yaw, f)
