@@ -63,6 +63,77 @@ func test_award_stats_follow_owner_when_a_seat_is_reused() -> void:
 	assert_eq(s.award_stats[2], {"att": 1.0})
 	assert_eq(s.get_line("Ann", "QB")["att"], 2.0, "career line keeps the display-name format")
 
+## #200: the personal overview reads lines by player id, so two players named Ann each see
+## only their own, while the name-keyed summary (career table format) still files both as "Ann".
+func test_player_summary_separates_same_named_players() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	owners[i["qb"]] = "Ann"
+	owners[i["lb"]] = "Ann"
+	player_ids[i["qb"]] = 1
+	player_ids[i["lb"]] = 2
+	w.event.emit("snap", {"qb": i["qb"]})
+	w.event.emit("throw", {"by": i["qb"]})
+	w.event.emit("catch", {"by": i["wr"]})
+	w.event.emit("tackle", {"by": i["lb"], "carrier": i["wr"], "spot": Vector2(20, 37), "team": 0})
+	w.event.emit("snap", {"qb": i["qb"]})
+	w.event.emit("throw", {"by": i["qb"]})
+	w.event.emit("breakup", {"by": i["lb"]})
+	assert_eq(s.player_summary(1), ["QB: 1/2 12yd 0TD 0INT"], "Ann #1 sees only her passing line")
+	assert_eq(s.player_summary(2), ["LB: 1 tkl, 1 pbu"], "Ann #2 sees only her defensive line")
+	assert_eq(s.player_summary(3), [], "a player with no stats has no lines")
+	assert_true(s.summary_lines().has("Ann QB: 1/2 12yd 0TD 0INT") and s.summary_lines().has("Ann LB: 1 tkl, 1 pbu"),
+		"name-keyed summary keeps both under Ann: %s" % str(s.summary_lines()))
+	assert_eq(s.summaries_for([i["qb"], i["lb"], i["cb"]]),
+		{i["qb"]: ["QB: 1/2 12yd 0TD 0INT"], i["lb"]: ["LB: 1 tkl, 1 pbu"], i["cb"]: []},
+		"each athlete carries its own player's lines for the broadcast")
+
+## #200: same name, same position, different players: the name-keyed line merges them, the
+## personal lines don't.
+func test_same_named_players_at_one_position_do_not_merge() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	var wrs: Array = w.athletes.filter(func(a): return a.team == 0 and a.role == R.WR).map(func(a): return a.id)
+	assert_eq(wrs.size(), 2, "7v7 fields two HELIOS receivers")
+	owners[wrs[0]] = "Ann"
+	owners[wrs[1]] = "Ann"
+	player_ids[wrs[0]] = 1
+	player_ids[wrs[1]] = 2
+	w.event.emit("snap", {"qb": i["qb"]})
+	w.event.emit("throw", {"by": i["qb"]})
+	w.event.emit("catch", {"by": wrs[0]})
+	w.event.emit("tackle", {"by": i["lb"], "carrier": wrs[0], "spot": Vector2(20, 37), "team": 0})
+	w.event.emit("snap", {"qb": i["qb"]})
+	w.event.emit("throw", {"by": i["qb"]})
+	w.event.emit("catch", {"by": wrs[1]})
+	w.event.emit("tackle", {"by": i["lb"], "carrier": wrs[1], "spot": Vector2(20, 30), "team": 0})
+	assert_eq(s.get_line("Ann", "WR")["rec"], 2.0, "career line merges by name, as before")
+	assert_eq(s.summary_lines().filter(func(l): return l.begins_with("Ann ")), ["Ann WR: 2 rec 17yd 0TD"])
+	assert_eq(s.player_summary(1), ["WR: 1 rec 12yd 0TD"])
+	assert_eq(s.player_summary(2), ["WR: 1 rec 5yd 0TD"])
+
+## #200: a reused seat splits the personal lines by player, like the awards (#156).
+func test_player_summary_follows_owner_when_a_seat_is_reused() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var qb: int = _ids(w)["qb"]
+	w.event.emit("throw", {"by": qb})
+	assert_true(s.player_lines.is_empty(), "bot play gives no player lines")
+	owners[qb] = "Ann"
+	player_ids[qb] = 1
+	w.event.emit("throw", {"by": qb})
+	player_ids[qb] = 2
+	w.event.emit("throw", {"by": qb})
+	w.event.emit("throw", {"by": qb})
+	assert_eq(s.player_summary(1), ["QB: 0/1 0yd 0TD 0INT"])
+	assert_eq(s.player_summary(2), ["QB: 0/2 0yd 0TD 0INT"])
+	assert_eq(s.summaries_for([qb]), {qb: ["QB: 0/2 0yd 0TD 0INT"]}, "the broadcast follows the seat's current player")
+
 func test_completion_line() -> void:
 	var r := _setup()
 	var w: World = r[0]
