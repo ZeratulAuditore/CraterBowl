@@ -714,7 +714,7 @@ func _apply_award(xp: Dictionary, ctx: Dictionary = {}) -> void:
 	achievement_line = ("ACHIEVEMENTS: " + ", ".join(unlocked)) if not unlocked.is_empty() else ""
 
 func _on_match_event(n: String, data: Dictionary) -> void:
-	if n in ["timeout", "clock_warning"]:
+	if n in ["timeout", "clock_warning", "penalty"]:   # #253: penalty rulings reach the HUD and clients
 		_on_world_event(n, data)
 	if n in ["quarter", "halftime"]:
 		ai.reset_presnap()

@@ -9,6 +9,7 @@ const UITheme := preload("res://src/ui/ui_theme.gd")
 const T := preload("res://src/sim/tuning.gd")
 const Routes := preload("res://src/sim/routes.gd")
 const DefensivePlaybook := preload("res://src/sim/defensive_playbook.gd")
+const Penalties := preload("res://src/sim/penalties.gd")
 ## Picker buttons, built once (#169): the longest list either side shows. Offense with a run
 ## back: passes + runs + Repeat last/Flip play; defense: calls + Repeat last.
 var PICKER_POOL := maxi(Routes.PLAY_NAMES.size() + Routes.RUN_NAMES.size() + 2, DefensivePlaybook.CALLS.size() + 1)
@@ -48,6 +49,10 @@ var play_clock_l: Label
 var play_clock_div: ColorRect
 var status_l: Label
 var status_pill: PanelContainer
+## #253: penalty line, from the flag until the next snap (above the status pill, right-aligned).
+const FLAG_YELLOW := Color(1.0, 0.84, 0.12)
+var flag_pill: PanelContainer
+var flag_l: Label
 var mode_l: Label
 var spot_l: Label
 var field_strip: Control
@@ -217,6 +222,18 @@ func _build_scorebug() -> void:
 	root.add_child(status_pill)
 	status_l = _label(17, Color(0.95, 0.97, 1.0), 700)
 	status_pill.add_child(status_l)
+	flag_pill = PanelContainer.new()
+	flag_pill.name = "FlagPill"
+	var fs := _box(FLAG_YELLOW, 6, Color(0.03, 0.04, 0.1, 0.6), 1)
+	fs.content_margin_top = 2
+	fs.content_margin_bottom = 2
+	flag_pill.add_theme_stylebox_override("panel", fs)
+	flag_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	flag_pill.visible = false
+	root.add_child(flag_pill)
+	flag_l = _label(18, Color(0.06, 0.06, 0.1), 800)
+	flag_l.label_settings.shadow_size = 0
+	flag_pill.add_child(flag_l)
 
 func _divider() -> ColorRect:
 	var d := ColorRect.new()
@@ -427,7 +444,17 @@ func on_event(n: String, d: Dictionary) -> void:
 		"snap":
 			if banner.text in ["TIMEOUT", "ONE-MINUTE WARNING"]:
 				banner_t = 0.0
+			flag_pill.visible = false
+		"flag":
+			show_banner("FLAG", Penalties.name_of(d), FLAG_YELLOW, 1.8)
+			_show_flag(Penalties.ruling(d))
+		"penalty":
+			_show_flag(str(d.get("ruling", "")))
 	_track_play(n, d)
+
+func _show_flag(text: String) -> void:
+	flag_l.text = text
+	flag_pill.visible = text != ""
 
 ## Remember what the current play did, for the dead-ball summary.
 func _track_play(n: String, d: Dictionary) -> void:
@@ -763,3 +790,7 @@ func _layout_stack() -> void:
 	var pm := status_pill.get_combined_minimum_size()
 	status_pill.size = pm
 	status_pill.position = Vector2(bug_left, bug_top - 4.0 - pm.y)
+	if flag_pill.visible:
+		var fm := flag_pill.get_combined_minimum_size()
+		flag_pill.size = fm
+		flag_pill.position = Vector2(bug_left + br.size.x - fm.x, bug_top - 4.0 - pm.y - 6.0 - fm.y)

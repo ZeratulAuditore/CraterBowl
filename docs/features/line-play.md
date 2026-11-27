@@ -40,6 +40,14 @@ holding right mouse (a "shield"). Rushers beat blocks by waiting out the hold or
 - On a run call each C/OL is assigned, at the snap, the defender closest to a landmark shaded `RUN_BLOCK_LANE_WEIGHT`
   (55%) from the blocker toward the called lane, within 8 yd, one defender per blocker. Pre-snap art shows these pairs.
 
+### Blocking zone (#253)
+- C and OL may not be more than 5 yd (`BLOCK_ZONE_DEPTH`) past the line when a pass is thrown, or it's
+  illegal man downfield: 10 yd and the down is replayed ([rules.md](rules.md#penalties-srcsimpenaltiesgd)).
+  A human lineman can go anywhere, but going too deep before the throw draws the flag.
+- Bot C/OL respect the zone while it's active (`World.blocking_zone_active()`: until a pass or until the ball is
+  carried past the line). Within `AI_BLOCK_ZONE_MARGIN` (1 yd) of its edge they stop moving downfield, even to
+  follow a defender they were blocking, and they step back if a collision shoves them past it.
+
 ### Pass rush
 - DL bots (and the LB on blitz calls) sprint at the ball carrier, leading him by up to 0.6 s, and dive within
   `AI_DIVE_RANGE` (2.0 yd).
@@ -53,6 +61,8 @@ holding right mouse (a "shield"). Rushers beat blocks by waiting out the hold or
 - A timed shed plus immunity makes a block buy a fixed, readable amount of time.
 - The beaten-blocker cooldown is longer than the defender's immunity because a lone C could re-block one LB forever.
 - Receivers don't auto-block during a pass play, so they run routes instead of locking onto the nearest defender.
+- Bot linemen hold the zone edge in `AI.think` after every other decision (`_respect_blocking_zone`) rather than inside
+  `_protect`/`_approach_block`, so one clamp covers pass protection, run blocking and holding a block.
 - Human shield and spin/dash shedding came with the live-controls rework (commit `ec09b1e`); before that blocking was
   automatic for everyone.
 
@@ -60,11 +70,11 @@ holding right mouse (a "shield"). Rushers beat blocks by waiting out the hold or
 - `src/sim/world.gd` — `_can_block`, `_can_be_blocked`, `_step_blocks`, `_release_block`, `_resolve_collisions`,
   `protection_target`, `run_block_assignments`, `evade`.
 - `src/sim/player_motion.gd` — shield speed and frozen facing. `src/sim/athlete.gd` — `blocking`, engagement fields.
-- `src/sim/ai.gd` — `_protect`, `_approach_block`, `_pursue`, `_qb_pocket`.
+- `src/sim/ai.gd` — `_protect`, `_approach_block`, `_pursue`, `_qb_pocket`, `_respect_blocking_zone` (#253).
 - `src/game/main.gd` — right-mouse shield input, `World.HUMAN` flag on local and peer inputs, protection/run-block art.
 - Tests: `tests/test_blocking.gd`, `tests/test_live_controls.gd` (shield, spin shed), `tests/test_run_game.gd`
   (run-block targets), `tests/test_training.gd` (blocking station), `tests/visual/peer_human_block_test.gd`
-  (host flags a joined peer's lineman as human).
+  (host flags a joined peer's lineman as human), `tests/test_penalties.gd` (bot linemen stay inside the blocking zone).
 
 ## Open issues
 - #15 B01 Line play minigame (leverage / hand-fighting timing, shield resource)
