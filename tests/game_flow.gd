@@ -313,9 +313,13 @@ func _initialize() -> void:
 			var back = main.world.carrier()
 			check(back != null and back.position.y > main.world.los_y and main.world.phase == main.World.Phase.LIVE, "bot RB runs across the LOS and stays live")
 			if back != null:
+				check(main.roster.claim(98, main.roster.slot_of_athlete(back.id)), "replacement takes over the bot RB")
 				back.position.x = -0.5],
 		[7932, func():
-			check(main.world.phase == main.World.Phase.DEAD and main.stats.total("car") == 1 and main.stats.total("rush_yds") > 0.0, "whistle records the RB's rushing attempt and gain")],
+			check(main.world.phase == main.World.Phase.DEAD and main.stats.total("car") == 1 and main.stats.total("rush_yds") > 0.0, "whistle records the RB's rushing attempt and gain")
+			check(main.stats.get_line("Bot", "RB").get("car") == 1.0 and main.stats.player_summary(98).is_empty(),
+				"handoff through G leaves the carry with the bot who received it")
+			main.roster.release(98)],
 		# C04a: T from dead ball, then the one-minute warning at the next whistle.
 		[7950, func():
 			main.configure(3)
