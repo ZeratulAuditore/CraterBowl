@@ -38,7 +38,7 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
   is its huddle (`HUDDLE_SECONDS` 5 s, kickoffs `AI_SNAP_DELAY` 2.5 s) and the bots snap or kick when it reads 0;
   a human offense gets the full 20 s and may snap any time before. An unattended kickoff gets the default kick
   (`KICKOFF_DEFAULT_POWER`) at 0. The play clock is hidden and doesn't run while it governs no snap: live and dead
-  balls, the coin toss (its own `TOSS_WINDOW`), FINAL. A timeout or the one-minute warning restarts it (a fresh huddle
+  balls, the coin toss (its own `TOSS_WINDOW`) and its cutscene's fade back (`TOSS_OUTRO`, #129), FINAL. A timeout or the one-minute warning restarts it (a fresh huddle
   for bots). Clients show the same value: it is computed by `Match.play_clock_shown()` from snapshot state only.
 - Next play starts `NEXT_PLAY_DELAY` (2.0 s) after the whistle; Enter skips the wait (offline or host only; it was R before #138).
 

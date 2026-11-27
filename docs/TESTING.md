@@ -202,6 +202,10 @@ Input rule (from LOOP.md): player-facing input must be exercised through the rea
 In game_flow that's `_key()`; in shot.sh that's `--press`. Mouse motion goes through `_mouse(rel)`
 (`main._unhandled_input`). Headless can't capture the mouse, so a step that needs mouse-look sets
 `main.mouse_captured_override = true` and clears it after (the #139 taunt-wheel step does).
+Mouse clicks on GUI controls are another exception: a headless viewport doesn't hit-test
+`root.push_input` mouse events (#251), so game_flow emits the control's own `gui_input` (the #129
+toss cards, `_click()`), and the hit-tested click lives in a `tests/visual` test under Xvfb
+(`coin_toss_test.gd`).
 
 Scripted contact: to make one body push another, place the pusher at a fixed overlap each frame
 (e.g. 0.75 yd). Moving it a fixed step per frame lets it pass through the other body on the software-GL
