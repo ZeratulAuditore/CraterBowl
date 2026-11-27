@@ -302,7 +302,8 @@ func _fireworks() -> void:
 		var side := -1.0 if i % 2 == 0 else 1.0
 		p.position = Vector3(f.width * 0.5 + side * (f.width * 0.5 + 14.0), 22.0 + (i % 3) * 5.0, -f.length * (0.2 + 0.3 * float(i / 2)))
 		add_child(p)
-		get_tree().create_timer(0.25 * i).timeout.connect(func(): if is_instance_valid(p): p.emitting = true)
+		# Bound to p, not a lambda capturing p: freeing the scene drops the connection (#250).
+		get_tree().create_timer(0.25 * i).timeout.connect(p.set_emitting.bind(true))
 		get_tree().create_timer(3.5).timeout.connect(p.queue_free)
 
 # --- per frame --------------------------------------------------------------
