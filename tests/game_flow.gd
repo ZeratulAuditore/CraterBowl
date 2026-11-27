@@ -696,6 +696,28 @@ func _initialize() -> void:
 		[16202, func(): check(main.drill != null and main.coin_toss == null, "drills never show the coin toss")],
 		[16210, func(): main.opening_kickoff = false; main.configure(7)],
 		[16212, func(): check(main.coin_toss == null and main.series.state != main.Match.State.TOSS, "--no-kickoff: no toss, no cutscene")],
+		# #254: the QB throws away under pressure, then Enter applies the spot and down.
+		[17000, func():
+			main.opening_kickoff = false
+			main.configure(7)
+			main.auto_next = false
+			main.pov_enabled = false
+			main.ai.defense_enabled = false
+			main.series.start(0, 40.0)
+			_key(KEY_SPACE)],
+		[17040, func():
+			var qb = main.world.get_athlete(main.my_id)
+			qb.position = Vector2(26.0, 35.0)
+			main.world.find_role(1, main.Athlete.Role.LB).position = qb.position + Vector2(2.0, 0.0)
+			main.aim_point = Vector2(4.0, 20.0)
+			_key(KEY_J)
+			check(main.pres.overlay.flag_l.text == "FLAG · INTENTIONAL GROUNDING · OFFENSE", "J flags the pressured throw")],
+		[17200, func():
+			check(main.world.phase == main.World.Phase.DEAD, "grounding throw finishes live play")
+			_key(KEY_ENTER)
+			check(main.series.downs.los == 35.0 and main.series.downs.down == 2,
+				"Enter enforces the passer's spot and spends the down")
+			check(main.pres.overlay.flag_l.text.ends_with("SPOT FOUL · LOSS OF DOWN"), "HUD explains the grounding ruling")],
 		# #253: blocking zone. Space snaps, a guard is 7 yd downfield when J throws: FLAG on the HUD;
 		# Enter walks it off 10 yd and replays the down; the next snap clears the line. Window 16400-16700.
 		[16400, func(): main.opening_kickoff = false; main.configure(7); main.auto_next = false; main.pov_enabled = false; main.ai.defense_enabled = false; main.series.start(0, 40.0); main.set_controlled(main.my_id)],

@@ -53,6 +53,8 @@ const CATCH_MAX_HEIGHT := 2.6
 const CONTEST_MARGIN := 0.35
 const MIN_PASS_TRAVEL := 2.5      # ball must travel this far before it can be caught/deflected
 const INT_RADIUS := 0.6           # defender must be this close to the ball to intercept
+const GROUNDING_PRESSURE_RADIUS := 2.5
+const GROUNDING_RECEIVER_RADIUS := 5.0
 
 # Tackling
 const DIVE_SPEED := 11.0

@@ -37,12 +37,28 @@ func _physics_process(dt: float) -> bool:
 			main.world.event.connect(_finish_after_handoff)
 	return false
 
+## Give the real client a pass with pressure and no receiver near the aim point.
+func _offer_grounding_throw() -> void:
+	const Tick := preload("res://src/sim/tick.gd")
+	main.series.start(1, 42.0)
+	var world = main.world
+	var qb = world.find_role(1, main.Athlete.Role.QB)
+	world.start_live_with(qb.id)
+	qb.position = Vector2(26.0, 37.0)
+	world.find_role(0, main.Athlete.Role.LB).position = qb.position + Vector2(2.0, 0.0)
+	world.step({}, 1.0 / Tick.HZ)
+	for frame in 120:
+		if world.forward_pass_thrown:
+			break
+		await physics_frame
+
 func _finish_after_handoff(event: String, _data: Dictionary) -> void:
 	if event != "handoff":
 		return
 	main.world.event.disconnect(_finish_after_handoff)
 	# Let the joiner observe the handoff before setting up the final score.
 	await create_timer(0.5).timeout
+	await _offer_grounding_throw()
 	main.stats.award_stats.clear()
 	_record_pass_before_seat_replacement()
 	main.series.start(0, 95.0)

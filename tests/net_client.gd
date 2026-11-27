@@ -49,6 +49,8 @@ var snapped_run := false
 var sent_handoff := false
 var handoff_to := -1
 var remote_handoff_confirmed := false
+var sent_grounding_throw := false
+var got_grounding_flag := false
 var xp_before := 0
 var games_before := 0
 var had_first_td := false
@@ -116,6 +118,8 @@ func _on_event(n: String, _d: Dictionary) -> void:
 		got_timeout_event = true
 	if n == "handoff" and _d.get("by") == aid:
 		handoff_to = int(_d["to"])
+	if n == "flag" and _d.get("type") == "intentional_grounding":
+		got_grounding_flag = true
 	if n == "awards":
 		got_awards = true
 		check(main.player_name == "Ann" and not _d["xp"].has("Ann"),
@@ -188,6 +192,11 @@ func _physics_process(_dt: float) -> bool:
 		equipped_number = main.views[aid].number_text
 	if bad_snap_sent_at > 0 and f > bad_snap_sent_at + 90:
 		_test_remote_handoff()
+	if remote_handoff_confirmed and not sent_grounding_throw and main.world.los_y == 42.0 and main.world.ball.is_held_by(aid):
+		main.pov_enabled = false
+		main.aim_point = Vector2(4.0, 22.0)
+		sent_grounding_throw = true
+		_key(KEY_J)
 	if f == 1500 or (remote_handoff_confirmed and got_awards and got_summary):
 		check(saw_lobby and lobby_size == 5 and lobby_code.length() == 11, "joined by code into the private lobby (5v5, code %s)" % lobby_code)
 		check(quarter_lobby_seen and quarter_clock_seen, "host lobby Q and H select three-minute quarters on both machines")
@@ -215,6 +224,7 @@ func _physics_process(_dt: float) -> bool:
 		check(timeout_confirmed and got_timeout_event, "remote T decrements only its team's timeouts and broadcasts the event")
 		check(remote_handoff_confirmed, "client QB hands off through G and sees the host's RB possession")
 		check(remote_handoff_confirmed and main.controlled_id == aid, "online QB keeps the same athlete after the handoff")
+		check(sent_grounding_throw and got_grounding_flag, "online J throw receives the host's grounding flag")
 		check(got_awards and main.profile.xp == xp_before + 100 and main.profile.games == games_before + 1,
 			"same-named losing client receives only its own 100 XP")
 		check(main.profile.achievements.has("first_td") == had_first_td
