@@ -42,6 +42,15 @@ const WATCH_RANGE := 15.0
 ## "Near the camera" and "watches the ball" rarely change frame to frame: decide them this
 ## often (staggered by athlete id) instead of every frame (#245, LOG.md perf-08).
 const LOOK_DECIDE_HZ := 10.0
+## Catch pose (#246): athletes who watch a pass and are this close (yd) to where it comes
+## down through chest height get ready to catch it.
+const CATCH_RANGE := 6.0
+const CATCH_HEIGHT := 1.4   # yd: about chest height
+## Hands go from the ready stance to the ball as it closes from REACH_FAR to REACH_NEAR (yd).
+## The sim catches inside a 1.2 yd ground radius, which puts the ball about 2 yd from the
+## chest at the catch (game_flow A04): REACH_NEAR is that, so the arms are fully out as it snaps in.
+const REACH_FAR := 4.5
+const REACH_NEAR := 2.0
 ## Ball seat in hand_r bone space: in the palm, long axis along the forearm (#244).
 const BALL_SOCKET := Transform3D(Basis(Vector3.RIGHT, -PI / 2.0), Vector3(-0.13, 0.08, 0.0))
 
@@ -78,6 +87,7 @@ var look_node: Node3D       # the ball view: heads track it (#245; main.gd sets 
 var _look_point := Vector3.ZERO   # smoothed world-space look target
 var _look_decide_t := 0.0         # time to the next look decision
 var _look_wanted := false         # last decision: near the camera and watches the ball
+var _catch_wanted := false        # last decision: a pass is coming down near this athlete
 var _skel: Skeleton3D
 var _ball_xf := Transform3D()   # palm socket (world), cached at each skeleton update
 var _ball_xf_ok := false
@@ -375,6 +385,7 @@ func _update_look(delta: float, down: bool) -> void:
 		_look_decide_t = 1.0 / LOOK_DECIDE_HZ
 		var cam := get_viewport().get_camera_3d()
 		_look_wanted = cam != null and head_visible(global_position.distance_to(cam.global_position), cam.fov) and watches_now()
+		_catch_wanted = _look_wanted and _near_catch_point()
 	var looking := _look_wanted and look_node != null and ball_node == null and not down and celebrate_t <= 0.0
 	var k := 1.0 - exp(-LOOK_K * delta)
 	if look_node != null and (looking or pose.look_weight > 0.0):   # also while fading out, so a fading head never points at an old spot
@@ -386,6 +397,43 @@ func _update_look(delta: float, down: bool) -> void:
 	pose.look_weight = lerpf(pose.look_weight, 1.0 if looking else 0.0, k)
 	if pose.look_weight < 0.01 and not looking:
 		pose.look_weight = 0.0
+	_update_catch(delta, looking)
+
+## Where a pass in flight comes down through height h (field x, y), on its way down. A
+## pass that never climbs to h (a low line drive) uses where it lands. Same flight math as
+## presentation.gd's landing marker.
+static func catch_point(pos: Vector3, vel: Vector3, g: float, h: float) -> Vector2:
+	var disc := vel.z * vel.z + 2.0 * g * (pos.z - h)
+	if disc < 0.0:
+		h = 0.0
+		disc = vel.z * vel.z + 2.0 * g * pos.z
+	var t := (vel.z + sqrt(maxf(disc, 0.0))) / g if g > 0.0 else 0.0
+	return Vector2(pos.x, pos.y) + Vector2(vel.x, vel.y) * maxf(t, 0.0)
+
+## A pass (not the snap) is in the air.
+func _pass_in_air() -> bool:
+	return int(world.ball.state) == Ball.State.IN_FLIGHT and not world.snap_in_flight()
+
+func _near_catch_point() -> bool:
+	var b = world.ball
+	if not _pass_in_air():
+		return false
+	var cp := catch_point(b.position, b.velocity, world.gravity(), CATCH_HEIGHT)
+	return athlete.position.distance_to(cp) < CATCH_RANGE
+
+## Catch pose (#246): ready stance while the pass is far, hands to the ball as it closes.
+func _update_catch(delta: float, looking: bool) -> void:
+	var catching := _catch_wanted and looking and _pass_in_air()
+	if catching:
+		var ball := look_node.global_position
+		var chest := global_position + Vector3.UP * CATCH_HEIGHT
+		pose.catch_target = _skel.global_transform.affine_inverse() * ball
+		pose.catch_reach = clampf((REACH_FAR - ball.distance_to(chest)) / (REACH_FAR - REACH_NEAR), 0.0, 1.0)
+	elif pose.catch_weight <= 0.0:
+		return
+	pose.catch_weight = lerpf(pose.catch_weight, 1.0 if catching else 0.0, 1.0 - exp(-CARRY_K * delta))
+	if pose.catch_weight < 0.01 and not catching:
+		pose.catch_weight = 0.0
 
 func _pin_ball() -> void:
 	if ball_node == null or not is_instance_valid(ball_node):
