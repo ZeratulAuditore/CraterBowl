@@ -47,6 +47,10 @@ const LOOK_DECIDE_HZ := 10.0
 ## down through chest height get ready to catch it.
 const CATCH_RANGE := 6.0
 const CATCH_HEIGHT := 1.4   # yd: about chest height
+## They raise their hands only for the last CATCH_LEAD s of the flight (ball distance / ball
+## speed). Without it, everyone near the landing spot ran with hands up for the whole flight,
+## a second or more on a deep pass. The weight blend (CARRY_K) is ~99% in by the catch.
+const CATCH_LEAD := 0.45
 ## Hands go from the ready stance to the ball as it closes from REACH_FAR to REACH_NEAR (yd).
 ## The sim catches inside a 1.2 yd ground radius, which puts the ball about 2 yd from the
 ## chest at the catch (game_flow A04): REACH_NEAR is that, so the arms are fully out as it snaps in.
@@ -422,12 +426,13 @@ func _near_catch_point() -> bool:
 	var cp := catch_point(b.position, b.velocity, world.gravity(), CATCH_HEIGHT)
 	return athlete.position.distance_to(cp) < CATCH_RANGE
 
-## Catch pose (#246): ready stance while the pass is far, hands to the ball as it closes.
+## Catch pose (#246): ready stance as the pass comes in (CATCH_LEAD), hands to the ball as it closes.
 func _update_catch(delta: float, looking: bool) -> void:
-	var catching := _catch_wanted and looking and _pass_in_air()
+	var chest := global_position + Vector3.UP * CATCH_HEIGHT
+	var catching: bool = _catch_wanted and looking and _pass_in_air() \
+		and look_node.global_position.distance_to(chest) < CATCH_LEAD * world.ball.velocity.length()
 	if catching:
 		var ball := look_node.global_position
-		var chest := global_position + Vector3.UP * CATCH_HEIGHT
 		pose.catch_target = _skel.global_transform.affine_inverse() * ball
 		pose.catch_reach = clampf((REACH_FAR - ball.distance_to(chest)) / (REACH_FAR - REACH_NEAR), 0.0, 1.0)
 	elif pose.catch_weight <= 0.0:
