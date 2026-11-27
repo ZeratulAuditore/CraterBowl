@@ -11,10 +11,10 @@ extends SkeletonModifier3D
 ## Hand targets and elbow hints in spine_03 space (rig: +Z forward, +Y up, right = -X).
 const TUCK_HAND := Vector3(-0.17, 0.06, 0.13)
 const TUCK_POLE := Vector3(-0.6, -1.0, -0.6)
-## Two-hand hold: ball center, and each wrist beside it (ball radius 0.15 + palm, fingers forward).
+## Two-hand hold: ball center, and each wrist beside it (ball radius 0.13 + palm, fingers forward).
 const HOLD_BALL := Vector3(0.0, 0.02, 0.28)
-const HOLD_WRIST_R := HOLD_BALL + Vector3(-0.17, 0.0, -0.08)
-const HOLD_WRIST_L := HOLD_BALL + Vector3(0.17, 0.0, -0.08)
+const HOLD_WRIST_R := HOLD_BALL + Vector3(-0.15, 0.0, -0.08)
+const HOLD_WRIST_L := HOLD_BALL + Vector3(0.15, 0.0, -0.08)
 const HOLD_POLE_R := Vector3(-1.0, -1.0, -0.3)
 const HOLD_POLE_L := Vector3(1.0, -1.0, -0.3)
 ## Hand orientation for the hold, in spine_03 space: fingers forward (bone +Y = +Z) and

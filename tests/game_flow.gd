@@ -64,7 +64,10 @@ func _initialize() -> void:
 		[80, func(): check(main.arc_shown(), "pass preview shown before input")],
 		[81, func(): _key(KEY_J)],
 		[82, func(): check(main.world.forward_pass_thrown, "pass thrown")],
-		[400, func(): check(main.world.phase == main.World.Phase.DEAD, "incomplete ends play")],
+		[90, func(): _check_ball_flight(true)],   # #159 (frames 90 and 92 only)
+		[92, func(): _check_ball_flight(false)],
+		[396, func(): _drop_dead_ball()],   # #159 (frames 396 and 400 only)
+		[400, func(): check(main.world.phase == main.World.Phase.DEAD, "incomplete ends play"); _check_ball_lying()],
 		# A04: reset, snap, lead a pass to a WR running his go route -> catch while keeping the assigned athlete
 		[401, func(): main.next_play(); check(main.series.downs.down == 2, "incomplete -> 2nd down"); check(main.controlled_id == main.my_id, "control back to my athlete")],
 		[402, func(): main.ai.defense_enabled = false; main.world.snap()],
@@ -786,6 +789,34 @@ func _lead_to_wr() -> void:
 
 ## #244: the carrier's arm tucks the ball (both hands for a passer before the throw), and
 ## the ball view sits in the palm socket in the same frame, not one frame behind the hand.
+## #159: a pass in flight points its long axis (the ball's local Z) along its velocity at
+## unit scale, and spirals about that axis between frames 90 and 92.
+var _flight_y := Vector3.ZERO
+func _check_ball_flight(first: bool) -> void:
+	var b = main.world.ball
+	var bx: Basis = main.ball_view.global_basis
+	var v := Vector3(b.velocity.x, b.velocity.z, -b.velocity.y).normalized()
+	check(b.state == b.State.IN_FLIGHT, "#159 pass still in the air at frame %d" % (90 if first else 92))
+	check(absf(bx.z.length() - 1.0) < 0.01 and absf(bx.x.length() - 1.0) < 0.01, "#159 ball in flight at unit scale (%.2f)" % bx.z.length())
+	check(absf(bx.z.normalized().dot(v)) > 0.99, "#159 long axis along the flight (dot %.3f)" % bx.z.normalized().dot(v))
+	if first:
+		_flight_y = bx.y
+	else:
+		check(bx.y.angle_to(_flight_y) > 0.3, "#159 ball spirals about its long axis (%.2f rad in 2 frames)" % bx.y.angle_to(_flight_y))
+
+## #159: a dead ball nobody holds lies on its side on the turf, not sunk to its centre. This
+## incompletion stops the ball in the air, so frame 396 drops it to the ground (as a pass that
+## lands does: sim height 0) and frame 400 checks it, after the view's one-tick interpolation lag.
+func _drop_dead_ball() -> void:
+	check(main.world.phase == main.World.Phase.DEAD and main.world.ball.holder_id < 0, "#159 the incompletion is dead and nobody holds the ball")
+	main.world.ball.position.z = 0.0
+
+func _check_ball_lying() -> void:
+	var bv: Node3D = main.ball_view
+	check(bv.global_position.y >= preload("res://src/game/art/football.gd").RADIUS - 0.001,
+		"#159 dead ball rests on the turf (centre y %.2f)" % bv.global_position.y)
+	check(absf(bv.global_basis.z.normalized().y) < 0.05, "#159 dead ball lies on its side")
+
 func _check_carry_pose(two_hand: bool, context: String) -> void:
 	var c = main.world.carrier()
 	if c == null:
