@@ -154,10 +154,11 @@ page and check that every image displays.
   produced. A failed branch run exits nonzero even if it saved PNGs. Its raw captures stay in
   `OUT/after` for inspection. A screen that exists on only one side shows as `_(new screen)_` /
   `_(removed)_` in the table. `bash tests/before_after_test.sh` exercises both exit paths (#324).
-- **Read `changed=` as a hint.** `before_after.sh` prints the percent of pixels that differ per
-  pair and flags `UNCHANGED` at 0.0%: a pair you meant to change that says UNCHANGED missed your
-  change (wrong frame or screen). On menus the players sway and the music bar moves, so even a
-  screen you didn't touch shows ~2–3%. The image is the evidence, not the number.
+- **Read `changed=` as a hint.** A pair reports `0.0%` and `UNCHANGED` when no sampled pixel
+  differs beyond the comparison tolerance. A positive difference that rounds to zero displays
+  as `<0.1%` (#357). Menu animation can move a few percent of pixels. Look at the paired images
+  to verify what changed. `bash tests/before_after_test.sh` exercises an identical pair and a
+  single-pixel change.
 - **Sides run one after the other** (about 3–4 min for `menu`). `PARALLEL=1` halves that, but two
   llvmpipe renders at once load the CPU enough that time-driven motion drifts: an untouched
   `scorebug` frame measured 39% changed in parallel and 0.4% serial (2026-11-25, WSL, 1280x720).
