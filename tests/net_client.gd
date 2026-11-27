@@ -135,6 +135,8 @@ func _on_event(n: String, _d: Dictionary) -> void:
 	if n == "summary":
 		got_summary = _d.get("mine") is Dictionary and _d["mine"].has(aid)
 		shared_td_line = _d.get("lines", []).any(func(l): return str(l).begins_with("Ann ") and str(l).contains("1TD"))
+		check(_d.get("lines", []).any(func(l): return str(l).begins_with("P99 QB: 1/1 20yd 0TD 0INT")),
+			"network match summary credits the original thrower's 20 yards on the fumbled completion")
 
 func _initialize() -> void:
 	host_loss = OS.get_cmdline_user_args().has("--host-loss")

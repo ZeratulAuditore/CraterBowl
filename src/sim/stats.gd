@@ -25,6 +25,7 @@ var _receiver := -1
 ## Rule: docs/features/progression.md "Match awards follow the player in the seat".
 var _passer_credit := {}
 var _receiver_credit := {}
+var _pass_yards_credited := false
 var _thrown := false
 var _keeper_credit := {}
 var _handoff_credit := {}
@@ -125,6 +126,7 @@ func _on_event(n: String, d: Dictionary) -> void:
 			_los = world.los_y
 			_passer = -1
 			_receiver = -1
+			_pass_yards_credited = false
 			_thrown = false
 			_keeper_credit = _credit_for(d.get("qb", -1))
 			_handoff_credit = {}
@@ -180,6 +182,8 @@ func _on_event(n: String, d: Dictionary) -> void:
 		"block":
 			_add(d["blocker"], "blk")
 		"fumble":
+			if d["carrier"] == _receiver and not _pass_yards_credited:
+				_credit_pass_yards(d["at"].y - _los)
 			_add(d["by"], "ff")
 			if d["carrier"] == _returner:   # fumbled mid-return: the return ends where he lost it
 				_credit_return(d["at"].y)
@@ -227,8 +231,8 @@ func _end_play(n: String, d: Dictionary) -> void:
 			_note_td_points(credit, d.get("points", 6))
 		return   # returns (kick, punt, takeaway) are credited above
 	if _receiver >= 0 and carrier == _receiver:
-		_add_credit(_passer_credit, "pass_yds", gain)
-		_add_credit(_receiver_credit, "rec_yds", gain)
+		if not _pass_yards_credited:
+			_credit_pass_yards(gain)
 		if n == "touchdown":
 			_add_credit(_passer_credit, "pass_td")
 			_add_credit(_receiver_credit, "rec_td")
@@ -247,6 +251,12 @@ func _end_play(n: String, d: Dictionary) -> void:
 	if n == "touchdown":
 		_add_credit(credit, "pts", d.get("points", 6))
 		_note_td_points(credit, d.get("points", 6))
+
+## A completion already credited at the fumble spot keeps those yards at the whistle.
+func _credit_pass_yards(gain: float) -> void:
+	_pass_yards_credited = true
+	_add_credit(_passer_credit, "pass_yds", gain)
+	_add_credit(_receiver_credit, "rec_yds", gain)
 
 ## A takeaway (interception or a fumble recovered by the other team) starts a return at
 ## the catch / recovery spot. The returner may be on either team (a double turnover).

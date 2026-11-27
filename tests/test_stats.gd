@@ -492,6 +492,60 @@ func test_passing_td_and_fumble() -> void:
 	assert_eq(int(s.get_line("Bot", "LB")["ff"]), 1)
 	assert_eq(int(s.get_line("Bot", "CB")["fr"]), 1)
 
+func test_receiver_fumble_keeps_yards_with_original_passer_and_receiver() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	owners[i["qb"]] = "Riley"
+	owners[i["wr"]] = "Pat"
+	player_ids[i["qb"]] = 1
+	player_ids[i["wr"]] = 2
+	w.event.emit("snap", {"qb": i["qb"]})
+	w.event.emit("throw", {"by": i["qb"]})
+	w.event.emit("catch", {"by": i["wr"]})
+	owners[i["qb"]] = "Morgan"
+	owners[i["wr"]] = "Casey"
+	player_ids[i["qb"]] = 3
+	player_ids[i["wr"]] = 4
+	w.event.emit("fumble", {"carrier": i["wr"], "by": i["lb"], "at": Vector2(20, 42)})
+	w.get_athlete(i["lb"]).position = Vector2(20, 42)
+	w.event.emit("recovery", {"by": i["lb"], "turnover": true})
+	w.event.emit("out_of_bounds", {"carrier": i["lb"], "spot": Vector2(0, 35)})
+
+	assert_eq(s.award_stats.get(1, {}), {"att": 1.0, "comp": 1.0, "pass_yds": 17.0})
+	assert_eq(s.award_stats.get(2, {}), {"rec": 1.0, "rec_yds": 17.0})
+	assert_eq(s.player_summary(1), ["QB: 1/1 17yd 0TD 0INT"])
+	assert_eq(s.player_summary(2), ["WR: 1 rec 17yd 0TD"])
+	assert_true(s.player_summary(3).is_empty() and s.player_summary(4).is_empty())
+	assert_eq(s.get_line("Bot", "LB").get("ff"), 1.0)
+	assert_eq(s.get_line("Bot", "LB").get("fr"), 1.0)
+	assert_eq(s.get_line("Bot", "LB").get("fr_ret_yds"), 7.0)
+
+func test_receiver_recovery_preserves_fumble_spot_and_next_pass_records_yards() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	w.event.emit("snap", {})
+	w.event.emit("throw", {"by": i["qb"]})
+	w.event.emit("catch", {"by": i["wr"]})
+	w.event.emit("fumble", {"carrier": i["wr"], "by": i["lb"], "at": Vector2(20, 32)})
+	w.event.emit("recovery", {"by": i["wr"], "turnover": false})
+	w.event.emit("out_of_bounds", {"carrier": i["wr"], "spot": Vector2(0, 38)})
+	assert_eq(s.total("pass_yds"), 7.0)
+	assert_eq(s.total("rec_yds"), 7.0)
+	assert_eq(s.total("fr_ret_yds"), 0.0)
+
+	w.event.emit("snap", {})
+	w.event.emit("throw", {"by": i["qb"]})
+	w.event.emit("catch", {"by": i["wr"]})
+	w.event.emit("out_of_bounds", {"carrier": i["wr"], "spot": Vector2(0, 29)})
+	assert_eq(s.total("pass_yds"), 11.0)
+	assert_eq(s.total("rec_yds"), 11.0)
+	assert_eq(s.total("comp"), 2.0)
+	assert_eq(s.total("rec"), 2.0)
+
 ## #100: takeaway returns. Team 0 attacks +y from the 25; the defense (team 1) returns toward y = 0.
 func test_int_return_yards() -> void:
 	var r := _setup()
