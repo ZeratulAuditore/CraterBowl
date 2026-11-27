@@ -71,7 +71,8 @@ your change**, and stage only your own paths (`AGENTS.md` "Shipping").
    fails the boot, game_flow and menu_flow steps if that line reappears (#92). Freeing a mesh node
    outside the tree skips the guard: keep its mesh referenced until after `free()`
    (see `CharacterArt.instance()`). A Label3D frees its own mesh, so a test that builds and
-   frees Label3Ds outside the tree frees them with `HeadlessMeshGuard.free_node()` (#179).
+   frees Label3Ds outside the tree frees them with `HeadlessMeshGuard.free_node()` (#179); in-tree
+   Label3Ds are covered by the guard, which flushes when one leaves the tree (#217).
    test.sh fails on any `ERROR:` line in the unit run and names the test that printed it.
 2. **Xvfb + Mesa software GL** (`scripts/shot.sh`). Real Compatibility (OpenGL 3) renderer on
    `llvmpipe` (CPU) inside a private virtual X display. You get real lighting, shadows, materials
