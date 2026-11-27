@@ -723,6 +723,20 @@ func _initialize() -> void:
 			var ov = main.pres.overlay
 			check(ov.flag_pill.visible and ov.flag_l.text == "FLAG · ILLEGAL MAN DOWNFIELD · OFFENSE · 10 YD · REPLAY 1ST DOWN", "ruling on the HUD (%s)" % ov.flag_l.text)],
 		[16620, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE and not main.pres.overlay.flag_pill.visible, "the next snap clears the ruling")],
+		# #355: window 16820–16824. A completed pass keeps its yards when the receiver fumbles.
+		[16820, func():
+			main.configure(3)
+			main.auto_next = false
+			main.pov_enabled = false
+			main.ai.defense_enabled = false
+			main.ai.offense_enabled = false
+			main.series.start(0, 25.0)
+			main.set_controlled(main.my_id)],
+		[16822, _fumble_completed_pass],
+		[16824, func():
+			check(main.world.phase == main.World.Phase.DEAD, "defender took the receiver's fumble out of bounds")
+			check(main.match_overview()["my_lines"] == ["QB: 1/1 12yd 0TD 0INT"], "Your game credits the completed pass to the fumble spot")
+			check(main.stats.total("rec_yds") == 12.0, "the receiver also keeps the 12 yards")],
 		# #337: window 17400–17452. A short defensive tip spends a down but leaves the ball at the LOS.
 		[17400, func():
 			main.opening_kickoff = false
@@ -1026,6 +1040,33 @@ func _force_dead_if_live() -> void:
 	if main.world.phase != main.World.Phase.DEAD:
 		main.series.last_result = {"type": "incomplete"}
 		main.world.phase = main.World.Phase.DEAD
+
+func _fumble_completed_pass() -> void:
+	_key(KEY_SPACE)
+	var w = main.world
+	var qb = w.carrier()
+	check(qb != null and qb.id == main.my_id, "Space snaps to the quarterback for the fumble scenario")
+	if qb == null:
+		return
+	var receiver = w.find_role(0, main.Athlete.Role.WR)
+	var defender = w.find_role(1, main.Athlete.Role.CB)
+	for athlete in w.athletes:
+		athlete.position = Vector2(24.0, 60.0 + athlete.id * 2.0)
+	qb.position = Vector2(5.0, 20.0)
+	var catch_spot := Vector2(5.0, 33.0)
+	receiver.position = catch_spot
+	main.aim_point = catch_spot
+	_key(KEY_J)
+	check(w.forward_pass_thrown, "J throws the pass")
+	w.ball.position = Vector3(catch_spot.x, catch_spot.y, 1.0)
+	check(w._try_catch() and w.carrier() == receiver, "the receiver catches the pass")
+	receiver.position.y = 37.0
+	defender.position = receiver.position
+	w._fumble(receiver, defender)
+	w.ball.position.z = 0.0
+	w._step_loose(0.0)
+	check(w.carrier() == defender, "defense recovers the receiver's fumble")
+	defender.position.x = -0.5
 
 func _lead_to_wr() -> void:
 	var qb = main.world.find_role(0, main.Athlete.Role.QB)

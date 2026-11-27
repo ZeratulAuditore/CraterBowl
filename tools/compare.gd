@@ -6,7 +6,7 @@ extends SceneTree
 ## over the after half. Prints one line per pair:
 ##   PAIR <name> changed=<percent of pixels that differ> <compare path>
 ##   ONLY_BEFORE <name> / ONLY_AFTER <name>  (screens that exist on one side only)
-## "changed=0.0%" on a pair you meant to change means the capture missed your change.
+## UNCHANGED means no sampled pixel differed beyond tolerance.
 const GAP := 12
 const BAR := 10
 const BEFORE_BAR := Color(0.55, 0.58, 0.62)
@@ -55,8 +55,13 @@ func _initialize() -> void:
 			printerr("Could not save comparison PNG: %s (%s)" % [path, error_string(err)])
 			quit(1)
 			return
-		print("PAIR %s changed=%.1f%% %s" % [n.get_basename(), pct, path])
+		var status := "  UNCHANGED" if pct == 0.0 else ""
+		print("PAIR %s changed=%s %s%s" % [n.get_basename(), _format_percent(pct), path, status])
 	quit(0)
+
+static func _format_percent(pct: float) -> String:
+	var rounded := "%.1f%%" % pct
+	return "<0.1%" if pct > 0.0 and rounded == "0.0%" else rounded
 
 func _pngs(dir: String) -> PackedStringArray:
 	var res := PackedStringArray()

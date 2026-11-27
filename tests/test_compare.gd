@@ -1,5 +1,17 @@
 extends "res://tests/test_case.gd"
 
+const Compare := preload("res://tools/compare.gd")
+
+func test_zero_difference_displays_zero() -> void:
+	assert_eq(Compare._format_percent(0.0), "0.0%")
+
+func test_positive_difference_that_rounds_to_zero_displays_less_than_one_tenth() -> void:
+	assert_eq(Compare._format_percent(0.0004), "<0.1%")
+
+func test_normal_percentage_rounds_to_one_decimal() -> void:
+	assert_eq(Compare._format_percent(0.24), "0.2%")
+	assert_eq(Compare._format_percent(100.0), "100.0%")
+
 func test_compare_reports_output_errors() -> void:
 	var root := ProjectSettings.globalize_path("user://test_compare_%d" % OS.get_process_id())
 	var raw := root.path_join("raw")
