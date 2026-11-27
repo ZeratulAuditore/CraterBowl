@@ -45,6 +45,7 @@ const ArtMats := preload("res://src/game/art/materials.gd")
 const ArtQuality := preload("res://src/game/art/quality.gd")
 const TauntWheel := preload("res://src/game/taunt_wheel.gd")
 const TrainingArt := preload("res://src/game/art/training_art.gd")
+const CoinToss := preload("res://src/game/coin_toss.gd")
 const ARC_DOTS := 24
 
 const TEAM_COLORS := [Color(0.95, 0.75, 0.15), Color(0.3, 0.8, 0.95)]
@@ -109,6 +110,7 @@ var training_path := Drills.DEFAULT_BESTS_PATH   # personal bests (tests pass --
 var queue_started_ms := 0       # matchmaking: when we queued (warm-up HUD timer)
 var stats: Stats
 var summary_lines: Array = []   # end-of-match summary (server computes; clients receive)
+var my_summary: Array = []      # your own lines by match identity, not display name (#200; clients receive)
 var leaderboard_path := Leaderboard.DEFAULT_PATH
 var ranked_path := Ranked.DEFAULT_PATH
 var ranked_match := false       # competitive queue or --ranked: ratings change at FINAL
@@ -263,6 +265,9 @@ func _ready() -> void:
 ## (Re)build the whole match for a size: field, roster, sim, views. Used at start,
 ## and on clients when the host's size differs.
 func configure(size: int, practice: String = "", mode: String = "classic") -> void:
+	if coin_toss != null:
+		coin_toss.close_now()   # the old match's toss; the new one plays its own
+	_toss_cut_done = false
 	play_picker_open = true
 	scoreboard_held = false
 	camera_orbit = 0.0
@@ -309,6 +314,7 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	replay_auto = false
 	replay_shown = -1
 	summary_lines = []
+	my_summary = []
 	if postgame != null:
 		postgame.get_parent().queue_free()
 		postgame = null
@@ -521,6 +527,22 @@ func kick_ball() -> void:
 ## Coin-toss seed: `--toss=N` for a fixed result, else random.
 var toss_seed := -1
 var opening_kickoff := true   # false = start on a scrimmage snap (scripted tests)
+var toss_cutscene := true     # false = no coin-toss cutscene (budget/HUD tests)
+var coin_toss: CoinToss       # the #129 cutscene while it plays
+var _toss_cut_done := false   # watched (or skipped) this toss: don't replay it
+
+## #129: the coin-toss cutscene plays whenever the match sits in its TOSS state (opening
+## kickoff; overtime reuses it). Presentation only: it follows series.state, never drives it.
+func _update_coin_toss() -> void:
+	var tossing := series.state == Match.State.TOSS and drill == null and not in_lobby() and not replay_active
+	if not tossing:
+		_toss_cut_done = false
+	elif coin_toss == null and toss_cutscene and not _toss_cut_done:
+		_toss_cut_done = true
+		coin_toss = CoinToss.new()
+		coin_toss.setup(self)
+		coin_toss.closed.connect(func(): coin_toss = null)
+		add_child(coin_toss)
 
 func _start_series() -> void:
 	if drill != null or match_mode == "chaosball" or not opening_kickoff or _cli_args().has("no-kickoff"):
@@ -715,7 +737,9 @@ func _on_match_event(n: String, data: Dictionary) -> void:
 			print("PLAYERS OF THE GAME: %s" % ", ".join(potg.map(func(e): return "%s (%s %s)" % [e["name"], e["pos"], e["score"]])))
 			_queue_postgame()
 		if is_server():
-			net.broadcast_event("summary", {"lines": summary_lines, "potg": potg, "teams": team_totals})
+			# Each client picks its own lines by athlete id (#200), as with "awards".
+			net.broadcast_event("summary", {"lines": summary_lines, "potg": potg, "teams": team_totals,
+				"mine": stats.summaries_for(roster.humans())})
 
 ## Display name, jersey number and cosmetics for each pick (sent to clients as-is).
 func _decorate_potg(picks: Array) -> Array:
@@ -764,12 +788,12 @@ func start_postgame() -> void:
 ## Everything the lobby's game overview shows, as plain data.
 func match_overview() -> Dictionary:
 	var me := player_name if is_client() else owner_name(my_id)
-	var mine := summary_lines.filter(func(l): return str(l).begins_with(me + " "))
+	var mine := my_summary if is_client() else stats.player_summary(_player_on_athlete(my_id))
 	var my_team: int = world.get_athlete(my_id).team if world.get_athlete(my_id) else 0
 	return {"score": series.score.duplicate(), "winner": series.winner(), "my_team": my_team,
 		"team_names": Potg.TEAM_NAMES, "mode": match_mode, "size": match_size, "ranked": ranked_match,
 		"online": net != null, "me": me, "potg": potg, "teams": team_totals,
-		"my_lines": mine.map(func(l): return str(l).trim_prefix(me + " ")),
+		"my_lines": mine,
 		"xp": xp_line, "achievements": achievement_line, "rating": ranked_line, "ranks": my_ranks,
 		"replay": saved_replay, "when": Time.get_datetime_string_from_system(false, true)}
 
@@ -1219,6 +1243,8 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 		summary_lines = d.get("lines", []) if d.get("lines") is Array else []
 		potg = d.get("potg", []) if d.get("potg") is Array else []
 		team_totals = d.get("teams", []) if d.get("teams") is Array else []
+		var mine = d.get("mine", {}).get(my_id, []) if d.get("mine") is Dictionary else []
+		my_summary = mine.map(func(l): return str(l)) if mine is Array else []
 		if is_client():
 			_queue_postgame()
 	if n == "snap":
@@ -1380,6 +1406,8 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		if not searching():
 			lobby_key(e.keycode)
 		return
+	if coin_toss != null and coin_toss.key(e.keycode):
+		return   # the toss cutscene owns the keys; only 1 / 2 fall through
 	if e.keycode == KEY_V:
 		toggle_replay()
 		return
@@ -1841,6 +1869,7 @@ func _disc(p: Vector2, r: float, c: Color, h: float, depth_scale: float = 1.0) -
 
 func _process(delta: float) -> void:
 	_render_frame()
+	_update_coin_toss()
 	if not replay_active:   # the postgame show waits for the highlight reel
 		_tick_postgame(delta)
 	var launch := get_node_or_null("/root/Launch")
@@ -1892,7 +1921,7 @@ func _process(delta: float) -> void:
 	elif series.state == Match.State.KICKOFF:
 		situation = "KICKOFF"
 	elif series.state == Match.State.TOSS:
-		situation = "COIN TOSS: %s wins (1: receive / 2: kick)" % ("HOME" if series.toss_winner == 0 else "AWAY")
+		situation = "COIN TOSS: %s wins" % ("HOME" if series.toss_winner == 0 else "AWAY")   # no key hints (#129)
 	if world.offense_team == my_team and series.state == Match.State.SCRIMMAGE and not world.is_chaos():
 		side += " | KICK: %s [K]" % {"": "none", "punt": "PUNT", "fg": "FIELD GOAL"}.get(world.kick_play, world.kick_play)
 	banner_t = maxf(0.0, banner_t - delta)

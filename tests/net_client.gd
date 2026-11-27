@@ -52,6 +52,8 @@ var games_before := 0
 var had_first_td := false
 var had_first_win := false
 var got_awards := false
+var got_summary := false
+var shared_td_line := false   # the host Ann's touchdown sits in the name-keyed summary (#200)
 var host_loss := false      # #56 mode
 var armed_at := -1
 var last_host_ms := -1      # #86: wall clock of the last snapshot from the host
@@ -114,6 +116,9 @@ func _on_event(n: String, _d: Dictionary) -> void:
 		var line: Dictionary = _d["ctx"].get(aid, {}).get("line", {})
 		check(line.get("comp", 0.0) == 0.0 and line.get("pass_yds", 0.0) == 0.0,
 			"replacement QB's network award excludes the previous player's completion and passing yards")
+	if n == "summary":
+		got_summary = _d.get("mine") is Dictionary and _d["mine"].has(aid)
+		shared_td_line = _d.get("lines", []).any(func(l): return str(l).begins_with("Ann ") and str(l).contains("1TD"))
 
 func _initialize() -> void:
 	host_loss = OS.get_cmdline_user_args().has("--host-loss")
@@ -176,7 +181,7 @@ func _physics_process(_dt: float) -> bool:
 		equipped_number = main.views[aid].number_text
 	if bad_snap_sent_at > 0 and f > bad_snap_sent_at + 90:
 		_test_remote_handoff()
-	if f == 1500 or (remote_handoff_confirmed and got_awards):
+	if f == 1500 or (remote_handoff_confirmed and got_awards and got_summary):
 		check(saw_lobby and lobby_size == 5 and lobby_code.length() == 11, "joined by code into the private lobby (5v5, code %s)" % lobby_code)
 		check(quarter_lobby_seen and quarter_clock_seen, "host lobby Q and H select three-minute quarters on both machines")
 		check(aid >= 0, "readied up -> match started -> welcomed with athlete %d" % aid)
@@ -208,6 +213,9 @@ func _physics_process(_dt: float) -> bool:
 		check(main.profile.achievements.has("first_td") == had_first_td
 			and main.profile.achievements.has("first_win") == had_first_win,
 			"host's touchdown and win leave the client's achievements as they were")
+		var mine: Array = main.match_overview()["my_lines"]
+		check(got_summary and shared_td_line and not mine.any(func(l): return str(l).contains("1TD")),
+			"same-named client's Your game leaves out the host Ann's touchdown line (%s)" % str(mine))
 		print("NET FLOW " + ("PASS" if ok else "FAIL"))
 		quit(0 if ok else 1)
 	return false
