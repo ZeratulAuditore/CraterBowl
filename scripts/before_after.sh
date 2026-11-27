@@ -91,6 +91,7 @@ run_side() {
       echo "before: visual checks failed on the base (expected when they cover the new behavior)"
     else
       echo "$side: capture exited $status"; grep -E "SCRIPT ERROR|VISUAL FAIL|SHOT FAIL" "$log" | head -10
+      return "$status"
     fi
   fi
 }

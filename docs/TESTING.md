@@ -150,8 +150,10 @@ page and check that every image displays.
   behind the text"), not the file name or jargon. They become the alt text and the first column.
 - **New screen or new test?** `before_after.sh` copies a capture script or `tests/visual` case that
   only exists on your branch into the base tree, so the base is photographed with the same test.
-  Its `check()`s may fail on the base; that is expected and reported, not an error. A screen that
-  exists on only one side shows as `_(new screen)_` / `_(removed)_` in the table.
+  Its `check()`s may fail on the base. The script reports that failure and compares any captures it
+  produced. A failed branch run exits nonzero even if it saved PNGs. Its raw captures stay in
+  `OUT/after` for inspection. A screen that exists on only one side shows as `_(new screen)_` /
+  `_(removed)_` in the table. `bash tests/before_after_test.sh` exercises both exit paths (#324).
 - **Read `changed=` as a hint.** `before_after.sh` prints the percent of pixels that differ per
   pair and flags `UNCHANGED` at 0.0%: a pair you meant to change that says UNCHANGED missed your
   change (wrong frame or screen). On menus the players sway and the music bar moves, so even a
