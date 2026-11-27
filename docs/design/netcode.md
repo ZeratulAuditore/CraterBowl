@@ -246,8 +246,8 @@ messages are reliable on channel 0.
 | `enq` | C→MM | `mode` (casual/competitive), `size`, `rating`, `name`, `party`, `party_size`, `game`, `seat`, `v` (protocol version, #165) → `mm.enqueue`, or `refused` on a version mismatch |
 | `refused` | MM→C | `why`, `v`: the client's version doesn't match (#165); the client hangs up and shows `why` on the menu |
 | `queued` | MM→C | `ok`, `n` (queue length) |
-| `match` | MM→C | `role:"host"` + `mode`, `size`, `expected`, `seats` (seat token → team), `teams` (name → team, legacy), `game`; or `role:"join"` + `code` |
-| `hosting` | C→MM | `code` from the elected host → MM sends `match/join` to the others |
+| `match` | MM→C | `role:"host"` + `mode`, `size`, `expected`, `seats` (seat token → team), `teams` (name → team, legacy), `game`; `role:"join"` + `code`; or `role:"cancel"` to an elected host whose order expired (#308) |
+| `hosting` | C→MM | `code` from the elected host → MM sends `match/join` to the others when the code arrives before the order deadline |
 | `list` / `lobbies` | C↔MM | server browser: `registry.listing()` + `queued` count |
 | `register` / `registered`, `unregister` | C↔MM | public lobby advertising |
 

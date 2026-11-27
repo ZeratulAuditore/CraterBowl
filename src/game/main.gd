@@ -1019,6 +1019,7 @@ func _queue_up(args: Dictionary) -> void:
 		lobby.settings["quarter_minutes"] = Lobby.DEFAULT_QUARTER_MINUTES
 		print("QUEUE matched (%s): hosting %s" % [m.get("mode", "?"), code])
 		mm_client.send_hosting(code))
+	mm_client.host_cancelled.connect(_retry_after_host_timeout.bind(args), CONNECT_DEFERRED)
 	mm_client.join_match.connect(func(code):
 		_end_warmup(args)
 		print("QUEUE matched: joining %s" % code)
@@ -1037,6 +1038,29 @@ func _queue_up(args: Dictionary) -> void:
 		return
 	mm_client.failed.connect(_show_connection_failure.bind(MATCHMAKER_UNREACHABLE_STATUS), CONNECT_DEFERRED)
 	mm_client.refused.connect(_show_connection_failure, CONNECT_DEFERRED)   # #165: version mismatch -> menu says why
+	_begin_queue_wait(args)
+
+## #308: abandon the empty game lobby while keeping the separate matchmaker connection.
+func _retry_after_host_timeout(args: Dictionary) -> void:
+	if not is_server() or not in_lobby():
+		return
+	net.peer.close()
+	net.queue_free()
+	net = null
+	lobby = Lobby.new()
+	pending_teams.clear()
+	pending_seats.clear()
+	peer_seats.clear()
+	peer_installs.clear()
+	ranked_match = false
+	if not mm_client.is_open():
+		_show_connection_failure(MATCHMAKER_UNREACHABLE_STATUS)
+		return
+	print("QUEUE host order timed out. Searching again.")
+	_begin_queue_wait(args)
+	mm_client.retry_as_solo()
+
+func _begin_queue_wait(args: Dictionary) -> void:
 	queue_started_ms = Time.get_ticks_msec()
 	# Waiting lobby: warm up on the training ground until the match is found.
 	if not args.has("no-warmup"):
