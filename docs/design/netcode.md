@@ -61,7 +61,7 @@ see when hosting, joining, queueing) lives in `docs/features/` (online play). La
 | `act` | C→S | reliable, ch 0 | `act` (action dict) | sender has an athlete; `P.is_action(act)` (Dictionary with a String `a`, else dropped); queued as `[peer, aid, act]`, fields validated when applied |
 | `lact` | C→S | reliable, ch 0 | `act` = `{"a":"ready"}` / `{"a":"name","n":…}` / `{"a":"seat","s":…}` (queue matches, #59) / `{"a":"id","i":…}` (install id, 16–32 hex chars, #102) | sender is in `lobby.players`; `act` is a Dictionary |
 | `refused` | S→C | reliable, ch 0 | `why` (reason text), `v` (server protocol version, only on a version mismatch) | from peer 1; cut to 120 chars. Client stores `refused_reason` (and `version_refused` when `v` is present), emits `refused`, closes its peer and ignores later packets |
-| `welcome` | S→C | reliable, ch 0 | `aid`, `size`, `mode` | from peer 1; `aid` must index an athlete, `size` is 3, 5 or 7 (default 7), and `mode` is classic (default) or chaosball. Invalid fields leave the current assignment intact |
+| `welcome` | S→C | reliable, ch 0 | `aid`, `size`, `mode`, `v` (host's protocol version, #224) | from peer 1; `P.host_version_refusal(v)` must be `""`, else the client refuses the host (see [Version handshake](#version-handshake-165)); `aid` must index an athlete, `size` is 3, 5 or 7 (default 7), and `mode` is classic (default) or chaosball. Invalid fields leave the current assignment intact |
 | `snap` | S→all | unreliable-ordered, ch 1, 30 Hz | see Snapshots | from peer 1; tick `t` > last seen |
 | `ev` | S→all | reliable, ch 0 | `n` (event name), `d` | from peer 1; `d` forced to Dictionary |
 | `lobby` | S→all | reliable, ch 0 | `s` = `lobby.to_dict()` | from peer 1; `s` is a Dictionary |
@@ -131,14 +131,23 @@ new actions rejected as unknown, a different lobby shape).
   client shows it on its join screen (without the "bigger match" hint, which is only for capacity).
   A peer that sends no hello within `HELLO_TIMEOUT` (5 s) is a build from before the handshake and
   is refused with "you have an older build". Those builds already understand `refused` (#54).
+- **Client side (#224).** A host from before #165 never reads `hello` and welcomes everyone, so the
+  host also puts its `v` on `welcome` and the client checks it with `Protocol.host_version_refusal`.
+  A `welcome` with no int `v` or a different one is handled like a `refused` packet carrying `v`:
+  `refused_reason` set, `version_refused` true, `refused` emitted, the client hangs up and shows the
+  reason on its join screen, never seated. Adding `v` to `welcome` needed no `VERSION` bump: older
+  clients ignore the extra key and nothing else changed, so a v3 client from before #224 still
+  plays a v3 host from after it, and the reverse.
 - **Matchmaker.** `mm_client` puts `v` on `enq`. `mm_server` answers a mismatch (or a missing `v`)
   with `{"k":"refused","why":…,"v":…}` and doesn't queue the player. `mm_client` emits `refused` and
   hangs up, and `main.gd:_queue_up` sends the player back to the menu with the reason as the status.
 - **Reasons** (`Protocol.version_refusal`, ≤ 120 chars): older client → `Update Crater Bowl to play
   online (server is vX, you have vY)`; newer client → `This server runs an older Crater Bowl (server
-  is vX, you have vY)`; no version → `…(server is vX, you have an older build)`.
-- **Not covered yet.** A new client joining a pre-#165 host isn't checked (that host welcomes it
-  without reading `hello`; #224). The server browser (`list`, `register`) is not version-aware, and
+  is vX, you have vY)`; no version → `…(server is vX, you have an older build)`. The client-side
+  `Protocol.host_version_refusal` says the same from the client's side (`server is an older build`
+  when the welcome has no `v`).
+- **Not covered yet.** A pre-#165 *lobby* host only sends `welcome` at kickoff, so the client sits in
+  its lobby until then (#317). The server browser (`list`, `register`) is not version-aware, and
   the matchmaker refuses rather than queueing each version separately during a rollout (#222).
 
 ### When to bump `Protocol.VERSION`
