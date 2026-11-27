@@ -4,6 +4,7 @@ extends RefCounted
 ## athlete id -> {"dir": Vector2, "sprint": bool}.
 
 const T := preload("res://src/sim/tuning.gd")
+const Tick := preload("res://src/sim/tick.gd")
 const Field := preload("res://src/sim/field.gd")
 const Athlete := preload("res://src/sim/athlete.gd")
 const Ball := preload("res://src/sim/ball.gd")
@@ -927,7 +928,7 @@ func _is_strip(diver: Athlete, c: Athlete) -> bool:
 ## Deterministic pseudo-random roll in [0, 1) from the play situation (sim must stay pure).
 func _impact_roll(a: int, b: int) -> float:
 	_impact_rolls += 1
-	var h := hash([1837, a, b, int(round(play_time * 60.0)), _impact_rolls])
+	var h := hash([1837, a, b, int(round(play_time * Tick.HZ)), _impact_rolls])
 	return float(posmod(h, 100000)) / 100000.0
 
 ## 0 when the diver comes from the side or front (facing dot <= FUMBLE_BEHIND_DOT),
@@ -1115,8 +1116,8 @@ func _try_catch() -> bool:
 		# Only a defender squarely at the ball intercepts; within normal reach he deflects it.
 		# Decide at the ball's closest approach: keep flying while it's still getting closer.
 		if best_d[1] > T.INT_RADIUS:
-			var next := bp + Vector2(ball.velocity.x, ball.velocity.y) / 60.0
-			var next_z := ball.position.z + ball.velocity.z / 60.0
+			var next := bp + Vector2(ball.velocity.x, ball.velocity.y) / Tick.HZ
+			var next_z := ball.position.z + ball.velocity.z / Tick.HZ
 			if next.distance_to(dfn.position) < best_d[1] and next_z >= T.CATCH_MIN_HEIGHT:
 				return false
 			_end_incomplete("breakup", {"by": dfn.id, "at": at})
