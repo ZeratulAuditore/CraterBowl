@@ -4,6 +4,8 @@ extends "res://tests/visual/harness.gd"
 ## offense's own 1 (boom pointing out over the end-zone stands). At every level the
 ## controlled player's ring stays above the scorebug (#128). The game reads the saved level
 ## from Launch.settings on load. Each capture waits for the camera to settle (#124).
+## Zoom state is read with get()/set() so before_after.sh can run this file on a base without
+## #140: there the wheel does nothing and every capture shows the fixed default camera.
 
 const RING_R := 1.1   # PlayerRing quad half-size (presentation.gd)
 
@@ -14,12 +16,11 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var launch = root.get_node("/root/Launch")
-	var Z = preload("res://src/game/camera_zoom.gd")
-	launch.settings.camera_zoom = 1.3   # a level saved by an earlier session
+	launch.settings.set("camera_zoom", 1.3)   # a level saved by an earlier session
 	game = preload("res://scenes/main.tscn").instantiate()
 	root.add_child(game)
 	current_scene = game
-	check(game.cam_zoom == 1.3 and game.cam_zoom_shown == 1.3, "the saved zoom (1.3) is loaded with the match (%.2f)" % game.cam_zoom)
+	check(game.get("cam_zoom") == 1.3 and game.get("cam_zoom_shown") == 1.3, "the saved zoom (1.3) is loaded with the match (%s)" % game.get("cam_zoom"))
 	game.auto_next = false
 	game.opening_kickoff = false
 	game.configure(7)
@@ -33,9 +34,9 @@ func _run() -> void:
 		else:
 			for i in 20:
 				_wheel(shot[1])
-		check(game.cam_zoom == shot[2], "%s: wheel lands on %.1f (%.2f)" % [shot[0], shot[2], game.cam_zoom])
+		check(game.get("cam_zoom") == shot[2], "%s: wheel lands on %.1f (%s)" % [shot[0], shot[2], game.get("cam_zoom")])
 		await _settle()
-		check(game.cam_zoom_shown == game.cam_zoom, "%s: zoom eased to its target" % shot[0])
+		check(game.get("cam_zoom_shown") == shot[2], "%s: zoom eased to its target" % shot[0])
 		var d: float = game.camera.global_position.distance_to(game.player.global_position)
 		check(absf(d - game.FOLLOW_CAM_OFFSET.length() * shot[2]) < 0.05, "%s: camera %.1f m from the player" % [shot[0], d])
 		_check_ring(shot[0])
@@ -44,10 +45,10 @@ func _run() -> void:
 	# Far limit, backed up to the offense's own 1: the boom reaches over the end line toward the stands.
 	_new_play(1.0)
 	await _settle()
-	check(game.cam_zoom == Z.MAX, "still at the far limit")
+	check(game.get("cam_zoom") == 1.6, "still at the far limit")
 	_check_ring("max zoom, own 1")
 	await capture("camera-zoom-max-own-1")
-	launch.settings.camera_zoom = Z.DEFAULT
+	launch.settings.set("camera_zoom", 1.0)
 	finish()
 
 func _new_play(los: float) -> void:
@@ -90,7 +91,7 @@ func _settle() -> void:
 		var t: Transform3D = game.camera.global_transform
 		var moved: bool = t.origin.distance_to(last.origin) > 0.0001 or not t.basis.is_equal_approx(last.basis)
 		last = t
-		still = 0 if moved or game.cam_zoom_shown != game.cam_zoom else still + 1
+		still = 0 if moved or game.get("cam_zoom_shown") != game.get("cam_zoom") else still + 1
 		if still >= 3:
 			print("VISUAL INFO camera settled after %d frames" % frame)
 			break
