@@ -696,6 +696,29 @@ func _initialize() -> void:
 		[16202, func(): check(main.drill != null and main.coin_toss == null, "drills never show the coin toss")],
 		[16210, func(): main.opening_kickoff = false; main.configure(7)],
 		[16212, func(): check(main.coin_toss == null and main.series.state != main.Match.State.TOSS, "--no-kickoff: no toss, no cutscene")],
+		# #253: blocking zone. Space snaps, a guard is 7 yd downfield when J throws: FLAG on the HUD;
+		# Enter walks it off 10 yd and replays the down; the next snap clears the line. Window 16400-16700.
+		[16400, func(): main.opening_kickoff = false; main.configure(7); main.auto_next = false; main.pov_enabled = false; main.ai.defense_enabled = false; main.series.start(0, 40.0); main.set_controlled(main.my_id)],
+		[16402, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE, "Space snaps (blocking-zone play)")],
+		[16440, func():
+			var w = main.world
+			check(w.ball.is_held_by(main.controlled_id) and w.blocking_zone_active(), "QB holds it, blocking zone on")
+			var ol = w.find_role(0, main.Athlete.Role.OL)
+			ol.position = Vector2(ol.position.x, w.los_y + 7.0)
+			main.aim_point = Vector2(3.0, w.los_y + 18.0)
+			_key(KEY_J)
+			check(w.forward_pass_thrown and w.flags.size() == 1 and w.flags[0]["player"] == ol.id, "J throws with a guard 7 yd downfield: flagged (%d)" % w.flags.size())
+			var ov = main.pres.overlay
+			check(ov.banner.visible and ov.banner.text == "FLAG" and ov.banner_sub.text == "ILLEGAL MAN DOWNFIELD", "FLAG banner (%s %s)" % [ov.banner.text, ov.banner_sub.text])
+			check(ov.flag_pill.visible and ov.flag_l.text == "FLAG · ILLEGAL MAN DOWNFIELD · OFFENSE", "flag line while the play is on (%s)" % ov.flag_l.text)],
+		[16600, func():
+			check(main.world.phase == main.World.Phase.DEAD, "pass play over")
+			_key(KEY_ENTER)
+			var d = main.series.downs
+			check(absf(d.los - 30.0) < 0.001 and d.down == 1 and absf(d.first_down_y - 50.0) < 0.001, "Enter: 10 yd walked off, 1st down replayed, line to gain kept (los %.1f, down %d)" % [d.los, d.down])
+			var ov = main.pres.overlay
+			check(ov.flag_pill.visible and ov.flag_l.text == "FLAG · ILLEGAL MAN DOWNFIELD · OFFENSE · 10 YD · REPLAY 1ST DOWN", "ruling on the HUD (%s)" % ov.flag_l.text)],
+		[16620, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE and not main.pres.overlay.flag_pill.visible, "the next snap clears the ruling")],
 	]
 	for f in range(13431, 13470):   # the LB keeps walking into the QB (bodies collide, QB gives ground)
 		steps.append([f, _fp_push])

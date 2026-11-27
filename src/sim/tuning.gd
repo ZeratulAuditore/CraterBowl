@@ -84,6 +84,11 @@ const BLOCK_HOLD := 1.5
 const BLOCK_IMMUNITY := 0.75
 const BLOCKER_BEATEN := 1.5   # after a shed, the blocker cannot re-engage for this long
 
+# Blocking zone (#253): offensive C/OL may not be more than this far past the LOS when a pass is thrown
+const BLOCK_ZONE_DEPTH := 5.0            # yd past the LOS; exactly 5 is legal
+const BLOCK_ZONE_PENALTY_YARDS := 10.0    # illegal man downfield: yards from the previous spot, down replayed
+const AI_BLOCK_ZONE_MARGIN := 1.0        # bot linemen stop this far inside the zone (collisions nudge them)
+
 # AI QB
 const AI_QB_THROW_TIME := 2.0
 const AI_QB_PASS_POWER := 0.65

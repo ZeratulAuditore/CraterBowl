@@ -12,6 +12,7 @@ const Passing := preload("res://src/sim/passing.gd")
 const Routes := preload("res://src/sim/routes.gd")
 const Emotes := preload("res://src/sim/emotes.gd")
 const DefensivePlaybook := preload("res://src/sim/defensive_playbook.gd")
+const Penalties := preload("res://src/sim/penalties.gd")
 
 enum Phase { PRESNAP, LIVE, DEAD }
 
@@ -67,6 +68,8 @@ var kick_blocked := false
 var kick_spot := Vector2.ZERO
 var fair_catch_id := -1  # returner who signaled a fair catch on this kick (#189), else -1
 var _kick_rest_t := 0.0
+var flags: Array = []            # penalty records thrown this down (#253; Penalties.make)
+var ball_crossed_los := false    # a runner took the ball past the LOS this down: the blocking zone lifts (#253)
 
 func _init() -> void:
 	_impact_rolls = 0
@@ -527,6 +530,8 @@ func step_athlete(a: Athlete, dir: Vector2, sprint: bool, dt: float, block := fa
 
 func _go_live() -> void:
 	phase = Phase.LIVE
+	flags = []
+	ball_crossed_los = false
 	_fp_carrier = -1
 	_fp_open = false
 	for a in athletes:
@@ -648,6 +653,7 @@ func _launch(a: Athlete, v: Vector3, power: float, lob: bool) -> bool:
 	var id := a.id
 	var t_land := Passing.time_to_height(v, from.z, T.CATCH_HEIGHT, gravity())
 	var target := Vector2(from.x + v.x * t_land, from.y + v.y * t_land)
+	_check_blocking_zone(target)
 	ball.state = Ball.State.IN_FLIGHT
 	ball.holder_id = -1
 	ball.position = from
@@ -757,6 +763,40 @@ func step(inputs: Dictionary, dt: float) -> void:
 		_check_tackles()
 	if phase == Phase.LIVE and is_chaos():
 		_step_pass_clock(dt)
+	if phase == Phase.LIVE:
+		var rc := carrier()
+		if rc != null and rc.team == offense_team and rc.position.y > los_y:
+			ball_crossed_los = true
+
+## Blocking zone (#253): until a pass or a run (the ball carried past the LOS), offensive
+## linemen (C/OL, the roles `is_eligible_receiver` excludes) must stay within
+## BLOCK_ZONE_DEPTH of the line. Kick plays, Chaosball and free practice have no zone.
+func blocking_zone_active() -> bool:
+	return phase == Phase.LIVE and not is_chaos() and kick_play.is_empty() and not forward_pass_thrown 		and not ball_crossed_los and los_y <= field.length
+
+## Linemen more than BLOCK_ZONE_DEPTH past the LOS (exactly the depth is legal), deepest first.
+func linemen_past_zone() -> Array:
+	var out: Array = []
+	for a in athletes:
+		if a.team == offense_team and not is_eligible_receiver(a) and a.position.y - los_y > T.BLOCK_ZONE_DEPTH:
+			out.append(a)
+	out.sort_custom(func(x, y): return x.position.y > y.position.y)
+	return out
+
+## At a forward pass: flag illegal man downfield. A pass landing at or behind the line (a
+## screen) is exempt, as in real football, since only passes that cross the line care.
+func _check_blocking_zone(target: Vector2) -> void:
+	if not blocking_zone_active() or target.y <= los_y:
+		return
+	var deep := linemen_past_zone()
+	if not deep.is_empty():
+		throw_flag(Penalties.make(Penalties.ILLEGAL_MAN_DOWNFIELD, offense_team, true, los_y,
+			T.BLOCK_ZONE_PENALTY_YARDS, deep[0].id))
+
+## Record a foul; the play goes on and Match enforces it at the dead ball.
+func throw_flag(p: Dictionary) -> void:
+	flags.append(p)
+	event.emit("flag", p)
 
 ## Linemen block any time; skill players only block downfield (after a catch
 ## or once the carrier is past the LOS), so receivers run routes instead.
