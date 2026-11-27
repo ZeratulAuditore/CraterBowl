@@ -181,12 +181,20 @@ func _on_event(n: String, d: Dictionary) -> void:
 			_add(d["blocker"], "blk")
 		"fumble":
 			_add(d["by"], "ff")
-			if d["carrier"] == _returner:   # fumbled mid-return: the return ends where he lost it
+			var carrier: int = d["carrier"]
+			if carrier == _returner:   # fumbled mid-return: the return ends where he lost it
 				_credit_return(d["at"].y)
-			if _handoff_credit.get("aid", -1) == d["carrier"] and not _rushing_fumble and not _thrown:
-				_rushing_fumble = true
-				_add_credit(_handoff_credit, "car", 1.0, true)
-				_add_credit(_handoff_credit, "rush_yds", d["at"].y - _los)
+			elif not _rushing_fumble and not _thrown:
+				var gain: float = d["at"].y - _los
+				var credit := {}
+				if carrier == _handoff_credit.get("aid", -1):
+					credit = _handoff_credit
+				elif carrier == _keeper_credit.get("aid", -1) and gain > 0.0 and not world.kicked:
+					credit = _keeper_credit
+				if not credit.is_empty():
+					_rushing_fumble = true
+					_add_credit(credit, "car", 1.0, true)
+					_add_credit(credit, "rush_yds", gain)
 		"recovery":
 			_add(d["by"], "fr")
 			if d.get("turnover", false):
