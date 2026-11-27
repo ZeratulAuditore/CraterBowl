@@ -45,6 +45,7 @@ func _finish_after_handoff(event: String, _data: Dictionary) -> void:
 	await create_timer(0.5).timeout
 	main.stats.award_stats.clear()
 	_record_pass_before_seat_replacement()
+	_record_run_before_seat_replacement()
 	main.series.start(0, 95.0)
 	main.world.event.emit("snap", {"qb": main.my_id})
 	main.world.event.emit("touchdown", {"carrier": main.my_id, "spot": Vector2(26, 100), "team": 0, "points": 6})
@@ -74,6 +75,24 @@ func _record_pass_before_seat_replacement() -> void:
 	main.roster.claim(replacement, slot)
 	world.event.emit("catch", {"by": receiver.id})
 	world.event.emit("out_of_bounds", {"carrier": receiver.id, "spot": Vector2(0, 45), "team": 1})
+
+## Replace the keeper after the snap, then leave the field for a 10-yard gain.
+func _record_run_before_seat_replacement() -> void:
+	main.series.start(1, 25.0)
+	var world = main.world
+	var qb = world.find_role(1, main.Athlete.Role.QB)
+	var slot: int = main.roster.slot_of_athlete(qb.id)
+	var replacement: int = main.roster.slots[slot]["owner"]
+	var original := 99
+	main.roster.release(replacement)
+	main.roster.claim(original, slot)
+	world.snap()
+	while world.snap_in_flight():
+		world.step({}, 1.0 / world.Tick.HZ)
+	main.roster.release(original)
+	main.roster.claim(replacement, slot)
+	qb.position = Vector2(-0.5, 35.0)
+	world.step({}, 1.0 / world.Tick.HZ)
 
 func _key(code: int) -> void:
 	var event := InputEventKey.new()

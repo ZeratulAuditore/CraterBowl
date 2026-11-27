@@ -407,6 +407,74 @@ func test_sack_and_run_and_td() -> void:
 	assert_eq(int(rb["rush_td"]), 1)
 	assert_eq(int(rb["pts"]), 6)
 
+func test_keeper_credit_survives_seat_replacement_and_resets_at_next_snap() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var qb: int = _ids(w)["qb"]
+	owners[qb] = "Riley"
+	player_ids[qb] = 1
+	assert_true(w.snap())
+	owners[qb] = "Morgan"
+	player_ids[qb] = 2
+	w.event.emit("touchdown", {"carrier": qb, "spot": Vector2(26, 100), "team": 0, "points": 6})
+
+	assert_eq(s.award_stats.get(1, {}), {"car": 1.0, "rush_yds": 75.0, "rush_td": 1.0, "pts": 6.0, "max_td_pts": 6.0})
+	assert_eq(s.player_summary(1), ["QB: 1 car 75yd 1TD"])
+	assert_eq(s.get_line("Riley", "QB").get("rush_yds"), 75.0)
+	assert_eq(s.player_summary(2), [])
+	assert_eq(s.athletes.get(qb, {}).get("owner"), "Riley")
+
+	r[1].start(0, 25.0)
+	assert_true(w.snap())
+	w.event.emit("out_of_bounds", {"carrier": qb, "spot": Vector2(0, 29), "team": 0})
+	assert_eq(s.award_stats.get(2, {}), {"car": 1.0, "rush_yds": 4.0})
+	assert_eq(s.player_summary(2), ["QB: 1 car 4yd 0TD"])
+	assert_eq(s.athletes.get(qb, {}).get("owner"), "Morgan")
+	assert_eq(s.total("car"), 2.0)
+
+func test_fumbled_handoff_credits_the_owner_at_the_exchange() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	var back := w.get_athlete(i["rb"])
+	var qb := w.get_athlete(i["qb"])
+	assert_true(w.snap())
+	while w.snap_in_flight():
+		w.step({}, DT)
+	owners[back.id] = "Riley"
+	player_ids[back.id] = 1
+	back.position = qb.position + Vector2.RIGHT
+	assert_true(w.handoff(qb.id))
+	owners[back.id] = "Morgan"
+	player_ids[back.id] = 2
+	back.position.y = w.los_y + 4.0
+	w._fumble(back, w.get_athlete(i["lb"]))
+	w.ball.hold(back.id)
+	back.position = Vector2(-0.5, w.los_y + 5.0)
+	w.step({}, DT)
+
+	assert_eq(s.award_stats.get(1, {}), {"car": 1.0, "rush_yds": 4.0})
+	assert_eq(s.player_summary(1), ["RB: 1 car 4yd 0TD"])
+	assert_eq(s.player_summary(2), [])
+	assert_eq(s.athletes.get(back.id, {}).get("owner"), "Riley")
+	assert_eq(s.total("car"), 1.0)
+
+func test_replacing_a_bot_does_not_inherit_its_handoff() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	w.event.emit("snap", {"qb": i["qb"]})
+	w.event.emit("handoff", {"to": i["rb"]})
+	owners[i["rb"]] = "Riley"
+	player_ids[i["rb"]] = 1
+	w.event.emit("tackle", {"by": i["lb"], "carrier": i["rb"], "spot": Vector2(26, 31), "team": 0})
+	assert_eq(s.get_line("Bot", "RB").get("rush_yds"), 6.0)
+	assert_true(s.award_stats.is_empty())
+	assert_eq(s.athletes.get(i["rb"], {}).get("owner"), "Bot")
+
 func test_passing_td_and_fumble() -> void:
 	var r := _setup()
 	var w: World = r[0]
