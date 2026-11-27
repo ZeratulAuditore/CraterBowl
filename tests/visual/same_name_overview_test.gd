@@ -27,9 +27,10 @@ func _run() -> void:
 	check(rival >= 0 and game.owner_name(rival) == game.owner_name(game.my_id), "opponents share the name Ann")
 	var w = game.world
 	var me = w.get_athlete(game.my_id)
-	var wr = w.find_role(0, Athlete.Role.WR)
 	var series = game.series
 	series.start(0, 40.0)   # HELIOS (local Ann) has the ball
+	var wr = w.find_role(0, Athlete.Role.WR)   # offensive roles exist once HELIOS has the ball
+	check(wr != null and me.role == Athlete.Role.QB, "local Ann is HELIOS's QB with a receiver to throw to")
 	# Local Ann completes one of two passes for 12 yards; the other Ann tackles and breaks one up.
 	w.event.emit("snap", {"qb": me.id})
 	w.event.emit("throw", {"by": me.id})
