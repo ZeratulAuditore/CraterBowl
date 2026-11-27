@@ -5,7 +5,8 @@ extends "res://tests/visual/harness.gd"
 ##    the whole replay while the athlete ran his route; a tackled athlete slid on his back.
 ##    Now a replayed view uses the recorded flags (player.gd replay_flags) and its motion.
 ## 2. Live: an engaged blocker and defender moving at sprint pace together played the Push
-##    clip, sprinting with both hands stuck out. Push now plays below PUSH_MAX_SPEED only.
+##    clip, sprinting with both hands stuck out. Now the push is an upper-body layer
+##    (athlete_pose.gd) over the leg clip, and only below PUSH_MAX_SPEED.
 
 const LOCOMOTION := ["Idle", "Jog_Fwd", "Sprint"]
 
@@ -97,18 +98,27 @@ func _replay_part(world, follow: int) -> void:
 	await physics_frame   # main's tick after this one: sync()
 	check(game.views[follow].replay_flags == -1, "back live, views take the live athlete again")
 
-## An engaged pair moving together: Push while they grind, the run clip at sprint pace.
+## An engaged pair moving together: jog legs and Push arms while they grind, the plain run at sprint pace.
 ## The sim is paused and the pair is moved by hand, so the speed is exact.
 func _block_speed_part(world) -> void:
 	game.set_physics_process(false)
 	var b = world.find_role(0, game.Athlete.Role.OL)
 	var d = world.find_role(1, game.Athlete.Role.DL)
+	b.position = Vector2(world.field.width * 0.15, world.los_y - 25.0)   # open field, clear of the others
 	d.position = b.position + Vector2(0.0, 1.0)
 	var bv = game.views[b.id]
 	var fast_clip := await _drive(b, d, 9.0, 45, "block-at-speed-arms")
-	var slow_clip := await _drive(b, d, 2.0, 45, "")
-	check(fast_clip == "Sprint", "an engaged pair at 9 yd/s sprints: %s" % fast_clip)
-	check(slow_clip == "Push", "an engaged pair at 2 yd/s still pushes: %s" % slow_clip)
+	var fast_push: float = bv.pose.push_weight
+	var slow_clip := await _drive(b, d, 3.0, 45, "block-push-upper-body")
+	var slow_push: float = bv.pose.push_weight
+	check(fast_clip == "Sprint" and fast_push < 0.05, "an engaged pair at 9 yd/s sprints, arms pumping: %s, push %.2f" % [fast_clip, fast_push])
+	check(slow_clip == "Jog_Fwd", "an engaged pair at 3 yd/s jogs (legs): %s" % slow_clip)
+	check(slow_push > 0.9, "and pushes with the upper body: push %.2f" % slow_push)
+	var dv = game.views[d.id]
+	var fwd_b := Vector2(-sin(bv.rotation.y), -cos(bv.rotation.y))   # view forward (x, -z) in world
+	var fwd_d := Vector2(-sin(dv.rotation.y), -cos(dv.rotation.y))
+	check(fwd_b.dot(fwd_d) < -0.9, "the pair face each other while pushing: %.2f" % fwd_b.dot(fwd_d))
+	check(dv._cur == "Jog_Fwd" and dv.anim.speed_scale < 0.0, "the defender driven back backpedals: %s at %.2f" % [dv._cur, dv.anim.speed_scale])
 	check(bv.PUSH_MAX_SPEED > 2.0 and bv.PUSH_MAX_SPEED < 9.0, "PUSH_MAX_SPEED between the two")
 	game.set_physics_process(true)
 
@@ -122,8 +132,9 @@ func _drive(b, d, speed: float, frames: int, shot: String) -> String:
 			a.velocity = Vector2(0.0, speed)
 			a.position += a.velocity / 60.0
 		game._render()
-		cam.global_position = bv.global_position + Vector3(4.5, 1.8, 0.0)
-		cam.look_at(bv.global_position + Vector3.UP)
+		var mid: Vector3 = bv.global_position + Vector3(0.0, 1.0, -0.5)   # between blocker and defender
+		cam.global_position = mid + Vector3(-5.0, 1.2, 1.0)
+		cam.look_at(mid)
 		cam.make_current()
 		await physics_frame
 	if shot != "":
