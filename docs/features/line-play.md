@@ -24,7 +24,7 @@ holding right mouse (a "shield"). Rushers beat blocks by waiting out the hold or
   a blocker chasing a defender or running beside him the same way locked on, and the pair slid downfield together
   with the block clip's arms out. In a 108 000-tick all-AI match (63 vs 57 plays): blocks 154 to 135, same-direction
   pairs 12 to 1, from behind 5 to 0; sacks 25 to 29, yards/play -0.69 to -2.01 (single sample, noisy). At 0.0 (beside
-  allowed): same-direction pairs 14, yards/play -0.08. `tests/test_blocking.gd`
+  allowed): same-direction pairs 14, yards/play -0.08. The owner play-tested 0.2 and kept it (2026-11-27). `tests/test_blocking.gd`
   `test_no_block_from_behind_or_running_alongside`.
 - While engaged the defender's movement each step is 70% the blocker's and 30% his own (`BLOCK_DRIVE`).
 - The block ends after `BLOCK_HOLD` (1.5 s), when the blocker can't act or gets the ball, or when either player
