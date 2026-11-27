@@ -5,8 +5,6 @@ extends "res://tests/visual/harness.gd"
 ## The kickoff is set up through the toss (start_match + choose_toss "kick") and waits out the
 ## toss outro's kick lock, so it doesn't depend on kicking right after start_match (#285).
 
-const KickArt := preload("res://src/game/kick_art.gd")
-
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -32,11 +30,14 @@ func _run() -> void:
 		await physics_frame
 		if not w.kick_locked and i >= 90:
 			break
-	var ka: KickArt = game.pres.kick_art
+	# get(): before_after.sh also runs this case on a base without the meter; it still captures.
+	var ka = game.pres.get("kick_art")
+	check(ka != null, "presentation has the kick art")
 	check(game.can_kick(), "you can kick off")
-	check(ka.meter.visible and ka.lit == KickArt.steps_for(game.kick_power()), "meter: %d/%d steps for power %.2f" % [ka.lit, KickArt.STEPS, game.kick_power()])
-	check(ka.lit >= 6 and ka.lit < KickArt.STEPS, "a deep kickoff lights most of the meter, not all (%d)" % ka.lit)
-	check(ka.tee.visible and game.ball_view.global_position.distance_to(ka.tee.global_position) < 0.5, "ball on the tee")
+	if ka != null:
+		check(ka.meter.visible and ka.lit == ka.steps_for(game.kick_power()), "meter: %d/%d steps for power %.2f" % [ka.lit, ka.STEPS, game.kick_power()])
+		check(ka.lit >= 6 and ka.lit < ka.STEPS, "a deep kickoff lights most of the meter, not all (%d)" % ka.lit)
+		check(ka.tee.visible and game.ball_view.global_position.distance_to(ka.tee.global_position) < 0.5, "ball on the tee")
 	check(game.views[k.id].ball_node == null, "not in the kicker's hand")
 	await capture("kick-meter-kickoff")
 
@@ -56,8 +57,9 @@ func _run() -> void:
 			break
 	await _frames(40)   # camera settles on the punter
 	check(game.can_kick(), "punter can kick")
-	check(ka.meter.visible and ka.lit == KickArt.steps_for(game.kick_power()), "punt meter: %d steps for power %.2f" % [ka.lit, game.kick_power()])
-	check(not ka.tee.visible, "no tee on a punt")
+	if ka != null:
+		check(ka.meter.visible and ka.lit == ka.steps_for(game.kick_power()), "punt meter: %d steps for power %.2f" % [ka.lit, game.kick_power()])
+		check(not ka.tee.visible, "no tee on a punt")
 	await capture("kick-meter-punt")
 	finish()
 
