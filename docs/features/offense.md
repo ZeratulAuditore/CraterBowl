@@ -15,6 +15,9 @@ defenders. Line play is in [line-play.md](line-play.md); scoring, tries and turn
 - Offense buttons: Verticals, Slants, Mesh, Curls, Flood, Deep Shot, plus Inside Zone and Outside Sweep when the
   formation has an RB and the mode is classic (5v5 and 7v7). Also **Repeat last** (recall your team's previous call)
   and **Flip play** (swap the two WRs' routes; on a run, mirror the lane).
+- The offense's QB can choose **Balanced** or **Twins Right** before a Classic scrimmage snap in 3v3, 5v5 and
+  7v7. Twins Right puts both wideouts on the right and updates team route art while the called routes stay with
+  their players. Each down begins Balanced. The formation picker is hidden on kick plays and in Chaosball.
 - An eligible receiver (WR or RB, not QB) gets a route dropdown to override their own route on a pass play.
 - Each new formation pre-selects a default: Slants on 3 or fewer yards to go, Deep Shot on 15+ to go with 25+ yards to
   the goal, otherwise Mesh (`match.gd _setup_formation`).
@@ -77,6 +80,9 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
 - Inside Zone hits an interior gap; Outside Sweep goes wide. Bots flip the sweep automatically.
 
 ## Design decisions
+- The formation picker changes receiver alignment independently of the play call (#345). Balanced reuses the
+  original home spots. Twins Right scales both receiver marks to field width and keeps their depth and role.
+  Online players see the host's alignment through the existing athlete positions.
 - The snap is a short visible flight, not a teleport, so its timing is readable.
 - Aim point plus solved arc over homing passes (no skill) or golf-style angle/power (too fiddly). The arc preview
   makes it learnable.
@@ -110,5 +116,5 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
 
 ## Open issues
 - #9 C07 Catch rules: toe-taps, batted balls, catch button, dive/jump catches
-- #10 C09 Offense depth: formations, audibles, hot routes, pre-snap motion
+- #10 C09 Offense depth: audibles (#346), QB hot routes (#347) and pre-snap motion (#348)
 - #11 C10 Throw readability: landing marker, aim-zoom (aim-zoom shipped as #109)

@@ -30,6 +30,7 @@ var zoom_path0 := ""
 var catch_pose := []   # #246: [catch_weight, catch_reach, hand-to-ball, chest-to-ball] at the A04 catch
 var toss_close_clock := -1.0   # #129: kickoff play clock when the toss cutscene closed
 var bot_snap_clock := INF   # #136: play clock when the bot offense snapped (frames 4171-4481)
+var balanced_route_key := 0
 var kick_meter_far := [0, 0]   # #68: [lit steps, shader pushes] with the kickoff aimed deep (frame 9504)
 
 func check(cond: bool, msg: String) -> void:
@@ -719,6 +720,34 @@ func _initialize() -> void:
 			var ov = main.pres.overlay
 			check(ov.flag_pill.visible and ov.flag_l.text == "FLAG · ILLEGAL MAN DOWNFIELD · OFFENSE · 10 YD · REPLAY 1ST DOWN", "ruling on the HUD (%s)" % ov.flag_l.text)],
 		[16620, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE and not main.pres.overlay.flag_pill.visible, "the next snap clears the ruling")],
+		# #345: window 17820–17855. Use the pre-snap picker, then snap and reset for the next down.
+		[17820, func():
+			main.opening_kickoff = false
+			main.configure(3)
+			main.auto_next = false
+			main.pov_enabled = false
+			main.series.start(0, 30.0)
+			main.set_controlled(main.my_id)],
+		[17825, func():
+			_key(KEY_Q)
+			check(not main.play_picker_open, "Q closes the play picker")
+			_key(KEY_Q)
+			var menu = main.pres.overlay.formation_select
+			check(main.play_picker_open and menu.selected == main.World.Formation.BALANCED, "opening the picker shows Balanced")
+			balanced_route_key = main._route_key
+			menu.item_selected.emit(main.World.Formation.TWINS_RIGHT)],
+		[17835, func():
+			var w = main.world
+			check(main.pres.overlay.formation_select.selected == w.Formation.TWINS_RIGHT, "the QB picker reflects the selected formation")
+			var rx = w.receivers_in_order()
+			check(rx[0].position.x > w.field.width * 0.5 and rx[1].position.x > rx[0].position.x, "both receivers are set on the right")
+			check(main._route_key != balanced_route_key and main.route_mesh.get_surface_count() > 0, "the picker choice rebuilds route art")
+			_key(KEY_SPACE)
+			check(w.phase == w.Phase.LIVE, "Space snaps from Twins Right")],
+		[17855, func():
+			_force_dead_if_live()
+			_key(KEY_ENTER)
+			check(main.world.offensive_formation() == main.World.Formation.BALANCED, "Enter advances to Balanced")],
 	]
 	for f in range(13431, 13470):   # the LB keeps walking into the QB (bodies collide, QB gives ground)
 		steps.append([f, _fp_push])
