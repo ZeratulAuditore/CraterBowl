@@ -10,7 +10,7 @@ var ok := true
 var steps: Array = []
 var caught_by := -1
 var tackled := false
-var getup_id := -1   # tackle get-up window (16700-16900)
+var getup_id := -1   # tackle get-up window (18400-18600)
 var spot := 0.0
 var series_events := 0
 var before_id := -1
@@ -314,9 +314,13 @@ func _initialize() -> void:
 			var back = main.world.carrier()
 			check(back != null and back.position.y > main.world.los_y and main.world.phase == main.World.Phase.LIVE, "bot RB runs across the LOS and stays live")
 			if back != null:
+				check(main.roster.claim(98, main.roster.slot_of_athlete(back.id)), "replacement takes over the bot RB")
 				back.position.x = -0.5],
 		[7932, func():
-			check(main.world.phase == main.World.Phase.DEAD and main.stats.total("car") == 1 and main.stats.total("rush_yds") > 0.0, "whistle records the RB's rushing attempt and gain")],
+			check(main.world.phase == main.World.Phase.DEAD and main.stats.total("car") == 1 and main.stats.total("rush_yds") > 0.0, "whistle records the RB's rushing attempt and gain")
+			check(main.stats.get_line("Bot", "RB").get("car") == 1.0 and main.stats.player_summary(98).is_empty(),
+				"handoff through G leaves the carry with the bot who received it")
+			main.roster.release(98)],
 		# C04a: T from dead ball, then the one-minute warning at the next whistle.
 		[7950, func():
 			main.configure(3)
@@ -720,28 +724,83 @@ func _initialize() -> void:
 			var ov = main.pres.overlay
 			check(ov.flag_pill.visible and ov.flag_l.text == "FLAG · ILLEGAL MAN DOWNFIELD · OFFENSE · 10 YD · REPLAY 1ST DOWN", "ruling on the HUD (%s)" % ov.flag_l.text)],
 		[16620, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE and not main.pres.overlay.flag_pill.visible, "the next snap clears the ruling")],
-		# Tackle get-up, window 16700-16900: the tackled carrier ragdolls down, gets up where he
+		# #355: window 16820–16824. A completed pass keeps its yards when the receiver fumbles.
+		[16820, func():
+			main.configure(3)
+			main.auto_next = false
+			main.pov_enabled = false
+			main.ai.defense_enabled = false
+			main.ai.offense_enabled = false
+			main.series.start(0, 25.0)
+			main.set_controlled(main.my_id)],
+		[16822, _fumble_completed_pass],
+		[16824, func():
+			check(main.world.phase == main.World.Phase.DEAD, "defender took the receiver's fumble out of bounds")
+			check(main.match_overview()["my_lines"] == ["QB: 1/1 12yd 0TD 0INT"], "Your game credits the completed pass to the fumble spot")
+			check(main.stats.total("rec_yds") == 12.0, "the receiver also keeps the 12 yards")],
+		# #337: window 17400–17452. A short defensive tip spends a down but leaves the ball at the LOS.
+		[17400, func():
+			main.opening_kickoff = false
+			main.configure(3)
+			main.auto_next = false
+			main.pov_enabled = false
+			main.ai.defense_enabled = false
+			main.ai.offense_enabled = false
+			main.series.start(0, 40.0)
+			main.set_controlled(main.my_id)],
+		[17402, func():
+			_key(KEY_SPACE)
+			check(main.world.ball.is_held_by(main.my_id) and main.world.phase == main.World.Phase.LIVE, "Space snaps the short-pass play")
+			var w = main.world
+			for a in w.athletes:
+				a.position = Vector2(25.0, 40.0 + a.id * 2.0)
+			var qb = w.carrier()
+			qb.position = Vector2(12.0, 35.0)
+			w.find_role(1, main.Athlete.Role.CB).position = qb.position + Vector2(0.0, 4.25)
+			main.aim_point = qb.position + Vector2(0.0, 6.0)
+			_key(KEY_J)
+			check(w.forward_pass_thrown, "J releases the short pass")],
+		[17432, func():
+			check(main.world.phase == main.World.Phase.DEAD and main.last_whistle == "BREAKUP", "short defensive touch ends the play as a breakup")
+			check(main.pres.overlay.status_l.text == "PASS BROKEN UP", "HUD shows the breakup ruling")],
+		[17452, func():
+			_key(KEY_ENTER)
+			var d = main.series.downs
+			check(d.offense_team == 0 and is_equal_approx(d.los, 40.0) and d.down == 2, "tip spends the down at the old spot without changing possession")],
+		# #323: window 17900–17904. A fumbled keeper still appears in the QB's match stats.
+		[17900, func():
+			main.configure(3)
+			main.auto_next = false
+			main.ai.defense_enabled = false
+			main.ai.offense_enabled = false
+			main.series.start(0, 25.0)
+			main.set_controlled(main.my_id)],
+		[17902, _fumble_keeper],
+		[17904, func():
+			check(main.world.phase == main.World.Phase.DEAD, "defender took the fumble out of bounds")
+			check(main.match_overview()["my_lines"] == ["QB: 1 car 12yd 0TD"], "Your game credits the fumbled keeper once")],
+		# Tackle get-up, window 18400-18600: the tackled carrier ragdolls down, gets up where he
 		# fell about 1 s after the whistle, and is back on the sim spot before the next snap.
-		[16700, func(): main.configure(7); main.auto_next = false; main.auto_replay = false; main.ai.defense_enabled = false; main.series.start(0, 40.0); main.set_controlled(main.my_id)],
-		[16702, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE, "Space snaps (get-up play)")],
-		[16728, func(): var c = main.world.carrier(); getup_id = c.id; c.position = Vector2(main.field.width / 2.0, 42.0)],
-		[16732, func():
+		[18400, func(): main.configure(7); main.auto_next = false; main.auto_replay = false; main.ai.defense_enabled = false; main.series.start(0, 40.0); main.set_controlled(main.my_id)],
+		[18402, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE, "Space snaps (get-up play)")],
+		[18428, func(): var c = main.world.carrier(); getup_id = c.id; c.position = Vector2(main.field.width / 2.0, 42.0)],
+		[18432, func():
 			var c = main.world.carrier()
 			var lb = main.world.find_role(1, main.Athlete.Role.LB)
 			lb.position = c.position + Vector2(0, 1.0)
 			lb.facing = Vector2(0, -1)
 			check(main.world.tackle(lb.id), "LB dives (get-up play)")],
-		[16742, func():
+		[18442, func():
 			check(main.world.phase == main.World.Phase.DEAD and main.last_whistle == "TACKLE", "tackled (%s)" % main.last_whistle)
 			var v = main.views[getup_id]
 			check(v.is_falling() and not v.fall.rising(), "the carrier is down")],
-		[16812, func():
+		[18512, func():
 			var v = main.views[getup_id]
 			check(v.is_falling() and v.fall.rising(), "about 1 s later he gets up")
 			main.set_controlled(getup_id)
 			main.pres._update_rings(main.world)
 			check(main.pres.ring.position.distance_to(v.ground_position() + Vector3(0, 0.035, 0)) < 0.05, "the ring stays under him while he rises")],
-		[16900, func():
+		[18600, func():
 			var v = main.views[getup_id]
 			check(not v.is_falling() and not v.chase_sim, "up and back on his spot")
 			check(Vector2(v.position.x - v.target_position().x, v.position.z - v.target_position().z).length() < 0.05, "view on the sim position after the get-up")
@@ -750,6 +809,22 @@ func _initialize() -> void:
 	]
 	for f in range(13431, 13470):   # the LB keeps walking into the QB (bodies collide, QB gives ground)
 		steps.append([f, _fp_push])
+
+func _fumble_keeper() -> void:
+	_key(KEY_SPACE)
+	var w = main.world
+	var qb = w.carrier()
+	check(qb != null and qb.id == main.my_id, "Space snaps to the local quarterback")
+	if qb == null:
+		return
+	var defender = w.find_role(1, main.Athlete.Role.CB)
+	qb.position = Vector2(5.0, w.los_y + 12.0)
+	defender.position = qb.position
+	w._fumble(qb, defender)
+	w.ball.position.z = 0.0
+	w._step_loose(0.0)
+	check(w.carrier() == defender, "defense recovers the QB fumble")
+	defender.position.x = -0.5
 
 func _fp_push() -> void:
 	var c = main.world.carrier()
@@ -962,6 +1037,33 @@ func _force_dead_if_live() -> void:
 	if main.world.phase != main.World.Phase.DEAD:
 		main.series.last_result = {"type": "incomplete"}
 		main.world.phase = main.World.Phase.DEAD
+
+func _fumble_completed_pass() -> void:
+	_key(KEY_SPACE)
+	var w = main.world
+	var qb = w.carrier()
+	check(qb != null and qb.id == main.my_id, "Space snaps to the quarterback for the fumble scenario")
+	if qb == null:
+		return
+	var receiver = w.find_role(0, main.Athlete.Role.WR)
+	var defender = w.find_role(1, main.Athlete.Role.CB)
+	for athlete in w.athletes:
+		athlete.position = Vector2(24.0, 60.0 + athlete.id * 2.0)
+	qb.position = Vector2(5.0, 20.0)
+	var catch_spot := Vector2(5.0, 33.0)
+	receiver.position = catch_spot
+	main.aim_point = catch_spot
+	_key(KEY_J)
+	check(w.forward_pass_thrown, "J throws the pass")
+	w.ball.position = Vector3(catch_spot.x, catch_spot.y, 1.0)
+	check(w._try_catch() and w.carrier() == receiver, "the receiver catches the pass")
+	receiver.position.y = 37.0
+	defender.position = receiver.position
+	w._fumble(receiver, defender)
+	w.ball.position.z = 0.0
+	w._step_loose(0.0)
+	check(w.carrier() == defender, "defense recovers the receiver's fumble")
+	defender.position.x = -0.5
 
 func _lead_to_wr() -> void:
 	var qb = main.world.find_role(0, main.Athlete.Role.QB)

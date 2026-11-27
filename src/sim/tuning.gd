@@ -52,6 +52,7 @@ const CATCH_MIN_HEIGHT := 0.3
 const CATCH_MAX_HEIGHT := 2.6
 const CONTEST_MARGIN := 0.35
 const MIN_PASS_TRAVEL := 2.5      # ball must travel this far before it can be caught/deflected
+const BATTED_PASS_MAX_TRAVEL := 5.0   # short defensive contact ends the pass incomplete
 const INT_RADIUS := 0.6           # defender must be this close to the ball to intercept
 
 # Tackling

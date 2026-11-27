@@ -1121,12 +1121,13 @@ func _try_catch() -> bool:
 	var z := ball.position.z
 	if z < T.CATCH_MIN_HEIGHT or z > T.CATCH_MAX_HEIGHT:
 		return false
+	var bp := Vector2(ball.position.x, ball.position.y)
+	var travel := bp.distance_to(throw_origin)
 	# Not catchable/deflectable until it has left the thrower's immediate area.
-	if Vector2(ball.position.x - throw_origin.x, ball.position.y - throw_origin.y).length() < T.MIN_PASS_TRAVEL:
+	if travel < T.MIN_PASS_TRAVEL:
 		return false
 	if rules["anyone_throws"]:
 		return _try_catch_chaos()
-	var bp := Vector2(ball.position.x, ball.position.y)
 	var best := [null, null]   # per side: [offense, defense]
 	var best_d := [INF, INF]
 	for a in athletes:
@@ -1148,10 +1149,11 @@ func _try_catch() -> bool:
 	var defender_contests: bool = best[1] != null and best[0] != null and best_d[1] <= best_d[0] + T.CONTEST_MARGIN
 	if best[0] == null and not defender_reaches:
 		return false
-	if defender_contests:
+	var lone_defender: bool = defender_reaches and best[0] == null
+	if defender_contests or (lone_defender and travel <= T.BATTED_PASS_MAX_TRAVEL):
 		_end_incomplete("breakup", {"by": best[1].id, "at": at})
 		return true
-	if defender_reaches and best[0] == null:
+	if lone_defender:
 		var dfn: Athlete = best[1]
 		# Only a defender squarely at the ball intercepts; within normal reach he deflects it.
 		# Decide at the ball's closest approach: keep flying while it's still getting closer.

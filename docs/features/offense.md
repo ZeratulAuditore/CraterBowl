@@ -64,7 +64,10 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
 - The ball can't be caught or touched for its first `MIN_PASS_TRAVEL` (2.5 yd).
 - Defenders reach `CONTEST_MARGIN` (0.35 yd) further. If the nearest defender is within that margin of the nearest
   receiver's distance, it is a breakup.
-- A lone defender intercepts only within `INT_RADIUS` (0.6 yd) at the ball's closest approach; otherwise it is a breakup.
+- In Classic, when a defender wins the contact within `BATTED_PASS_MAX_TRAVEL` (5 yd horizontally from release),
+  the pass is batted incomplete. The offense spends the down at the original line of scrimmage.
+- Beyond that window, a lone defender intercepts only within `INT_RADIUS` (0.6 yd) at the ball's closest approach;
+  otherwise it is a breakup.
 - A receiver (or defender) standing out of bounds can't complete the catch: incomplete.
 - Control stays on your own athlete after a catch or handoff. Bots run with the ball when they have it.
 
@@ -89,8 +92,8 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
   hold would have hidden the near field on short, quick throws.
 - Reach-volume catching over physics collision: deterministic and server friendly. A catch button is #9.
 - The contest margin makes body position matter: a defender doesn't need to be closer, only close enough.
-- Pass not catchable for 2.5 yd and the 0.6 yd interception radius both came from bot sims where rushers batted
-  every throw at release.
+- The first 2.5 yd give the passer room to release in traffic. From there through 5 yd a reachable defensive
+  touch can end the down as a breakup (#337). A clean defensive catch farther downfield can still be picked off.
 - Linear receiver lead threw curls and outs to empty grass; bots lead along the route path.
 - Route art is shown to your own team only, so the QB can read a human receiver's route override without voice chat.
 - Proximity handoff key over an automatic exchange (takes the timing choice away from a human QB) or a timing meter
@@ -109,6 +112,6 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
   `tests/test_turnovers.gd` (interceptions), `tests/test_bots.gd`, `tests/game_flow.gd` (real J/Q/G/Space keys).
 
 ## Open issues
-- #9 C07 Catch rules: toe-taps, batted balls, catch button, dive/jump catches
+- #9 C07 Catch rules: sideline catches (#338), reach input (#247), contested catches (#339) and dive/jump catches (#340)
 - #10 C09 Offense depth: formations, audibles, hot routes, pre-snap motion
 - #11 C10 Throw readability: landing marker, aim-zoom (aim-zoom shipped as #109)

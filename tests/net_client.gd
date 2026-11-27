@@ -18,6 +18,8 @@ var input_acks_valid := true
 var start_x := INF
 var max_dx := 0.0
 var got_snap_event := false
+var got_opening_tip := false
+var got_opening_interception := false
 var saw_live := false
 var opening_play_clock := -1.0
 var next_play_clock := -1.0
@@ -112,6 +114,11 @@ func _on_welcome(id: int) -> void:
 func _on_event(n: String, _d: Dictionary) -> void:
 	if n == "snap":
 		got_snap_event = true
+	if got_snap_event and bad_snap_sent_at < 0:
+		if n == "incomplete" and _d.get("reason") == "breakup":
+			got_opening_tip = true
+		if n == "interception":
+			got_opening_interception = true
 	if n == "timeout" and _d.get("team") == 1 and _d.get("remaining") == 2:
 		got_timeout_event = true
 	if n == "handoff" and _d.get("by") == aid:
@@ -123,9 +130,13 @@ func _on_event(n: String, _d: Dictionary) -> void:
 		var line: Dictionary = _d["ctx"].get(aid, {}).get("line", {})
 		check(line.get("comp", 0.0) == 0.0 and line.get("pass_yds", 0.0) == 0.0,
 			"replacement QB's network award excludes the previous player's completion and passing yards")
+		check(line.get("car", 0.0) == 1.0 and line.get("rush_yds", 0.0) == 7.0,
+			"QB's network award includes the fumbled keeper and excludes the previous player's run")
 	if n == "summary":
 		got_summary = _d.get("mine") is Dictionary and _d["mine"].has(aid)
 		shared_td_line = _d.get("lines", []).any(func(l): return str(l).begins_with("Ann ") and str(l).contains("1TD"))
+		check(_d.get("lines", []).any(func(l): return str(l).begins_with("P99 QB: 1/1 20yd 0TD 0INT")),
+			"network match summary credits the original thrower's 20 yards on the fumbled completion")
 
 func _initialize() -> void:
 	host_loss = OS.get_cmdline_user_args().has("--host-loss")
@@ -202,6 +213,7 @@ func _physics_process(_dt: float) -> bool:
 		check(not crossed_line, "predicted defender never past the neutral zone")
 		check(lead_samples > 10, "own athlete predicted ahead of server state (%d frames)" % lead_samples)
 		check(saw_live and got_snap_event, "host auto-snap reached client (snapshot LIVE + reliable event)")
+		check(got_opening_tip and not got_opening_interception, "host's opening short pass reaches the client as a breakup")
 		check(opening_play_clock > 0.0 and opening_play_clock <= 4.0,
 			"lobby match opens with the host's short play clock (%.2f s)" % opening_play_clock)
 		check(next_play_clock >= 3.0 and next_play_clock <= 4.0,
@@ -223,6 +235,8 @@ func _physics_process(_dt: float) -> bool:
 		var mine: Array = main.match_overview()["my_lines"]
 		check(got_summary and shared_td_line and not mine.any(func(l): return str(l).contains("1TD")),
 			"same-named client's Your game leaves out the host Ann's touchdown line (%s)" % str(mine))
+		check(mine.filter(func(l): return str(l).contains(" car ")) == ["QB: 1 car 7yd 0TD"],
+			"QB's Your game shows only the local player's fumbled keeper (%s)" % str(mine))
 		print("NET FLOW " + ("PASS" if ok else "FAIL"))
 		quit(0 if ok else 1)
 	return false

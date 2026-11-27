@@ -150,15 +150,21 @@ page and check that every image displays.
   behind the text"), not the file name or jargon. They become the alt text and the first column.
 - **New screen or new test?** `before_after.sh` copies a capture script or `tests/visual` case that
   only exists on your branch into the base tree, so the base is photographed with the same test.
-  Its `check()`s may fail on the base; that is expected and reported, not an error. A screen that
-  exists on only one side shows as `_(new screen)_` / `_(removed)_` in the table.
-- **Read `changed=` as a hint.** `before_after.sh` prints the percent of pixels that differ per
-  pair and flags `UNCHANGED` at 0.0%: a pair you meant to change that says UNCHANGED missed your
-  change (wrong frame or screen). On menus the players sway and the music bar moves, so even a
-  screen you didn't touch shows ~2–3%. The image is the evidence, not the number.
+  Its `check()`s may fail on the base. The script reports that failure and compares any captures it
+  produced. A failed branch run exits nonzero even if it saved PNGs. Its raw captures stay in
+  `OUT/after` for inspection. A screen that exists on only one side shows as `_(new screen)_` /
+  `_(removed)_` in the table. `bash tests/before_after_test.sh` exercises both exit paths (#324).
+- **Read `changed=` as a hint.** A pair reports `0.0%` and `UNCHANGED` when no sampled pixel
+  differs beyond the comparison tolerance. A positive difference that rounds to zero displays
+  as `<0.1%` (#357). Menu animation can move a few percent of pixels. Look at the paired images
+  to verify what changed. `bash tests/before_after_test.sh` exercises an identical pair and a
+  single-pixel change.
 - **Sides run one after the other** (about 3–4 min for `menu`). `PARALLEL=1` halves that, but two
   llvmpipe renders at once load the CPU enough that time-driven motion drifts: an untouched
   `scorebug` frame measured 39% changed in parallel and 0.4% serial (2026-11-25, WSL, 1280x720).
+- **Comparison write errors fail the command.** The error names the output directory or PNG that failed, and the
+  raw captures stay in `OUT/before` and `OUT/after`. Run `bash tests/before_after_compare_test.sh` to exercise a
+  blocked comparison destination with real offscreen captures (#329).
 - User data is throwaway on both sides, and the base worktree is removed when the script exits.
 - **Linux/WSL only** (needs Xvfb, like `shot.sh`). On macOS or Windows, use the CI
   `visual-test-evidence` artifact as described in AGENTS.md "Regressions" until `remote_shots.sh` (#121) lands.
