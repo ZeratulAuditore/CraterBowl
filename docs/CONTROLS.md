@@ -72,7 +72,7 @@ Everyone else uses the orbit camera: mouse X orbits, mouse Y sets how far ahead 
 - The level is saved in `user://settings.cfg` (`[camera] zoom`) and comes back next match.
 - **Ignored in QB POV aim**: the wheel and middle click do nothing while you're the passer, so they
   can never move a throw. The POV camera has its own fixed framing and aim-zoom (#109).
-- Ignored while the taunt wheel is open, in menus, the lobby and replays. Replays and cutscenes
+- Ignored while the taunt wheel is open, in menus, the lobby, replays and the coin-toss cutscene. Replays and cutscenes
   (POTG, coin toss) use their own cameras at the default framing.
 
 ## Gamepad

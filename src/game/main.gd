@@ -46,6 +46,7 @@ const ArtQuality := preload("res://src/game/art/quality.gd")
 const TauntWheel := preload("res://src/game/taunt_wheel.gd")
 const CameraZoom := preload("res://src/game/camera_zoom.gd")
 const TrainingArt := preload("res://src/game/art/training_art.gd")
+const CoinToss := preload("res://src/game/coin_toss.gd")
 const ARC_DOTS := 24
 
 const TEAM_COLORS := [Color(0.95, 0.75, 0.15), Color(0.3, 0.8, 0.95)]
@@ -274,6 +275,9 @@ func _ready() -> void:
 ## (Re)build the whole match for a size: field, roster, sim, views. Used at start,
 ## and on clients when the host's size differs.
 func configure(size: int, practice: String = "", mode: String = "classic") -> void:
+	if coin_toss != null:
+		coin_toss.close_now()   # the old match's toss; the new one plays its own
+	_toss_cut_done = false
 	play_picker_open = true
 	scoreboard_held = false
 	camera_orbit = 0.0
@@ -532,6 +536,22 @@ func kick_ball() -> void:
 ## Coin-toss seed: `--toss=N` for a fixed result, else random.
 var toss_seed := -1
 var opening_kickoff := true   # false = start on a scrimmage snap (scripted tests)
+var toss_cutscene := true     # false = no coin-toss cutscene (budget/HUD tests)
+var coin_toss: CoinToss       # the #129 cutscene while it plays
+var _toss_cut_done := false   # watched (or skipped) this toss: don't replay it
+
+## #129: the coin-toss cutscene plays whenever the match sits in its TOSS state (opening
+## kickoff; overtime reuses it). Presentation only: it follows series.state, never drives it.
+func _update_coin_toss() -> void:
+	var tossing := series.state == Match.State.TOSS and drill == null and not in_lobby() and not replay_active
+	if not tossing:
+		_toss_cut_done = false
+	elif coin_toss == null and toss_cutscene and not _toss_cut_done:
+		_toss_cut_done = true
+		coin_toss = CoinToss.new()
+		coin_toss.setup(self)
+		coin_toss.closed.connect(func(): coin_toss = null)
+		add_child(coin_toss)
 
 func _start_series() -> void:
 	if drill != null or match_mode == "chaosball" or not opening_kickoff or _cli_args().has("no-kickoff"):
@@ -1181,7 +1201,8 @@ func _unhandled_input(e: InputEvent) -> void:
 			reset_camera_zoom()   # a middle click (not an orbit drag) resets the zoom
 
 ## Wheel zoom (#140): + notches = wheel up = closer. Ignored (returns false) in the passer's
-## POV aim (the wheel must never move a throw) and while the taunt wheel is open.
+## POV aim (the wheel must never move a throw), while the taunt wheel is open, in replays and
+## during the coin-toss cutscene (#129 poses the camera itself).
 func zoom_camera(notches: float) -> bool:
 	if not _zoom_input_ok():
 		return false
@@ -1195,7 +1216,7 @@ func reset_camera_zoom() -> bool:
 	return true
 
 func _zoom_input_ok() -> bool:
-	return not (pov_active() or taunt_wheel.open or replay_active or in_lobby())
+	return not (pov_active() or taunt_wheel.open or replay_active or in_lobby() or coin_toss != null)
 
 ## Sets the target zoom (clamped) and saves it with the player's settings. Headless runs
 ## save only to an explicit --settings-file, like Launch loads (tests never touch real saves).
@@ -1432,6 +1453,8 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		if not searching():
 			lobby_key(e.keycode)
 		return
+	if coin_toss != null and coin_toss.key(e.keycode):
+		return   # the toss cutscene owns the keys; only 1 / 2 fall through
 	if e.keycode == KEY_V:
 		toggle_replay()
 		return
@@ -1893,6 +1916,7 @@ func _disc(p: Vector2, r: float, c: Color, h: float, depth_scale: float = 1.0) -
 
 func _process(delta: float) -> void:
 	_render_frame()
+	_update_coin_toss()
 	if not replay_active:   # the postgame show waits for the highlight reel
 		_tick_postgame(delta)
 	var launch := get_node_or_null("/root/Launch")
@@ -1944,7 +1968,7 @@ func _process(delta: float) -> void:
 	elif series.state == Match.State.KICKOFF:
 		situation = "KICKOFF"
 	elif series.state == Match.State.TOSS:
-		situation = "COIN TOSS: %s wins (1: receive / 2: kick)" % ("HOME" if series.toss_winner == 0 else "AWAY")
+		situation = "COIN TOSS: %s wins" % ("HOME" if series.toss_winner == 0 else "AWAY")   # no key hints (#129)
 	if world.offense_team == my_team and series.state == Match.State.SCRIMMAGE and not world.is_chaos():
 		side += " | KICK: %s [K]" % {"": "none", "punt": "PUNT", "fg": "FIELD GOAL"}.get(world.kick_play, world.kick_play)
 	banner_t = maxf(0.0, banner_t - delta)
