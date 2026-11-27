@@ -111,6 +111,7 @@ var training_path := Drills.DEFAULT_BESTS_PATH   # personal bests (tests pass --
 var queue_started_ms := 0       # matchmaking: when we queued (warm-up HUD timer)
 var stats: Stats
 var summary_lines: Array = []   # end-of-match summary (server computes; clients receive)
+var my_summary: Array = []      # your own lines by match identity, not display name (#200; clients receive)
 var leaderboard_path := Leaderboard.DEFAULT_PATH
 var ranked_path := Ranked.DEFAULT_PATH
 var ranked_match := false       # competitive queue or --ranked: ratings change at FINAL
@@ -324,6 +325,7 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 	replay_auto = false
 	replay_shown = -1
 	summary_lines = []
+	my_summary = []
 	if postgame != null:
 		postgame.get_parent().queue_free()
 		postgame = null
@@ -746,7 +748,9 @@ func _on_match_event(n: String, data: Dictionary) -> void:
 			print("PLAYERS OF THE GAME: %s" % ", ".join(potg.map(func(e): return "%s (%s %s)" % [e["name"], e["pos"], e["score"]])))
 			_queue_postgame()
 		if is_server():
-			net.broadcast_event("summary", {"lines": summary_lines, "potg": potg, "teams": team_totals})
+			# Each client picks its own lines by athlete id (#200), as with "awards".
+			net.broadcast_event("summary", {"lines": summary_lines, "potg": potg, "teams": team_totals,
+				"mine": stats.summaries_for(roster.humans())})
 
 ## Display name, jersey number and cosmetics for each pick (sent to clients as-is).
 func _decorate_potg(picks: Array) -> Array:
@@ -795,12 +799,12 @@ func start_postgame() -> void:
 ## Everything the lobby's game overview shows, as plain data.
 func match_overview() -> Dictionary:
 	var me := player_name if is_client() else owner_name(my_id)
-	var mine := summary_lines.filter(func(l): return str(l).begins_with(me + " "))
+	var mine := my_summary if is_client() else stats.player_summary(_player_on_athlete(my_id))
 	var my_team: int = world.get_athlete(my_id).team if world.get_athlete(my_id) else 0
 	return {"score": series.score.duplicate(), "winner": series.winner(), "my_team": my_team,
 		"team_names": Potg.TEAM_NAMES, "mode": match_mode, "size": match_size, "ranked": ranked_match,
 		"online": net != null, "me": me, "potg": potg, "teams": team_totals,
-		"my_lines": mine.map(func(l): return str(l).trim_prefix(me + " ")),
+		"my_lines": mine,
 		"xp": xp_line, "achievements": achievement_line, "rating": ranked_line, "ranks": my_ranks,
 		"replay": saved_replay, "when": Time.get_datetime_string_from_system(false, true)}
 
@@ -1291,6 +1295,8 @@ func _on_world_event(n: String, d: Dictionary) -> void:
 		summary_lines = d.get("lines", []) if d.get("lines") is Array else []
 		potg = d.get("potg", []) if d.get("potg") is Array else []
 		team_totals = d.get("teams", []) if d.get("teams") is Array else []
+		var mine = d.get("mine", {}).get(my_id, []) if d.get("mine") is Dictionary else []
+		my_summary = mine.map(func(l): return str(l)) if mine is Array else []
 		if is_client():
 			_queue_postgame()
 	if n == "snap":
