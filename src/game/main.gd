@@ -898,6 +898,11 @@ func _host_game(port: int, opts: Dictionary) -> String:
 	net.match_size = match_size
 	var err := net.host(port, func(peer): return roster.auto_assign(peer), func(peer): roster.release(peer))
 	print("NET host on %d: %s" % [port, error_string(err)])
+	if err != OK:   # #299: no lobby and no invite code for a port we don't hold
+		net.queue_free()
+		net = null
+		_host_failed.call_deferred(port)
+		return ""
 	if opts.get("no_lobby", false):
 		return ""
 	lobby = Lobby.new()
@@ -956,6 +961,16 @@ func _join_game(target: String, port: int, opts: Dictionary) -> void:
 const HOST_LOST_STATUS := "Host disconnected"
 const HOST_UNREACHABLE_STATUS := "Couldn't reach the host"
 const MATCHMAKER_UNREACHABLE_STATUS := "Couldn't reach the matchmaker"
+const HOST_BIND_FAILED_STATUS := "Couldn't host on port %d. Is another game using it?"
+
+## #299: hosting couldn't bind its UDP port (another process holds it). A menu launch goes
+## back to the menu saying so; a CLI/headless host exits non-zero.
+func _host_failed(port: int) -> void:
+	var launch := get_node_or_null("/root/Launch")
+	if launch != null and launch.from_menu:
+		_show_connection_failure(HOST_BIND_FAILED_STATUS % port)
+	else:
+		get_tree().quit(1)
 
 func _show_connection_failure(status: String) -> void:
 	if not is_inside_tree() or get_tree().current_scene != self:
@@ -999,6 +1014,8 @@ func _queue_up(args: Dictionary) -> void:
 		var port := int(args.get("host-port", 25000 + randi() % 5000))
 		var code := _host_game(port, {"start_when_ready": true, "expected": int(m.get("expected", 2)),
 			"size": int(m.get("size", 7)), "advertise": advertise, "game": str(m.get("game", "classic"))})
+		if code == "":   # couldn't bind (#299); the waiting joiners are #303
+			return
 		lobby.settings["quarter_minutes"] = Lobby.DEFAULT_QUARTER_MINUTES
 		print("QUEUE matched (%s): hosting %s" % [m.get("mode", "?"), code])
 		mm_client.send_hosting(code))

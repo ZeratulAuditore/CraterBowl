@@ -71,6 +71,8 @@ Bots fill every empty slot, so a 1v1 friend game or a two-player casual queue st
 - **Esc menu online:** the match keeps running (no pause). Leave match closes the connection.
 - **Unreachable host or matchmaker:** an initial connection failure returns the player to the menu. The footer says **Couldn't reach the host** or **Couldn't reach the matchmaker**. This covers both connection setup errors and ENet timeouts.
 
+- **Host can't open its port (#299):** if another program (or a second Crater Bowl) already holds the UDP port, hosting stops there. No lobby opens and no invite code is issued, since that code would send friends to whatever holds the port. A menu host goes back to the menu and the footer reads **Couldn't host on port N. Is another game using it?**; a CLI/headless `--host` exits with code 1. A matchmade host that hits this leaves its joiners waiting (#303). Tests: `tests/test_host_port_in_use.gd` (CLI exit code), `tests/visual/host_port_in_use_test.gd` (menu).
+
 ## Design decisions
 - **A menu choice is a CLI launch** (`{"host": true}` == `--host`), so the menu runs the same paths `net_test.sh`/`mm_test.sh` cover ([out-of-game.md](out-of-game.md)).
 - **Peer-hosted, matchmaker only brokers.** The matchmaker never carries game traffic. That keeps hosting free but leaves CGNAT players unable to host (#32, #21).
