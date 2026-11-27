@@ -95,6 +95,7 @@ func _initialize() -> void:
 		[2470, func(): var c = main.world.carrier(); c.position = Vector2(26, 101.0)],
 		[2472, func(): main.next_play(); check(main.series.score[0] == 8, "try good: 8"); check(main.series.state == main.Match.State.KICKOFF and main.world.offense_team == 0 and absf(main.world.los_y - 35.0) < 0.01, "kickoff: home kicks from its 35")],
 		# A09: play clock auto-snap, untimed down, halftime
+		[2474, func(): _check_look_snaps("kickoff reset after the try")],   # #245 (frame 2474 only)
 		[2473, func(): check(main.hud.text.find("Q1 ") >= 0 and main.hud.text.find("H1 ") < 0 and main.hud.text.find("PLAY ") >= 0, "HUD game + play clock"); main.series.clock.play_clock = 0.3],
 		[2500, func(): check(main.world.phase == main.World.Phase.LIVE, "play clock auto-snapped"); main.series.clock.quarter = 2; main.series.clock.remaining = 0.2],
 		[2530, func(): check(main.series.clock.expired(), "clock hit 0:00")],
@@ -786,6 +787,31 @@ func _check_carry_pose(two_hand: bool, context: String) -> void:
 	check(off < 0.05, "ball pinned to the palm socket (%s): %.3f m off" % [context, off])
 	var to_hand: float = main.ball_view.global_position.distance_to(v.hand_r.global_position)
 	check(to_hand < 0.3, "ball in the hand (%s): %.2f m from the wrist" % [context, to_hand])
+	# #245: heads far from the camera and the carrier don't look. Views within 15% of the
+	# cutoff are skipped (they may be fading). Near ones are checked by role below.
+	var cam: Camera3D = main.get_viewport().get_camera_3d()
+	var size := func(o): return o.global_position.distance_to(cam.global_position) * tan(deg_to_rad(cam.fov) * 0.5) / o.LOOK_VIEW_SIZE
+	var near: Array = main.views.filter(func(o): return o != v and size.call(o) < 0.85)
+	var far: Array = main.views.filter(func(o): return o != v and size.call(o) > 1.15)
+	var far_ok: int = far.filter(func(o): return o.pose.look_weight < 0.5).size()
+	check(v.pose.look_weight < 0.2 and far_ok == far.size(),   # the carrier's look fades over ~0.3 s
+		"heads far from the camera don't look (%s): %d/%d far don't, carrier %.2f" % [context, far_ok, far.size(), v.pose.look_weight])
+	# Live with the ball held: offensive linemen and route runners don't watch it; free defenders do.
+	var offense: int = main.world.offense_team
+	var o_look: int = main.views.filter(func(o): return o != v and o.athlete.team == offense and o.pose.look_weight > 0.5).size()
+	var d_free: Array = near.filter(func(o): return o.athlete.team != offense and o.athlete.engaged_with < 0 and not o.athlete.blocking)
+	check(o_look == 0 and d_free.all(func(o): return o.pose.look_weight > 0.5),
+		"only the defense watches a held ball (%s): %d offense look, %d free defenders near the camera all look" % [context, o_look, d_free.size()])
+
+## #245: after the ball teleports (new spot), heads point at it at once instead of
+## sweeping across the field: every looking view's look point is already at the ball.
+func _check_look_snaps(context: String) -> void:
+	var ball: Vector3 = main.ball_view.global_position
+	var worst := 0.0
+	for o in main.views:
+		if o.pose.look_weight > 0.0:
+			worst = maxf(worst, o._look_point.distance_to(ball))
+	check(worst < 1.0, "heads snap to the ball after a teleport (%s): worst %.1f m behind" % [context, worst])
 
 var _sorted := false
 func _physics_process(_dt: float) -> bool:

@@ -15,6 +15,7 @@ const Emotes := preload("res://src/sim/emotes.gd")
 const Uniforms := preload("res://src/game/art/football_uniforms.gd")
 const RC := preload("res://src/game/render_cache.gd")
 const Pose := preload("res://src/game/art/athlete_pose.gd")
+const Ball := preload("res://src/sim/ball.gd")
 ## A view that moves more than this (yards) in one tick teleported (new play, replay
 ## seek, swap): snap instead of gliding across the field.
 const TELEPORT_DIST := 2.0
@@ -30,6 +31,17 @@ const MODEL_SCALE := 1.08
 const BLEND := 0.18
 ## Carry pose blend rate (1/s): about 0.2 s to tuck the ball in or out.
 const CARRY_K := 14.0
+## Head look smoothing (1/s): the look point trails a fast ball a little, like eyes do.
+const LOOK_K := 10.0
+## Heads only turn when the athlete is big enough on screen to see it: the camera view's
+## half-height (yd) at the athlete's distance must be under this. About 25 yd away for the
+## 65 deg follow camera, further for zoomed replay cameras. Saves the look math (#245).
+const LOOK_VIEW_SIZE := 16.0
+## Offensive players only watch a pass or loose ball this close (yd).
+const WATCH_RANGE := 15.0
+## "Near the camera" and "watches the ball" rarely change frame to frame: decide them this
+## often (staggered by athlete id) instead of every frame (#245, LOG.md perf-08).
+const LOOK_DECIDE_HZ := 10.0
 ## Ball seat in hand_r bone space: in the palm, long axis along the forearm (#244).
 const BALL_SOCKET := Transform3D(Basis(Vector3.RIGHT, -PI / 2.0), Vector3(-0.13, 0.08, 0.0))
 
@@ -62,6 +74,11 @@ var anim: AnimationPlayer
 var hand_r: Node3D
 var pose: Node              # athlete_pose.gd (null without a rig)
 var ball_node: Node3D       # the ball while this athlete carries it (presentation.gd sets it)
+var look_node: Node3D       # the ball view: heads track it (#245; main.gd sets it)
+var _look_point := Vector3.ZERO   # smoothed world-space look target
+var _look_decide_t := 0.0         # time to the next look decision
+var _look_wanted := false         # last decision: near the camera and watches the ball
+var _skel: Skeleton3D
 var _ball_xf := Transform3D()   # palm socket (world), cached at each skeleton update
 var _ball_xf_ok := false
 var trim_mat: StandardMaterial3D
@@ -117,6 +134,8 @@ func _ready() -> void:
 	var chest := _attach(skel, "spine_03")
 	var head_bone := _bone(skel, "Head")
 	hand_r = _attach(skel, "hand_r")
+	_skel = skel
+	_look_decide_t = float(athlete.id % 6) / 60.0   # stagger: the 14 views don't all decide on the same frame
 	if skel:
 		pose = Pose.new()
 		skel.add_child(pose)
@@ -322,11 +341,56 @@ func ball_local(sk: Skeleton3D) -> Transform3D:
 	var held = pose.hold_ball(sk) if pose else null
 	return held if held != null else sk.get_bone_global_pose(sk.find_bone("hand_r")) * BALL_SOCKET
 
+## True when an athlete `dist` yd from a camera with vertical FOV `fov_deg` is close
+## enough on screen for a head turn to be seen.
+static func head_visible(dist: float, fov_deg: float) -> bool:
+	return dist * tan(deg_to_rad(fov_deg) * 0.5) < LOOK_VIEW_SIZE
+
+## Does an athlete watch the ball right now (#245)? Nobody engaged in a block. The defense
+## reads it: the snap, the carrier, a pass. Offensive linemen only on a loose ball near them.
+## Other offensive players watch for the snap, then only a pass or loose ball near them
+## (they're running routes or blocking while it's held).
+static func watches_ball(offense: bool, lineman: bool, engaged: bool, presnap: bool, ball_state: int, dist: float) -> bool:
+	if engaged:
+		return false
+	if not offense:
+		return true
+	var near := dist < WATCH_RANGE
+	if ball_state == Ball.State.LOOSE:
+		return near
+	return not lineman and (presnap or (ball_state == Ball.State.IN_FLIGHT and near))
+
+## This view's athlete, right now (see watches_ball).
+func watches_now() -> bool:
+	if world == null or look_node == null:
+		return false
+	return watches_ball(athlete.team == world.offense_team, _role in LINEMEN, athlete.engaged_with >= 0 or athlete.blocking,
+		int(world.phase) == 0, int(world.ball.state), global_position.distance_to(look_node.global_position))
+
+## Heads track the ball (not the carrier's own; not while down, celebrating, too far from
+## the camera to see, or when the athlete has no reason to watch it).
+func _update_look(delta: float, down: bool) -> void:
+	_look_decide_t -= delta
+	if _look_decide_t <= 0.0:
+		_look_decide_t = 1.0 / LOOK_DECIDE_HZ
+		var cam := get_viewport().get_camera_3d()
+		_look_wanted = cam != null and head_visible(global_position.distance_to(cam.global_position), cam.fov) and watches_now()
+	var looking := _look_wanted and look_node != null and ball_node == null and not down and celebrate_t <= 0.0
+	var k := 1.0 - exp(-LOOK_K * delta)
+	if look_node != null and (looking or pose.look_weight > 0.0):   # also while fading out, so a fading head never points at an old spot
+		var target := look_node.global_position
+		# Snap after a teleport (new spot, replay seek) so every head doesn't sweep the field.
+		var snap: bool = pose.look_weight <= 0.0 or target.distance_to(_look_point) > TELEPORT_DIST * 2.0
+		_look_point = target if snap else _look_point.lerp(target, k)
+		pose.look_target = _skel.global_transform.affine_inverse() * _look_point
+	pose.look_weight = lerpf(pose.look_weight, 1.0 if looking else 0.0, k)
+	if pose.look_weight < 0.01 and not looking:
+		pose.look_weight = 0.0
+
 func _pin_ball() -> void:
 	if ball_node == null or not is_instance_valid(ball_node):
 		return   # only the carrier pays for this (per-frame work is change-driven)
-	var sk: Skeleton3D = mesh_i.get_parent()
-	var xf := sk.global_transform * ball_local(sk)
+	var xf := _skel.global_transform * ball_local(_skel)
 	_ball_xf = Transform3D(xf.basis.orthonormalized(), xf.origin)
 	_ball_xf_ok = true
 	ball_node.global_transform = _ball_xf
@@ -395,6 +459,7 @@ func _process(delta: float) -> void:
 		pose.weight = lerpf(pose.weight, target, 1.0 - exp(-CARRY_K * delta))
 		if absf(pose.weight - target) < 0.01:
 			pose.weight = target
+		_update_look(delta, down)
 	# Celebration flourishes on top of the dance.
 	body.rotation = Vector3.ZERO
 	body.position = Vector3.ZERO
