@@ -636,7 +636,9 @@ func _status_text(main) -> String:
 				return "PRESS J OR CLICK TO KICK" if mine else ""
 			if w.kick_play != "" and mine:
 				return ("PUNT" if w.kick_play == "punt" else "FIELD GOAL") + "  ·  PRESS K TO CHANGE"
-			return ""
+			# #183: a set defender is told how to roam until they've done it once this session.
+			var roam_key: String = main.roam_hint_key()
+			return "" if roam_key == "" else main.presnap_defense_prompt(w.get_athlete(main.my_id), roam_key)
 		1:
 			if main.world.is_chaos():
 				return "PASS CLOCK %.1f" % maxf(0.0, main.T.PASS_CLOCK - w.hold_t)

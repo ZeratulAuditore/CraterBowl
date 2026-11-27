@@ -1338,13 +1338,28 @@ func _marker(c: Color, n: String) -> MeshInstance3D:
 	field_root.add_child(mi)
 	return mi
 
-## Defense pre-snap HUD: stance state for the local athlete.
-func presnap_defense_prompt(a) -> String:
+## Defense pre-snap HUD: stance state for the local athlete. `roam_key` (from
+## roam_hint_key) adds the first-time "<key> ×2 TO ROAM" hint to a set defender (#183).
+static func presnap_defense_prompt(a, roam_key := "") -> String:
 	if a == null:
 		return "PRE-SNAP"
 	if a.role == Athlete.Role.DL:
 		return "PRE-SNAP (hold your stance)"
-	return "PRE-SNAP: SET" if a.set_lock else "PRE-SNAP: ROAMING"
+	if not a.set_lock:
+		return "PRE-SNAP: ROAMING"
+	return "PRE-SNAP: SET" if roam_key == "" else "PRE-SNAP: SET  ·  %s ×2 TO ROAM" % roam_key
+
+## #183: true once the player has broken stance this session (static: survives the
+## scene reload between matches, resets on relaunch; nothing is saved).
+static var roamed_once := false
+
+## The bound snap key's name while the local defender is set and hasn't roamed yet this
+## session, else "". Keyboard name only: pads aren't tracked yet (#309).
+func roam_hint_key() -> String:
+	if roamed_once or not world.can_break_stance(world.get_athlete(my_id)):
+		return ""
+	var launch := get_node_or_null("/root/Launch")
+	return Controls.key_name(Controls.key_for("snap", launch.settings.bindings if launch else {})).to_upper()
 
 func next_play() -> void:
 	series.next_play()
@@ -1488,8 +1503,10 @@ func _unhandled_key_input(e: InputEvent) -> void:
 	match e.keycode:
 		KEY_SPACE:
 			# Offense snaps on one press. A set defender needs a double-tap to roam (#142).
-			if world.can_break_stance(world.get_athlete(controlled_id)) and not stance_tap.press(Time.get_ticks_msec() / 1000.0):
+			var breaking := world.can_break_stance(world.get_athlete(controlled_id))
+			if breaking and not stance_tap.press(Time.get_ticks_msec() / 1000.0):
 				return
+			roamed_once = roamed_once or breaking   # #183: the roam hint has done its job
 			do_action({"a": "snap"})
 		KEY_1:
 			do_action({"a": "toss", "c": "receive"} if series.state == Match.State.TOSS else {"a": "try", "n": 1})
@@ -1983,7 +2000,7 @@ func _process(delta: float) -> void:
 		side += " | CALL: %s" % World.DefensivePlaybook.CALLS[world.defensive_call].name
 	var phase_name: String = ["PRE-SNAP", "LIVE", "DEAD"][world.phase]
 	if world.offense_team != my_team and world.phase == World.Phase.PRESNAP:
-		phase_name = presnap_defense_prompt(world.get_athlete(my_id))
+		phase_name = presnap_defense_prompt(world.get_athlete(my_id), roam_hint_key())
 	if world.phase == World.Phase.DEAD and last_whistle != "":
 		phase_name = "%s at %.1f" % [last_whistle, world.dead_ball_spot.y]
 	var situation: String = series.downs.label()

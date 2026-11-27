@@ -178,6 +178,29 @@ func _initialize() -> void:
 		[4607, func(): check(main.player.athlete.move_charge == 1.0, "R consumes one dash charge")],
 		[4625, func(): _key(KEY_E)],
 		[4626, func(): check(main.player.athlete.is_spinning() and main.player.athlete.move_charge < 1.0, "E (spin right) consumes one spin charge")],
+		# #183 (window 4640-4649): a set defender sees "SPACE ×2 TO ROAM" (the bound key) in the
+		# pill and the text HUD until the first double-tap roam; later plays read plain SET.
+		[4640, func(): check(not main.roamed_once, "no roam yet this session"); main.series.start(1, 25.0); main.set_controlled(main.my_id)],
+		[4644, func():
+			var me = main.world.get_athlete(main.my_id)
+			var hint := "PRE-SNAP: SET  ·  SPACE ×2 TO ROAM"
+			check(me.set_lock and me.role != main.Athlete.Role.DL, "set non-DL defender (%s)" % me.role)
+			check(main.pres.overlay.status_l.text == hint and main.pres.overlay.status_pill.visible, "pill shows the roam hint (%s)" % main.pres.overlay.status_l.text)
+			check(main.hud.text.find(hint) >= 0, "text HUD prompt carries the hint")
+			var launch = root.get_node_or_null("Launch")
+			var saved: Dictionary = launch.settings.bindings
+			launch.settings.bindings = {"snap": KEY_B}
+			check(main.roam_hint_key() == "B", "hint names the rebound snap key (%s)" % main.roam_hint_key())
+			launch.settings.bindings = saved
+			_key(KEY_SPACE)
+			check(main.roam_hint_key() == "SPACE", "one press: still set, hint stays")
+			_key(KEY_SPACE)
+			check(not me.set_lock and main.roamed_once and main.roam_hint_key() == "", "double-tap roams and retires the hint")],
+		[4645, func(): main.series.start(1, 25.0)],
+		[4649, func():
+			check(main.world.get_athlete(main.my_id).set_lock, "later play: set again")
+			check(main.pres.overlay.status_l.text == "" and not main.pres.overlay.status_pill.visible, "later play: no hint in the pill (%s)" % main.pres.overlay.status_l.text)
+			check(main.hud.text.find("PRE-SNAP: SET") >= 0 and main.hud.text.find("TO ROAM") < 0, "later play: plain PRE-SNAP: SET")],
 		# Defense Space double-tap unlocks a stance without snapping; one press does nothing (#142).
 		[4650, func(): main.series.start(1, 25.0)],
 		[4651, func():
