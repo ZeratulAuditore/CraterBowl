@@ -88,6 +88,8 @@ your change**, and stage only your own paths (`AGENTS.md` "Shipping").
 
 Run `./scripts/visual_test.sh` to execute rendered integration tests on a private Xvfb display.
 It prints the output directory, and `VISUAL_OUTPUT=/absolute/path` lets you choose the directory.
+Each case gets `VISUAL_CASE_TIMEOUT` seconds (default 180); a case that runs out prints
+`VISUAL FAIL: <case> timed out after Ns` and stops the run (#281).
 Each test gets its own output subdirectory and its own fresh, empty Godot user data
 (`XDG_DATA_HOME` and `XDG_CONFIG_HOME`; only the `XDG_CACHE_HOME` shader cache is shared), so a case
 that saves settings, a profile or replays to the default `user://` paths can't leak them into a later
