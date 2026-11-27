@@ -152,6 +152,27 @@ The game must feel smooth: frame-time **p99** over mean FPS. Rules (details and 
   (`GPU=1` for the real GPU via d3d12), interleaved runs, `uptime` noted. This WSL box is not
   player hardware; feel on real hardware is the user's call (native Windows build).
 
+### Where new code goes (keeping PRs from conflicting)
+
+About one in four "merge main into branch" syncs conflicted, and the conflicts almost always came
+from a few shared spots that every feature extends at the same point: `src/game/main.gd` (the
+key handler, `_process`, the aim arc, route drawing, the var block), `tests/game_flow.gd` (the
+one step array and its var block), the "Code and tests" and "Open issues" tails of
+`docs/features/*.md`, and `src/net/protocol.gd` snapshot/action code. Two PRs that are each
+green can also break `main` together (#205 + #129). CI now runs on `main` after every merge, so
+that kind of break shows up right away.
+
+- **New behavior goes in a new file** that the switchboard calls, not as more lines in it. The
+  good precedents are `src/game/camera_zoom.gd` (pure math), `taunt_wheel.gd` and
+  `link_banner.gd`. Each takes the narrow state it needs and doesn't reach back into `main`.
+  Don't copy `coin_toss.gd`'s `setup(main)` back-reference.
+- **File-size ratchet** (`scripts/size_check.sh`, run by `lint.sh`). A new `src/**/*.gd` over
+  500 lines fails lint. Files already over that limit have a budget in `scripts/size_budget.txt`,
+  and growing past it prints `SIZE WARN`. Treat the warning as a request to extract. When you
+  shrink a file, lower its budget in the same PR.
+- **Docs:** add your notes inside the section they belong to, not at the end of a shared list.
+  Describe a test in the test file's own `##` header.
+
 ### Documenting your work (updating docs/)
 
 `docs/README.md` maps every kind of fact to the one doc that owns it. Rules:
