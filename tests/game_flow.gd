@@ -30,6 +30,7 @@ var zoom_path0 := ""
 var catch_pose := []   # #246: [catch_weight, catch_reach, hand-to-ball, chest-to-ball] at the A04 catch
 var toss_close_clock := -1.0   # #129: kickoff play clock when the toss cutscene closed
 var bot_snap_clock := INF   # #136: play clock when the bot offense snapped (frames 4171-4481)
+var broken_pass_clock := -1.0
 var kick_meter_far := [0, 0]   # #68: [lit steps, shader pushes] with the kickoff aimed deep (frame 9504)
 
 func check(cond: bool, msg: String) -> void:
@@ -719,6 +720,45 @@ func _initialize() -> void:
 			var ov = main.pres.overlay
 			check(ov.flag_pill.visible and ov.flag_l.text == "FLAG · ILLEGAL MAN DOWNFIELD · OFFENSE · 10 YD · REPLAY 1ST DOWN", "ruling on the HUD (%s)" % ov.flag_l.text)],
 		[16620, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE and not main.pres.overlay.flag_pill.visible, "the next snap clears the ruling")],
+		# #341: window 17600–17712. A tipped pass falls after the whistle, at the original contact spot.
+		[17600, func():
+			main.opening_kickoff = false
+			main.configure(3)
+			main.auto_next = false
+			main.pov_enabled = false
+			main.ai.defense_enabled = false
+			main.ai.offense_enabled = false
+			main.series.start(0, 40.0)
+			main.set_controlled(main.my_id)],
+		[17602, func():
+			_key(KEY_SPACE)
+			var w = main.world
+			check(w.ball.is_held_by(main.my_id) and w.phase == main.World.Phase.LIVE, "Space snaps the breakup play")
+			for a in w.athletes:
+				a.position = Vector2(25.0, 40.0 + a.id * 2.0)
+			var qb = w.carrier()
+			qb.position = Vector2(12.0, 35.0)
+			w.find_role(1, main.Athlete.Role.CB).position = Vector2(13.0, 45.0)
+			main.aim_point = Vector2(12.0, 50.0)
+			_key(KEY_J)
+			check(w.forward_pass_thrown, "J releases the pass toward the defender")],
+		[17639, func():
+			var w = main.world
+			check(w.phase == main.World.Phase.DEAD and main.last_whistle == "BREAKUP", "defender breaks up the pass in the air")
+			broken_pass_clock = main.series.clock.remaining
+			var y: float = main.ball_view.position.y
+			check(y > main.pres.Football.RADIUS and y < w.ball.position.z, "the dead ball is visibly falling (%.2f)" % y)],
+		[17700, func():
+			var w = main.world
+			var spot_view := Vector3(w.ball.position.x, main.pres.Football.RADIUS, -w.ball.position.y)
+			check(main.ball_view.position.is_equal_approx(spot_view), "the dead ball settles at the contact spot")
+			_check_ball_lying()
+			check(w.ball.position.z > 0.3 and w.ball.holder_id == -1, "sim retains an unheld dead ball at contact")
+			check(main.series.clock.remaining == broken_pass_clock, "the clock stays stopped during the visual fall")],
+		[17712, func():
+			_key(KEY_ENTER)
+			var d = main.series.downs
+			check(d.offense_team == 0 and is_equal_approx(d.los, 40.0) and d.down == 2, "breakup spends the down at the original line")],
 	]
 	for f in range(13431, 13470):   # the LB keeps walking into the QB (bodies collide, QB gives ground)
 		steps.append([f, _fp_push])
@@ -967,7 +1007,7 @@ func _drop_dead_ball() -> void:
 
 func _check_ball_lying() -> void:
 	var bv: Node3D = main.ball_view
-	check(bv.global_position.y >= preload("res://src/game/art/football.gd").RADIUS - 0.001,
+	check(is_equal_approx(bv.global_position.y, preload("res://src/game/art/football.gd").RADIUS),
 		"#159 dead ball rests on the turf (centre y %.2f)" % bv.global_position.y)
 	check(absf(bv.global_basis.z.normalized().y) < 0.05, "#159 dead ball lies on its side")
 
