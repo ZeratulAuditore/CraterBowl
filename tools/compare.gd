@@ -25,7 +25,13 @@ func _initialize() -> void:
 		printerr("usage: -- --before=DIR --after=DIR --out=DIR")
 		quit(2)
 		return
-	DirAccess.make_dir_recursive_absolute(out)
+	if not DirAccess.dir_exists_absolute(out):
+		var err := DirAccess.make_dir_recursive_absolute(out)
+		if not DirAccess.dir_exists_absolute(out):
+			var reason := err if err != OK else ERR_CANT_CREATE
+			printerr("Could not create comparison directory: %s (%s)" % [out, error_string(reason)])
+			quit(1)
+			return
 	var names := {}
 	for n in _pngs(before):
 		names[n] = true
@@ -44,7 +50,11 @@ func _initialize() -> void:
 			continue
 		var path := out.path_join(n)
 		var pct := _changed(b, a)
-		_side_by_side(b, a).save_png(path)
+		var err := _side_by_side(b, a).save_png(path)
+		if err != OK:
+			printerr("Could not save comparison PNG: %s (%s)" % [path, error_string(err)])
+			quit(1)
+			return
 		print("PAIR %s changed=%.1f%% %s" % [n.get_basename(), pct, path])
 	quit(0)
 
