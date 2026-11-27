@@ -24,7 +24,10 @@ jobs:
       - name: Run rendered integration tests
         env:
           VISUAL_OUTPUT: ${{ runner.temp }}/craterbowl-visual
-        run: ./scripts/visual_test.sh
+          BEFORE_AFTER_COMPARE_TEST_OUTPUT: ${{ runner.temp }}/craterbowl-visual/before-after-comparison
+        run: |
+          ./scripts/visual_test.sh
+          bash tests/before_after_compare_test.sh
       - name: Upload test screenshots
         if: always()
         uses: actions/upload-artifact@v4

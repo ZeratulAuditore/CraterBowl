@@ -115,7 +115,11 @@ else
 fi
 [[ $sb -eq 0 && $sa -eq 0 ]] || { echo "BEFORE/AFTER FAIL"; exit 1; }
 
-"$GODOT" --headless --path "$ROOT" -s res://tools/compare.gd -- \
-  --before="$OUT/before" --after="$OUT/after" --out="$OUT/compare" 2>/dev/null \
-  | grep -E "^(PAIR|ONLY_)" | sed -E 's/^(PAIR .* changed=0\.0%.*)$/\1  UNCHANGED/'
+if ! comparison=$("$GODOT" --headless --path "$ROOT" -s res://tools/compare.gd -- \
+  --before="$OUT/before" --after="$OUT/after" --out="$OUT/compare" 2>&1); then
+  printf '%s\n' "$comparison" >&2
+  echo "BEFORE/AFTER FAIL: comparison" >&2
+  exit 1
+fi
+printf '%s\n' "$comparison" | grep -E "^(PAIR|ONLY_)" | sed -E 's/^(PAIR .* changed=0\.0%.*)$/\1  UNCHANGED/'
 echo "BEFORE/AFTER OK  $OUT  (view compare/*.png; publish: ./scripts/pr_evidence.sh <PR#> $OUT)"

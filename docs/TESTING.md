@@ -159,6 +159,9 @@ page and check that every image displays.
 - **Sides run one after the other** (about 3–4 min for `menu`). `PARALLEL=1` halves that, but two
   llvmpipe renders at once load the CPU enough that time-driven motion drifts: an untouched
   `scorebug` frame measured 39% changed in parallel and 0.4% serial (2026-11-25, WSL, 1280x720).
+- **Comparison write errors fail the command.** The error names the output directory or PNG that failed, and the
+  raw captures stay in `OUT/before` and `OUT/after`. Run `bash tests/before_after_compare_test.sh` to exercise a
+  blocked comparison destination with real offscreen captures (#329).
 - User data is throwaway on both sides, and the base worktree is removed when the script exits.
 - **Linux/WSL only** (needs Xvfb, like `shot.sh`). On macOS or Windows, use the CI
   `visual-test-evidence` artifact as described in AGENTS.md "Regressions" until `remote_shots.sh` (#121) lands.
