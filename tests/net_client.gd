@@ -4,7 +4,9 @@ extends SceneTree
 ## --host-loss (#56): join, print "NET HOSTLOSS ARMED" once in the match, then expect the
 ## host to be killed (net_test.sh does it) and assert we land on the menu with
 ## "Host disconnected". #86: within NetSession.DROP_AFTER (+ slack) of the host's last
-## snapshot, after the "Connection to host lost…" banner (ENet alone took 5.8-9.7 s).
+## packet, after the "Connection to host lost…" banner (ENet alone took 5.8-9.7 s).
+## #279: measured like the watchdog measures it: wall time from the last packet minus our own
+## frame hitches beyond SILENCE_STEP_MAX, which the watchdog deliberately doesn't count.
 
 var main
 var f := 0
@@ -56,9 +58,14 @@ var got_summary := false
 var shared_td_line := false   # the host Ann's touchdown sits in the name-keyed summary (#200)
 var host_loss := false      # #56 mode
 var armed_at := -1
-var last_host_ms := -1      # #86: wall clock of the last snapshot from the host
+var armed_us := -1          # wall clock at arming (physics frames lag it under load, #279)
+var last_host_us := -1      # #86: wall clock of the last packet from the host (what resets the watchdog)
 var stall_banner_seen := false
-var lost_after := -1.0      # s from the last snapshot to host_lost
+var lost_after := -1.0      # s (wall) from the last packet to host_lost
+var own_hitch := 0.0        # #279: s of our own frame gaps past SILENCE_STEP_MAX since that packet
+var lost_hitch := -1.0      # own_hitch when host_lost fired
+var lost_silence := -1.0    # the watchdog's own clock (host_silence) when host_lost fired
+var _frame_us := -1         # wall clock of the previous process frame
 const NetSession := preload("res://src/net/net_session.gd")
 const HOST_LOSS_SLACK := 0.75   # s over DROP_AFTER: frame granularity + the kill landing mid-gap
 
@@ -250,13 +257,18 @@ func _host_loss_step() -> bool:
 	if f == 2:
 		main.net.welcomed.connect(_on_welcome)
 		main.net.snapshot_received.connect(_on_snap)
-		main.net.snapshot_received.connect(func(_s): last_host_ms = Time.get_ticks_msec())
+		main.net.api.peer_packet.connect(_on_host_packet)
+		process_frame.connect(_count_own_hitch)
 		main.net.host_stalled.connect(func():
 			var b = main.get_node_or_null("LinkBanner")
 			stall_banner_seen = b != null and b.visible, CONNECT_DEFERRED)
-		main.net.host_lost.connect(func(): lost_after = (Time.get_ticks_msec() - last_host_ms) / 1000.0)
+		main.net.host_lost.connect(func():
+			lost_after = (Time.get_ticks_usec() - last_host_us) / 1000000.0
+			lost_hitch = own_hitch
+			lost_silence = main.net.host_silence)
 	if armed_at < 0 and aid >= 0 and snaps > 5:
 		armed_at = f
+		armed_us = Time.get_ticks_usec()
 		print("NET HOSTLOSS ARMED")
 		for a in OS.get_cmdline_user_args():   # stdout is buffered: tell net_test.sh via a file
 			if a.begins_with("--armed-file="):
@@ -264,18 +276,35 @@ func _host_loss_step() -> bool:
 	var scene = current_scene
 	var on_menu: bool = scene != null and scene.scene_file_path == "res://scenes/menu.tscn" and scene.get("status_label") != null
 	if on_menu or f == 3000:
-		var silent := (Time.get_ticks_msec() - last_host_ms) / 1000.0
-		print("NET HOSTLOSS detected %.2fs after the host's last snapshot (menu up after %.2fs)" % [lost_after, silent])
+		var silent := (Time.get_ticks_usec() - last_host_us) / 1000000.0
+		print("NET HOSTLOSS detected %.2fs after the host's last packet, %.2fs of it our own hitches past %.2fs/frame; watchdog clock %.2fs (menu up after %.2fs)" % [lost_after, lost_hitch, NetSession.SILENCE_STEP_MAX, lost_silence, silent])
 		check(armed_at > 0, "in the match (athlete %d, %d snapshots) before the host died" % [aid, snaps])
-		check(on_menu, "client left the frozen match for the menu after losing the host (%.1fs after arming)" % ((f - armed_at) / 60.0))
+		check(on_menu, "client left the frozen match for the menu after losing the host (%.1fs after arming)" % ((Time.get_ticks_usec() - armed_us) / 1000000.0))
 		var status: String = scene.status_label.text if on_menu else ""
 		check(status == "Host disconnected", "menu status says why: '%s'" % status)
 		var bound: float = NetSession.DROP_AFTER + HOST_LOSS_SLACK
-		check(lost_after > 0.0 and lost_after <= bound, "host loss detected within %.2fs of the last snapshot (%.2fs)" % [bound, lost_after])
+		var detect := lost_after - lost_hitch   # #279: the host's silence, not our scheduler's
+		check(lost_after > 0.0 and detect <= bound, "host loss detected within %.2fs of the last packet, own hitches excluded (%.2fs)" % [bound, detect])
 		check(stall_banner_seen, "'Connection to host lost…' showed before the drop")
 		print("NET HOSTLOSS " + ("PASS" if ok else "FAIL"))
 		quit(0 if ok else 1)
 	return false
+
+## Any packet from the host resets the watchdog (NetSession._heard_host), so it's the reference.
+func _on_host_packet(from: int, _bytes: PackedByteArray) -> void:
+	if from == 1:
+		last_host_us = Time.get_ticks_usec()
+		own_hitch = 0.0
+
+## #279: the watchdog counts each frame as at most SILENCE_STEP_MAX, so when this process is
+## starved (CI load) its clock runs behind the wall. Count that excess, only the part after the
+## last packet, so the wall-clock bound checks the host's silence and not our scheduler.
+func _count_own_hitch() -> void:
+	var now := Time.get_ticks_usec()
+	if _frame_us >= 0 and last_host_us >= 0:
+		var gap := (now - maxi(_frame_us, last_host_us)) / 1000000.0   # this frame's wall time since the packet
+		own_hitch += maxf(0.0, gap - NetSession.SILENCE_STEP_MAX)
+	_frame_us = now
 
 func _key(code: int) -> void:
 	var event := InputEventKey.new()
