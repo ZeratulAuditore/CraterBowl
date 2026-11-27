@@ -16,6 +16,7 @@ var player_fn: Callable    # athlete_id -> current player id (-1 for AI)
 var lines := {}            # "owner|POS" -> {field: value}
 var athletes := {}         # athlete_id -> {"team", "pos", "owner", field: value} (players of the game)
 var award_stats := {}      # player id -> {field: value}, across positions
+var player_lines := {}     # player id -> {"POS": {field: value}}: your own post-game lines (#200)
 var _los := 0.0
 var _passer := -1
 var _receiver := -1
@@ -48,9 +49,7 @@ func _add(aid: int, field: String, v: float = 1.0) -> void:
 		return
 	var k := _key(aid)
 	if not lines.has(k):
-		lines[k] = {}
-		for f in FIELDS:
-			lines[k][f] = 0.0
+		lines[k] = _blank()
 	_add_field(lines[k], field, v)
 	_add_athlete(aid, field, v)
 	if player_fn.is_valid():
@@ -59,6 +58,18 @@ func _add(aid: int, field: String, v: float = 1.0) -> void:
 			if not award_stats.has(player):
 				award_stats[player] = {}
 			_add_field(award_stats[player], field, v)
+			var pos := k.get_slice("|", 1)
+			if not player_lines.has(player):
+				player_lines[player] = {}
+			if not player_lines[player].has(pos):
+				player_lines[player][pos] = _blank()
+			_add_field(player_lines[player][pos], field, v)
+
+static func _blank() -> Dictionary:
+	var line := {}
+	for f in FIELDS:
+		line[f] = 0.0
+	return line
 
 static func _add_field(line: Dictionary, field: String, value: float) -> void:
 	var previous: float = line.get(field, 0.0)
@@ -247,32 +258,57 @@ func total(field: String) -> float:
 func to_dict() -> Dictionary:
 	return lines.duplicate(true)
 
-## Compact human-readable lines for every non-bot owner + bot totals.
+## Compact human-readable lines for every non-bot owner + bot totals, keyed by display name
+## ("Ann QB: ..."): same-named players share a line here, as in the career table.
 func summary_lines() -> Array:
 	var out := []
 	var keys := lines.keys()
 	keys.sort()
 	for k in keys:
-		var l: Dictionary = lines[k]
-		var parts := []
-		if l["att"] > 0: parts.append("%d/%d %dyd %dTD %dINT" % [l["comp"], l["att"], l["pass_yds"], l["pass_td"], l["int_thrown"]])
-		if l["rec"] > 0: parts.append("%d rec %dyd %dTD" % [l["rec"], l["rec_yds"], l["rec_td"]])
-		if l["car"] > 0: parts.append("%d car %dyd %dTD" % [l["car"], l["rush_yds"], l["rush_td"]])
-		var dfn := []
-		for f in ["tkl", "sack", "int", "pbu", "ff", "fr"]:
-			if l[f] > 0: dfn.append("%d %s" % [l[f], f])
-		for f in [["int_ret_yds", "int ret"], ["fr_ret_yds", "fum ret"]]:
-			if roundi(l[f[0]]) != 0: dfn.append("%dyd %s" % [roundi(l[f[0]]), f[1]])
-		if not dfn.is_empty(): parts.append(", ".join(dfn))
-		var st := []
-		if l["fg_att"] > 0: st.append("%d/%d FG" % [l["fg_made"], l["fg_att"]] + (" long %d" % l["fg_long"] if l["fg_made"] > 0 else ""))
-		if l["xp_att"] > 0: st.append("%d/%d XP" % [l["xp_made"], l["xp_att"]])
-		if l["punts"] > 0: st.append("%d punt %.1f avg" % [l["punts"], l["punt_yds"] / l["punts"]])
-		for f in [["kr", "kick ret"], ["pr", "punt ret"]]:
-			if l[f[0]] > 0: st.append("%d %s %dyd" % [l[f[0]], f[1], roundi(l[f[0] + "_yds"])])
-		if l["ret_td"] > 0: st.append("%d ret TD" % l["ret_td"])
-		if not st.is_empty(): parts.append(", ".join(st))
-		if parts.is_empty():
-			continue
-		out.append("%s %s: %s" % [k.get_slice("|", 0), k.get_slice("|", 1), " | ".join(parts)])
+		var text := line_text(lines[k])
+		if text != "":
+			out.append("%s %s: %s" % [k.get_slice("|", 0), k.get_slice("|", 1), text])
 	return out
+
+## One player's own lines ("QB: ..."), keyed by match identity rather than display name (#200),
+## so two players named Ann never see or merge each other's numbers.
+func player_summary(player: int) -> Array:
+	var out := []
+	var by_pos: Dictionary = player_lines.get(player, {})
+	var positions := by_pos.keys()
+	positions.sort()
+	for pos in positions:
+		var text := line_text(by_pos[pos])
+		if text != "":
+			out.append("%s: %s" % [pos, text])
+	return out
+
+## player_summary() for whoever plays each athlete now, keyed by athlete id: the final-whistle
+## broadcast, where each machine finds its own lines by its athlete (#200).
+func summaries_for(aids: Array) -> Dictionary:
+	var out := {}
+	for aid in aids:
+		out[aid] = player_summary(player_fn.call(aid) if player_fn.is_valid() else -1)
+	return out
+
+## The stat text of one line ("1/2 12yd 0TD 0INT | 1 car 5yd 1TD"), "" when it has no stats.
+static func line_text(l: Dictionary) -> String:
+	var parts := []
+	if l["att"] > 0: parts.append("%d/%d %dyd %dTD %dINT" % [l["comp"], l["att"], l["pass_yds"], l["pass_td"], l["int_thrown"]])
+	if l["rec"] > 0: parts.append("%d rec %dyd %dTD" % [l["rec"], l["rec_yds"], l["rec_td"]])
+	if l["car"] > 0: parts.append("%d car %dyd %dTD" % [l["car"], l["rush_yds"], l["rush_td"]])
+	var dfn := []
+	for f in ["tkl", "sack", "int", "pbu", "ff", "fr"]:
+		if l[f] > 0: dfn.append("%d %s" % [l[f], f])
+	for f in [["int_ret_yds", "int ret"], ["fr_ret_yds", "fum ret"]]:
+		if roundi(l[f[0]]) != 0: dfn.append("%dyd %s" % [roundi(l[f[0]]), f[1]])
+	if not dfn.is_empty(): parts.append(", ".join(dfn))
+	var st := []
+	if l["fg_att"] > 0: st.append("%d/%d FG" % [l["fg_made"], l["fg_att"]] + (" long %d" % l["fg_long"] if l["fg_made"] > 0 else ""))
+	if l["xp_att"] > 0: st.append("%d/%d XP" % [l["xp_made"], l["xp_att"]])
+	if l["punts"] > 0: st.append("%d punt %.1f avg" % [l["punts"], l["punt_yds"] / l["punts"]])
+	for f in [["kr", "kick ret"], ["pr", "punt ret"]]:
+		if l[f[0]] > 0: st.append("%d %s %dyd" % [l[f[0]], f[1], roundi(l[f[0] + "_yds"])])
+	if l["ret_td"] > 0: st.append("%d ret TD" % l["ret_td"])
+	if not st.is_empty(): parts.append(", ".join(st))
+	return " | ".join(parts)
