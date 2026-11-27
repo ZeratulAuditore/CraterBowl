@@ -21,13 +21,14 @@ jobs:
           unzip -q "$RUNNER_TEMP/godot.zip" -d "$RUNNER_TEMP"
           mv "$RUNNER_TEMP/Godot_v4.3-stable_linux.x86_64" "$RUNNER_TEMP/godot"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Check comparison write errors
+        env:
+          BEFORE_AFTER_COMPARE_TEST_OUTPUT: ${{ runner.temp }}/craterbowl-visual/before-after-comparison
+        run: bash tests/before_after_compare_test.sh
       - name: Run rendered integration tests
         env:
           VISUAL_OUTPUT: ${{ runner.temp }}/craterbowl-visual
-          BEFORE_AFTER_COMPARE_TEST_OUTPUT: ${{ runner.temp }}/craterbowl-visual/before-after-comparison
-        run: |
-          ./scripts/visual_test.sh
-          bash tests/before_after_compare_test.sh
+        run: ./scripts/visual_test.sh
       - name: Upload test screenshots
         if: always()
         uses: actions/upload-artifact@v4
