@@ -28,6 +28,13 @@ func _run() -> void:
 	root.add_child(label)
 	await capture("before-exit")
 	var side := OS.get_environment("VISUAL_CASE_OUTPUT").get_file()
+	if side == "visual-after":
+		var pixel := ColorRect.new()
+		pixel.position = Vector2(64, 112)
+		pixel.size = Vector2.ONE
+		pixel.color = Color.WHITE
+		root.add_child(pixel)
+	await capture("one-pixel")
 	check(side != "visual-" + OS.get_environment("BEFORE_AFTER_TEST_FAIL_SIDE"), "fixture assertion after capture")
 	finish()
 GDSCRIPT
@@ -54,5 +61,15 @@ cat "$out/fail-before.log"
 grep -q '^before: visual checks failed on the base' "$out/fail-before.log"
 grep -q '^BEFORE/AFTER OK' "$out/fail-before.log"
 test -s "$out/fail-before/compare/$shot"
+test -s "$out/fail-before/compare/before_after_status_fixture-one-pixel.png"
+if ! grep -Eq '^PAIR before_after_status_fixture-before-exit changed=0[.]0% .* UNCHANGED$' "$out/fail-before.log"; then
+  echo "BEFORE/AFTER TEST FAIL: identical images should be marked UNCHANGED" >&2
+  exit 1
+fi
+if ! grep -Fq 'PAIR before_after_status_fixture-one-pixel changed=<0.1% ' "$out/fail-before.log" ||
+     grep -Eq '^PAIR before_after_status_fixture-one-pixel .* UNCHANGED$' "$out/fail-before.log"; then
+  echo "BEFORE/AFTER TEST FAIL: a one-pixel difference should report <0.1%" >&2
+  exit 1
+fi
 
 echo "BEFORE/AFTER TEST PASS"

@@ -433,6 +433,88 @@ func test_keeper_credit_survives_seat_replacement_and_resets_at_next_snap() -> v
 	assert_eq(s.athletes.get(qb, {}).get("owner"), "Morgan")
 	assert_eq(s.total("car"), 2.0)
 
+func test_lost_keeper_fumble_credits_original_qb_and_separate_defensive_return() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	var qb := w.get_athlete(i["qb"])
+	var defender := w.get_athlete(i["lb"])
+	owners[qb.id] = "Riley"
+	player_ids[qb.id] = 1
+	assert_true(w.snap())
+	while w.snap_in_flight():
+		w.step({}, DT)
+	owners[qb.id] = "Morgan"
+	player_ids[qb.id] = 2
+	qb.position = Vector2(5.0, 37.0)
+	defender.position = qb.position
+	w._fumble(qb, defender)
+	w.ball.position.z = 0.0
+	w._step_loose(0.0)
+	assert_eq(w.carrier(), defender, "defense recovered the live ball")
+	defender.position = Vector2(-0.5, 32.0)
+	w.step({}, DT)
+
+	assert_eq(s.award_stats.get(1, {}), {"car": 1.0, "rush_yds": 12.0})
+	assert_eq(s.player_summary(1), ["QB: 1 car 12yd 0TD"])
+	assert_eq(s.player_summary(2), [])
+	assert_eq(s.athletes.get(qb.id, {}).get("owner"), "Riley")
+	assert_eq(s.total("car"), 1.0)
+	assert_eq(s.get_line("Bot", "LB").get("ff"), 1.0)
+	assert_eq(s.get_line("Bot", "LB").get("fr"), 1.0)
+	assert_eq(s.get_line("Bot", "LB").get("fr_ret_yds"), 5.0)
+
+func test_qb_recovery_keeps_one_carry_to_the_fumble_spot() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	var qb := w.get_athlete(i["qb"])
+	assert_true(w.snap())
+	while w.snap_in_flight():
+		w.step({}, DT)
+	qb.position = Vector2(5.0, 32.0)
+	w._fumble(qb, w.get_athlete(i["lb"]))
+	qb.recover_t = 0.0
+	w.ball.position.z = 0.0
+	w._step_loose(0.0)
+	assert_eq(w.carrier(), qb, "QB recovered his own fumble")
+	qb.position = Vector2(-0.5, 38.0)
+	w.step({}, DT)
+
+	assert_eq(s.total("car"), 1.0)
+	assert_eq(s.total("rush_yds"), 7.0, "later whistle cannot move the credited spot")
+	assert_eq(s.total("fr_ret_yds"), 0.0)
+
+func test_fumble_outside_a_keeper_does_not_add_a_carry() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	var carrier: int = i["qb"]
+	var hit := {"carrier": carrier, "by": i["lb"], "at": Vector2(5.0, 23.0)}
+	w.event.emit("snap", {"qb": carrier})
+	w.event.emit("fumble", hit)
+	assert_eq(s.total("car"), 0.0, "a sack fumble is not a carry")
+	hit["at"] = Vector2(5.0, 25.0)
+	w.event.emit("fumble", hit)
+	assert_eq(s.total("car"), 0.0, "a fumble on the line is not a carry")
+
+	hit["at"] = Vector2(5.0, 32.0)
+	w.event.emit("throw", {"by": carrier})
+	w.event.emit("catch", {"by": carrier})
+	w.event.emit("fumble", hit)
+	assert_eq(s.total("car"), 0.0, "a QB fumble on a catch is not a carry")
+
+	w.event.emit("snap", {"qb": carrier})
+	w.kicked = true
+	w.event.emit("kick", {"by": carrier, "kind": "punt"})
+	w.event.emit("kick_catch", {"by": i["cb"], "at": Vector2(5.0, 70.0)})
+	w.event.emit("recovery", {"by": carrier, "turnover": true})
+	w.event.emit("fumble", hit)
+	assert_eq(s.total("car"), 0.0, "a QB fumble on a kick-play recovery is not a carry")
+
 func test_fumbled_handoff_credits_the_owner_at_the_exchange() -> void:
 	var r := _setup()
 	var w: World = r[0]
@@ -491,6 +573,60 @@ func test_passing_td_and_fumble() -> void:
 	w.event.emit("recovery", {"by": i["cb"], "team": 1})
 	assert_eq(int(s.get_line("Bot", "LB")["ff"]), 1)
 	assert_eq(int(s.get_line("Bot", "CB")["fr"]), 1)
+
+func test_receiver_fumble_keeps_yards_with_original_passer_and_receiver() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	owners[i["qb"]] = "Riley"
+	owners[i["wr"]] = "Pat"
+	player_ids[i["qb"]] = 1
+	player_ids[i["wr"]] = 2
+	w.event.emit("snap", {"qb": i["qb"]})
+	w.event.emit("throw", {"by": i["qb"]})
+	w.event.emit("catch", {"by": i["wr"]})
+	owners[i["qb"]] = "Morgan"
+	owners[i["wr"]] = "Casey"
+	player_ids[i["qb"]] = 3
+	player_ids[i["wr"]] = 4
+	w.event.emit("fumble", {"carrier": i["wr"], "by": i["lb"], "at": Vector2(20, 42)})
+	w.get_athlete(i["lb"]).position = Vector2(20, 42)
+	w.event.emit("recovery", {"by": i["lb"], "turnover": true})
+	w.event.emit("out_of_bounds", {"carrier": i["lb"], "spot": Vector2(0, 35)})
+
+	assert_eq(s.award_stats.get(1, {}), {"att": 1.0, "comp": 1.0, "pass_yds": 17.0})
+	assert_eq(s.award_stats.get(2, {}), {"rec": 1.0, "rec_yds": 17.0})
+	assert_eq(s.player_summary(1), ["QB: 1/1 17yd 0TD 0INT"])
+	assert_eq(s.player_summary(2), ["WR: 1 rec 17yd 0TD"])
+	assert_true(s.player_summary(3).is_empty() and s.player_summary(4).is_empty())
+	assert_eq(s.get_line("Bot", "LB").get("ff"), 1.0)
+	assert_eq(s.get_line("Bot", "LB").get("fr"), 1.0)
+	assert_eq(s.get_line("Bot", "LB").get("fr_ret_yds"), 7.0)
+
+func test_receiver_recovery_preserves_fumble_spot_and_next_pass_records_yards() -> void:
+	var r := _setup()
+	var w: World = r[0]
+	var s: Stats = r[2]
+	var i := _ids(w)
+	w.event.emit("snap", {})
+	w.event.emit("throw", {"by": i["qb"]})
+	w.event.emit("catch", {"by": i["wr"]})
+	w.event.emit("fumble", {"carrier": i["wr"], "by": i["lb"], "at": Vector2(20, 32)})
+	w.event.emit("recovery", {"by": i["wr"], "turnover": false})
+	w.event.emit("out_of_bounds", {"carrier": i["wr"], "spot": Vector2(0, 38)})
+	assert_eq(s.total("pass_yds"), 7.0)
+	assert_eq(s.total("rec_yds"), 7.0)
+	assert_eq(s.total("fr_ret_yds"), 0.0)
+
+	w.event.emit("snap", {})
+	w.event.emit("throw", {"by": i["qb"]})
+	w.event.emit("catch", {"by": i["wr"]})
+	w.event.emit("out_of_bounds", {"carrier": i["wr"], "spot": Vector2(0, 29)})
+	assert_eq(s.total("pass_yds"), 11.0)
+	assert_eq(s.total("rec_yds"), 11.0)
+	assert_eq(s.total("comp"), 2.0)
+	assert_eq(s.total("rec"), 2.0)
 
 ## #100: takeaway returns. Team 0 attacks +y from the 25; the defense (team 1) returns toward y = 0.
 func test_int_return_yards() -> void:
