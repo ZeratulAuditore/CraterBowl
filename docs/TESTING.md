@@ -223,8 +223,11 @@ Notes:
 
 ## Driving gameplay from scripts
 
-For anything you can assert (positions, phase, HUD text, whistle reason), extend
-`tests/game_flow.gd` rather than eyeballing screenshots. It runs headless in smoke.sh. Use shot.sh
+For anything you can assert (positions, phase, HUD text, whistle reason), add a game_flow segment
+(`tests/flow/segments/<name>.gd`, contract in `tests/flow/segment.gd`) rather than eyeballing screenshots.
+Each segment starts from a fresh match with main's test knobs reset and relative frames, so parallel PRs
+don't edit the same lines of `tests/game_flow.gd`. `godot --headless --path . --fixed-fps 60 -s
+res://tests/game_flow.gd -- --segment=<name>` runs one segment on its own in seconds. It runs headless in smoke.sh. Use shot.sh
 when the question is visual: does it look right, is it visible, is the camera framing it, is the HUD
 legible, does the new art read.
 

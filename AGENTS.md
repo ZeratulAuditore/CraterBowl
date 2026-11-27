@@ -41,7 +41,8 @@ or push `main` yourself, and never merge a PR (not even your own, not even when 
 4. **After review:** push fixes to the same branch. If `main` moves, merge it in and re-run check.sh.
 5. **Clean up** once the owner merges: remove your worktree (`git worktree remove ../football-game-<topic>`),
    or run `/football-janitor`, which removes merged, clean and idle worktrees and branches for everyone.
-- `tests/game_flow.gd` steps share one frame timeline: pick an unused window and say which in the PR.
+- New end-to-end flow coverage goes in its own `tests/flow/segments/<name>.gd` (see `tests/flow/segment.gd`),
+  not in `tests/game_flow.gd`'s shared step array. Segments get relative frames, so there's no window to claim.
 
 ### Opening pull requests
 
@@ -90,8 +91,8 @@ Full guide: `docs/TESTING.md`.
 | `./scripts/visual_test.sh` | rendered integration tests in `tests/visual/` (what CI runs). Linux/WSL only | about 2.5 min |
 | `./scripts/before_after.sh menu` (or `shot NAME ...`, `visual CASE`, `potg`) | same capture on `origin/main` and your tree, side by side: the PR's visual evidence | 1–4 min |
 
-- New player-facing behavior gets a step in `tests/game_flow.gd`, driven through the real input
-  handler (`_key()`). New networked behavior extends `tests/net_client.gd`.
+- New player-facing behavior gets a game_flow segment (`tests/flow/segments/<name>.gd`), driven through the
+  real input handler (`flow._key()`). Run just yours with `-s res://tests/game_flow.gd -- --segment=<name>`. New networked behavior extends `tests/net_client.gd`.
 - A new check must go red when you plant the bug it's meant to catch. Try it once.
 - Don't weaken or delete older tests to go green. `check.sh` isolates `user://` (temp
   `XDG_DATA_HOME`), so tests can't touch real saves.
