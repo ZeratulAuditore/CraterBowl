@@ -377,6 +377,7 @@ func _spawn_teams() -> void:
 		var v := PlayerNode.new()
 		v.name = "Athlete%d" % a.id
 		v.setup(a, TEAM_COLORS[a.team], world, a.team != local_team)
+		v.look_node = ball_view   # heads track the ball (#245)
 		athlete_root.add_child(v)
 		views.append(v)
 	controlled_id = my_id

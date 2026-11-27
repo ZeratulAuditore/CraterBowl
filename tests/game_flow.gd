@@ -27,6 +27,7 @@ var fp_contact_y := INF
 var fp_driven_y := 0.0
 const ZOOM_SETTINGS := "user://test_flow_settings.cfg"   # #140 zoom step
 var zoom_path0 := ""
+var catch_pose := []   # #246: [catch_weight, catch_reach, hand-to-ball, chest-to-ball] at the A04 catch
 var toss_close_clock := -1.0   # #129: kickoff play clock when the toss cutscene closed
 var bot_snap_clock := INF   # #136: play clock when the bot offense snapped (frames 4171-4481)
 
@@ -71,7 +72,12 @@ func _initialize() -> void:
 		[402, func(): main.ai.defense_enabled = false; main.world.snap()],
 		[480, func(): _lead_to_wr(); _key(KEY_J)],
 		[531, func(): check(main.world.forward_pass_thrown, "lead pass thrown")],
-		[800, func(): main.ai.defense_enabled = true; check(caught_by >= 0, "WR caught it"); check(main.controlled_id == main.my_id and main.controlled_id != caught_by, "assigned athlete retained after catch")],
+		[800, func():
+			main.ai.defense_enabled = true
+			check(caught_by >= 0, "WR caught it")
+			check(catch_pose.size() == 4 and catch_pose[0] > 0.8 and catch_pose[1] > 0.8 and catch_pose[2] < catch_pose[3] - 0.3,
+				"receiver reaches for the ball as it arrives (#246): weight/reach/hand-to-ball/chest-to-ball %s" % str(catch_pose))
+			check(main.controlled_id == main.my_id and main.controlled_id != caught_by, "assigned athlete retained after catch")],
 		# A05: idle receiver gets run down by AI pursuit and tackled
 		[1300, func():
 			check(tackled, "AI defender tackled the carrier")
@@ -97,6 +103,7 @@ func _initialize() -> void:
 		[2470, func(): var c = main.world.carrier(); c.position = Vector2(26, 101.0)],
 		[2472, func(): main.next_play(); check(main.series.score[0] == 8, "try good: 8"); check(main.series.state == main.Match.State.KICKOFF and main.world.offense_team == 0 and absf(main.world.los_y - 35.0) < 0.01, "kickoff: home kicks from its 35")],
 		# A09: play clock auto-snap, untimed down, halftime
+		[2474, func(): _check_look_snaps("kickoff reset after the try")],   # #245 (frame 2474 only)
 		[2473, func(): check(main.hud.text.find("Q1 ") >= 0 and main.hud.text.find("H1 ") < 0 and main.hud.text.find("PLAY ") >= 0, "HUD game + play clock"); main.series.clock.play_clock = 0.3],
 		[2500, func(): check(main.world.phase == main.World.Phase.LIVE, "play clock auto-snapped"); main.series.clock.quarter = 2; main.series.clock.remaining = 0.2],
 		[2530, func(): check(main.series.clock.expired(), "clock hit 0:00")],
@@ -781,7 +788,12 @@ func _connect_listeners() -> void:
 		if n == "catch":
 			caught_by = d["by"]
 			if frame >= 480 and frame < 800:
-				main.ai.defense_enabled = true)
+				main.ai.defense_enabled = true
+				# #246: the receiver's pose as the ball arrives (views still show the last frame).
+				var cv = main.views[caught_by]
+				var ball: Vector3 = main.ball_view.global_position
+				catch_pose = [cv.pose.catch_weight, cv.pose.catch_reach, ball.distance_to(cv.hand_r.global_position),
+					ball.distance_to(cv.global_position + Vector3.UP * cv.CATCH_HEIGHT)])
 	main.world.event.connect(func(n, d): if n == "tackle" and caught_by >= 0: tackled = true)
 	main.world.event.connect(func(n, _d): if n == "interception": picked = true)
 	main.world.event.connect(func(n, _d): if n == "snap" and frame > 4171 and frame <= 4481: bot_snap_clock = main.series.clock.play_clock)
@@ -876,6 +888,32 @@ func _check_carry_pose(two_hand: bool, context: String) -> void:
 	check(off < 0.05, "ball pinned to the palm socket (%s): %.3f m off" % [context, off])
 	var to_hand: float = main.ball_view.global_position.distance_to(v.hand_r.global_position)
 	check(to_hand < 0.3, "ball in the hand (%s): %.2f m from the wrist" % [context, to_hand])
+	# #245: heads far from the camera and the carrier don't look. Views within 15% of the
+	# cutoff are skipped (they may be fading). Near ones are checked by role below.
+	var cam: Camera3D = main.get_viewport().get_camera_3d()
+	var size := func(o): return o.global_position.distance_to(cam.global_position) * tan(deg_to_rad(cam.fov) * 0.5) / o.LOOK_VIEW_SIZE
+	var near: Array = main.views.filter(func(o): return o != v and size.call(o) < 0.85)
+	var far: Array = main.views.filter(func(o): return o != v and size.call(o) > 1.15)
+	var far_ok: int = far.filter(func(o): return o.pose.look_weight < 0.5).size()
+	check(v.pose.look_weight < 0.2 and far_ok == far.size(),   # the carrier's look fades over ~0.3 s
+		"heads far from the camera don't look (%s): %d/%d far don't, carrier %.2f" % [context, far_ok, far.size(), v.pose.look_weight])
+	# Live with the ball held: offensive linemen and route runners don't watch it; free defenders do.
+	var offense: int = main.world.offense_team
+	var o_look: int = main.views.filter(func(o): return o != v and o.athlete.team == offense and o.pose.look_weight > 0.5).size()
+	var d_free: Array = near.filter(func(o): return o.athlete.team != offense and o.athlete.engaged_with < 0 and not o.athlete.blocking)
+	check(main.views.all(func(o): return o.pose.catch_weight == 0.0), "nobody reaches without a pass in the air (%s)" % context)
+	check(o_look == 0 and d_free.all(func(o): return o.pose.look_weight > 0.5),
+		"only the defense watches a held ball (%s): %d offense look, %d free defenders near the camera all look" % [context, o_look, d_free.size()])
+
+## #245: after the ball teleports (new spot), heads point at it at once instead of
+## sweeping across the field: every looking view's look point is already at the ball.
+func _check_look_snaps(context: String) -> void:
+	var ball: Vector3 = main.ball_view.global_position
+	var worst := 0.0
+	for o in main.views:
+		if o.pose.look_weight > 0.0:
+			worst = maxf(worst, o._look_point.distance_to(ball))
+	check(worst < 1.0, "heads snap to the ball after a teleport (%s): worst %.1f m behind" % [context, worst])
 
 var _sorted := false
 func _physics_process(_dt: float) -> bool:
