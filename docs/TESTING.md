@@ -20,6 +20,10 @@ Run the full one before every commit that touches code. The pre-commit hook runs
 
 ## The gate tiers (`scripts/check.sh`)
 
+The gate checks that Godot is available before running lint. Set `GODOT=/path/to/godot` when using
+a binary outside `PATH`. The Ubuntu 24.04 PR workflow installs renderer packages from the Ubuntu
+archives and runs `bash tests/ci_setup_test.sh` to check setup failures without changing system APT state.
+
 | Tier | Steps | Catches |
 |---|---|---|
 | `lint` | `tools/lint.gd` compiles every `.gd` (src, tests, tools); grep rules: no default-tessellation primitive meshes in `player.gd`, no engine/time/random calls in `src/sim` | parse errors in files no test loads; perf anti-patterns; sim purity breaks (determinism, server safety) |
@@ -75,12 +79,23 @@ your change**, and stage only your own paths (`AGENTS.md` "Shipping").
    than playing whole drives. Needs `xvfb-run` (`sudo apt install xvfb`; already installed here).
 
 `--write-movie` and other in-engine capture need a real renderer too, so they also need mode 2.
+3. **Native Windows (Git Bash)**: `shot.sh` detects MINGW/MSYS and skips Xvfb. It renders on the real
+   GPU (OpenGL 3) in a window parked at `-20000,-20000`, so nothing shows except a brief taskbar button.
+   Set `GODOT` to the Windows `*_console.exe` so stdout reaches the log. Display scaling enlarges
+   PNGs (1280x720 comes out about 2558x1438 at 200%).
 
 ## Automated screenshots for pull requests
 
 Run `./scripts/visual_test.sh` to execute rendered integration tests on a private Xvfb display.
 It prints the output directory, and `VISUAL_OUTPUT=/absolute/path` lets you choose the directory.
-Each test gets its own output subdirectory and the run uses isolated Godot save data.
+Each test gets its own output subdirectory and its own fresh, empty Godot user data
+(`XDG_DATA_HOME` and `XDG_CONFIG_HOME`; only the `XDG_CACHE_HOME` shader cache is shared), so a case
+that saves settings, a profile or replays to the default `user://` paths can't leak them into a later
+case, whatever the order (#236).
+`harness.gd` asserts that every case starts with nothing in `user://` but Godot's own logs and shader
+cache, and `cross_case_save_test.gd` deliberately saves a name to the default `settings.cfg` early in
+the run so later first-run cases (`menu_boot_test`, `lobby_real_render_test`) prove it. Per-test
+`launch.settings_path = "user://test_<case>_settings.cfg"` lines are optional now; existing ones can stay.
 
 Add a `tests/visual/<scenario>_test.gd` script extending `tests/visual/harness.gd`. Exercise the
 production scene, assert the relevant behavior with `check()`, then `await capture("state-name")`
@@ -198,6 +213,10 @@ Input rule (from LOOP.md): player-facing input must be exercised through the rea
 In game_flow that's `_key()`; in shot.sh that's `--press`. Mouse motion goes through `_mouse(rel)`
 (`main._unhandled_input`). Headless can't capture the mouse, so a step that needs mouse-look sets
 `main.mouse_captured_override = true` and clears it after (the #139 taunt-wheel step does).
+Mouse clicks on GUI controls are another exception: a headless viewport doesn't hit-test
+`root.push_input` mouse events (#251), so game_flow emits the control's own `gui_input` (the #129
+toss cards, `_click()`), and the hit-tested click lives in a `tests/visual` test under Xvfb
+(`coin_toss_test.gd`).
 
 Scripted contact: to make one body push another, place the pusher at a fixed overlap each frame
 (e.g. 0.75 yd). Moving it a fixed step per frame lets it pass through the other body on the software-GL
