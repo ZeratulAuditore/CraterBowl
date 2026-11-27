@@ -414,7 +414,7 @@ func on_event(n: String, d: Dictionary) -> void:
 			show_banner("TOUCHDOWN", TEAM_NAMES[t] if t >= 0 and t < 2 else "", Color(1.0, 0.86, 0.3), 3.0)
 		"interception": show_banner("INTERCEPTION", "", ALERT)
 		"fumble": show_banner("FUMBLE", "", ALERT)
-		"tackle":
+		"tackle", "out_of_bounds":
 			var credit := float(d.get("progress", 0.0))
 			if credit >= T.FORWARD_PROGRESS_BANNER:
 				show_banner("FORWARD PROGRESS", "+%d YD" % maxi(1, roundi(credit)), ACCENT, 1.6)

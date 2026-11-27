@@ -29,9 +29,14 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
   while in contact with an opponent (within 1.0 yd, window held 0.3 s after contact breaks), but only
   as far as opposing bodies actually pushed him back. Driven back = credited; retreating on your own
   (a QB drifting back with a rusher on him) = spotted where you are. The dead carrier is moved to the
-  spot, and the overlay shows "FORWARD PROGRESS +N YD" when it gives back 0.5 yd or more. Out of
-  bounds and touchdowns are unchanged. Numbers: `CONTACT_REACH`, `FORWARD_PROGRESS_GRACE`,
-  `FORWARD_PROGRESS_BANNER` in `src/sim/tuning.gd`.
+  spot, and the overlay shows "FORWARD PROGRESS +N YD" when it gives back 0.5 yd or more. Touchdowns
+  are unchanged. Numbers: `CONTACT_REACH`, `FORWARD_PROGRESS_GRACE`, `FORWARD_PROGRESS_BANNER` in
+  `src/sim/tuning.gd`.
+- **Driven out of bounds** (#103): the same forward-progress rule applies when the carrier goes out of
+  bounds while the contact window is open. The spot moves forward to his forward progress, x stays where he
+  crossed the sideline, and the same banner shows. Stepping out untouched, or after the window has closed
+  (contact broke more than 0.3 s before), is spotted where he crossed. A carrier met in the field of play and
+  driven back through his own end zone and out is spotted at his forward progress, so it's not a safety.
 - Four downs; failing on 4th is a turnover on downs, new offense at the mirrored spot (`goal − spot`).
 - **Deep QB dropbacks** (#252): the ball-carrying offense QB has full movement speed up to 14 yards behind the
   line of scrimmage. Speed tapers to 65% at 20 yards and stays there at greater depths. Climbing back toward the line
@@ -117,6 +122,11 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 - Forward progress is the furthest point in contact, capped by how far opponents pushed the carrier. Whistling on
   first contact was rejected because it kills the contact game (spins, breaking a lean, the dive). The uncapped
   furthest point was rejected because a QB drifting back with a rusher on him would get the yards back on a sack.
+- Out of bounds uses the tackle's forward-progress rule as is (#103): same contact window, same push cap, same
+  numbers. Otherwise the defense gets a free shove-out: a carrier driven back three yards and out loses those yards,
+  and the same hit followed by a dive keeps them. Rejected: spotting at the furthest in-bounds point whether or not
+  he was touched (credits a carrier who backpedals out on his own), and a separate out-of-bounds window (a second
+  rule to tune that could disagree with tackles).
 - The dropback taper follows depth in offense-frame yards so both offenses have the same window to move in the pocket.
   A smooth ramp avoids a sudden speed change when crossing a yard line. The 65% floor gives the rush a closing advantage
   while keeping enough control to move sideways and climb back toward the line. Host and client derive the scale from
@@ -161,7 +171,7 @@ Chaosball changes most of this: see [chaosball.md](chaosball.md).
 - #7 C05 Competitive rules: eligibility, grounding, blocking zone, QB slowdown
 - #253 Blocking zone and penalty flags
 - #254 Intentional grounding under pressure
-- #8 C06 Spotting: forward progress, return yards, fumble variety
+- #8 C06 Spotting: forward progress, return yards, fumble variety (#103 out-of-bounds forward progress in review)
 - #16 B10 Overtime for tied games
 - #39 B08 Tuning data file editable without code
 - #40 C25 Momentum / "on fire"
