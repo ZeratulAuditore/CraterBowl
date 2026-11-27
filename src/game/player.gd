@@ -8,6 +8,7 @@ extends Node3D
 ## network interpolation and replays alike) plus a few sim flags.
 
 const T := preload("res://src/sim/tuning.gd")
+const Tick := preload("res://src/sim/tick.gd")
 const Cos := preload("res://src/sim/cosmetics.gd")
 const Mats := preload("res://src/game/art/materials.gd")
 const CharacterArt := preload("res://src/game/art/character_art.gd")
@@ -145,7 +146,7 @@ func _ready() -> void:
 	var head_bone := _bone(skel, "Head")
 	hand_r = _attach(skel, "hand_r")
 	_skel = skel
-	_look_decide_t = float(athlete.id % 6) / 60.0   # stagger: the 14 views don't all decide on the same frame
+	_look_decide_t = float(athlete.id % 6) / Tick.HZ   # stagger: the 14 views don't all decide on the same frame
 	if skel:
 		pose = Pose.new()
 		skel.add_child(pose)
@@ -464,7 +465,7 @@ func sync() -> void:
 		var b: Array = BUILDS.get(rn, [1.0, 1.0])
 		scale = Vector3(b[0], b[1], (b[0] + 1.0) * 0.5)
 	if celebrate_t > 0.0:
-		celebrate_t = maxf(0.0, celebrate_t - 1.0 / 60.0)
+		celebrate_t = maxf(0.0, celebrate_t - Tick.DT)
 
 func _play(name: String, blend: float = BLEND, speed: float = 1.0) -> void:
 	if anim == null or not anim.has_animation(name):

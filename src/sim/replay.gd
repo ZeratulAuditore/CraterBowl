@@ -1,13 +1,14 @@
 extends RefCounted
 ## Match recording + playback. Pure (file I/O via save/load only).
 
+const Tick := preload("res://src/sim/tick.gd")
 const FRAME_EVERY := 2           # physics ticks per frame (60 Hz -> 30 Hz)
-const FPS := 30.0
+const FPS := Tick.HZ / FRAME_EVERY
 const HEADER := 4                # phase, ball x, y, z
 const PER_ATHLETE := 3           # x, y, flags
 const END_EVENTS := ["tackle", "out_of_bounds", "touchdown", "incomplete", "explode"]
 const BIG_PLAY_YARDS := 20.0     # gains (or losses) this long are highlights
-const SLOWMO_TAIL := 60          # frames (2 s) of slow motion at the end of a highlight clip
+const SLOWMO_TAIL := int(2.0 * FPS)  # frames (2 s) of slow motion at the end of a highlight clip
 const SLOWMO_SPEED := 0.35
 
 var frames: Array = []           # Array[PackedFloat32Array]
