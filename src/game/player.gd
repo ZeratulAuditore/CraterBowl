@@ -14,6 +14,8 @@ const CharacterArt := preload("res://src/game/art/character_art.gd")
 const Emotes := preload("res://src/sim/emotes.gd")
 const Uniforms := preload("res://src/game/art/football_uniforms.gd")
 const RC := preload("res://src/game/render_cache.gd")
+const Pose := preload("res://src/game/art/athlete_pose.gd")
+const Ball := preload("res://src/sim/ball.gd")
 ## A view that moves more than this (yards) in one tick teleported (new play, replay
 ## seek, swap): snap instead of gliding across the field.
 const TELEPORT_DIST := 2.0
@@ -27,6 +29,30 @@ const ROLE_NAMES := ["QB", "C", "WR", "RB", "LB", "CB", "S", "OL", "DL"]
 const LINEMEN := ["OL", "DL", "C"]
 const MODEL_SCALE := 1.08
 const BLEND := 0.18
+## Carry pose blend rate (1/s): about 0.2 s to tuck the ball in or out.
+const CARRY_K := 14.0
+## Head look smoothing (1/s): the look point trails a fast ball a little, like eyes do.
+const LOOK_K := 10.0
+## Heads only turn when the athlete is big enough on screen to see it: the camera view's
+## half-height (yd) at the athlete's distance must be under this. About 25 yd away for the
+## 65 deg follow camera, further for zoomed replay cameras. Saves the look math (#245).
+const LOOK_VIEW_SIZE := 16.0
+## Offensive players only watch a pass or loose ball this close (yd).
+const WATCH_RANGE := 15.0
+## "Near the camera" and "watches the ball" rarely change frame to frame: decide them this
+## often (staggered by athlete id) instead of every frame (#245, LOG.md perf-08).
+const LOOK_DECIDE_HZ := 10.0
+## Catch pose (#246): athletes who watch a pass and are this close (yd) to where it comes
+## down through chest height get ready to catch it.
+const CATCH_RANGE := 6.0
+const CATCH_HEIGHT := 1.4   # yd: about chest height
+## Hands go from the ready stance to the ball as it closes from REACH_FAR to REACH_NEAR (yd).
+## The sim catches inside a 1.2 yd ground radius, which puts the ball about 2 yd from the
+## chest at the catch (game_flow A04): REACH_NEAR is that, so the arms are fully out as it snaps in.
+const REACH_FAR := 4.5
+const REACH_NEAR := 2.0
+## Ball seat in hand_r bone space: in the palm, long axis along the forearm (#244).
+const BALL_SOCKET := Transform3D(Basis(Vector3.RIGHT, -PI / 2.0), Vector3(-0.13, 0.08, 0.0))
 
 var athlete  # sim athlete
 var color := Color(0.9, 0.75, 0.2)
@@ -55,6 +81,16 @@ var model: Node3D
 var mesh_i: MeshInstance3D
 var anim: AnimationPlayer
 var hand_r: Node3D
+var pose: Node              # athlete_pose.gd (null without a rig)
+var ball_node: Node3D       # the ball while this athlete carries it (presentation.gd sets it)
+var look_node: Node3D       # the ball view: heads track it (#245; main.gd sets it)
+var _look_point := Vector3.ZERO   # smoothed world-space look target
+var _look_decide_t := 0.0         # time to the next look decision
+var _look_wanted := false         # last decision: near the camera and watches the ball
+var _catch_wanted := false        # last decision: a pass is coming down near this athlete
+var _skel: Skeleton3D
+var _ball_xf := Transform3D()   # palm socket (world), cached at each skeleton update
+var _ball_xf_ok := false
 var trim_mat: StandardMaterial3D
 var is_opponent := false
 
@@ -108,6 +144,13 @@ func _ready() -> void:
 	var chest := _attach(skel, "spine_03")
 	var head_bone := _bone(skel, "Head")
 	hand_r = _attach(skel, "hand_r")
+	_skel = skel
+	_look_decide_t = float(athlete.id % 6) / 60.0   # stagger: the 14 views don't all decide on the same frame
+	if skel:
+		pose = Pose.new()
+		skel.add_child(pose)
+		# Pin the ball after the clip and pose modifier have run, so it never trails the hand.
+		skel.skeleton_updated.connect(_pin_ball)
 	_open_gear = Node3D.new()
 	chest.add_child(_open_gear)
 	var pads := _part(_open_gear, RC.sphere(0.5, 1.0), Mats.cloth(color), Vector3(0, 0.1, -0.01))
@@ -278,6 +321,9 @@ func hit() -> void:
 ## Follow-through after the ball leaves the hand.
 func throw_release() -> void:
 	_release_t = 0.55
+	set_carry(null)
+	if pose:
+		pose.weight = 0.0   # the throw clip plays untouched from its first frame
 	_play("u2/OverhandThrow", 0.05, 1.4)
 	if anim and anim.has_animation("u2/OverhandThrow"):
 		anim.seek(anim.get_animation("u2/OverhandThrow").length * 0.42, true)
@@ -285,6 +331,117 @@ func throw_release() -> void:
 ## Where the ball sits when this athlete carries it (world space).
 func hand_position() -> Vector3:
 	return hand_r.global_position if hand_r and hand_r.is_inside_tree() else global_position + Vector3(0, 1.1, 0)
+
+## Carry the ball (`ball` = the ball view) or stop (null). two_hand: passer holding before the throw.
+func set_carry(ball: Node3D, two_hand := false) -> void:
+	ball_node = ball
+	if pose:
+		pose.two_hand = two_hand
+
+## The held ball's world transform: seated in the right palm (unit scale), as of the
+## last skeleton update. Godot 4.3 applies the pose modifier only during that update;
+## read the bones at any other time and you get the plain clip pose.
+func ball_transform() -> Transform3D:
+	if _ball_xf_ok:
+		return _ball_xf
+	return Transform3D(global_basis.orthonormalized(), hand_position() - global_basis.z.normalized() * 0.15)
+
+## The held ball in skeleton space: between both hands for a passer's hold, else the right palm.
+func ball_local(sk: Skeleton3D) -> Transform3D:
+	var held = pose.hold_ball(sk) if pose else null
+	return held if held != null else sk.get_bone_global_pose(sk.find_bone("hand_r")) * BALL_SOCKET
+
+## True when an athlete `dist` yd from a camera with vertical FOV `fov_deg` is close
+## enough on screen for a head turn to be seen.
+static func head_visible(dist: float, fov_deg: float) -> bool:
+	return dist * tan(deg_to_rad(fov_deg) * 0.5) < LOOK_VIEW_SIZE
+
+## Does an athlete watch the ball right now (#245)? Nobody engaged in a block. The defense
+## reads it: the snap, the carrier, a pass. Offensive linemen only on a loose ball near them.
+## Other offensive players watch for the snap, then only a pass or loose ball near them
+## (they're running routes or blocking while it's held).
+static func watches_ball(offense: bool, lineman: bool, engaged: bool, presnap: bool, ball_state: int, dist: float) -> bool:
+	if engaged:
+		return false
+	if not offense:
+		return true
+	var near := dist < WATCH_RANGE
+	if ball_state == Ball.State.LOOSE:
+		return near
+	return not lineman and (presnap or (ball_state == Ball.State.IN_FLIGHT and near))
+
+## This view's athlete, right now (see watches_ball).
+func watches_now() -> bool:
+	if world == null or look_node == null:
+		return false
+	return watches_ball(athlete.team == world.offense_team, _role in LINEMEN, athlete.engaged_with >= 0 or athlete.blocking,
+		int(world.phase) == 0, int(world.ball.state), global_position.distance_to(look_node.global_position))
+
+## Heads track the ball (not the carrier's own; not while down, celebrating, too far from
+## the camera to see, or when the athlete has no reason to watch it).
+func _update_look(delta: float, down: bool) -> void:
+	_look_decide_t -= delta
+	if _look_decide_t <= 0.0:
+		_look_decide_t = 1.0 / LOOK_DECIDE_HZ
+		var cam := get_viewport().get_camera_3d()
+		_look_wanted = cam != null and head_visible(global_position.distance_to(cam.global_position), cam.fov) and watches_now()
+		_catch_wanted = _look_wanted and _near_catch_point()
+	var looking := _look_wanted and look_node != null and ball_node == null and not down and celebrate_t <= 0.0
+	var k := 1.0 - exp(-LOOK_K * delta)
+	if look_node != null and (looking or pose.look_weight > 0.0):   # also while fading out, so a fading head never points at an old spot
+		var target := look_node.global_position
+		# Snap after a teleport (new spot, replay seek) so every head doesn't sweep the field.
+		var snap: bool = pose.look_weight <= 0.0 or target.distance_to(_look_point) > TELEPORT_DIST * 2.0
+		_look_point = target if snap else _look_point.lerp(target, k)
+		pose.look_target = _skel.global_transform.affine_inverse() * _look_point
+	pose.look_weight = lerpf(pose.look_weight, 1.0 if looking else 0.0, k)
+	if pose.look_weight < 0.01 and not looking:
+		pose.look_weight = 0.0
+	_update_catch(delta, looking)
+
+## Where a pass in flight comes down through height h (field x, y), on its way down. A
+## pass that never climbs to h (a low line drive) uses where it lands. Same flight math as
+## presentation.gd's landing marker.
+static func catch_point(pos: Vector3, vel: Vector3, g: float, h: float) -> Vector2:
+	var disc := vel.z * vel.z + 2.0 * g * (pos.z - h)
+	if disc < 0.0:
+		h = 0.0
+		disc = vel.z * vel.z + 2.0 * g * pos.z
+	var t := (vel.z + sqrt(maxf(disc, 0.0))) / g if g > 0.0 else 0.0
+	return Vector2(pos.x, pos.y) + Vector2(vel.x, vel.y) * maxf(t, 0.0)
+
+## A pass (not the snap) is in the air.
+func _pass_in_air() -> bool:
+	return int(world.ball.state) == Ball.State.IN_FLIGHT and not world.snap_in_flight()
+
+func _near_catch_point() -> bool:
+	var b = world.ball
+	if not _pass_in_air():
+		return false
+	var cp := catch_point(b.position, b.velocity, world.gravity(), CATCH_HEIGHT)
+	return athlete.position.distance_to(cp) < CATCH_RANGE
+
+## Catch pose (#246): ready stance while the pass is far, hands to the ball as it closes.
+func _update_catch(delta: float, looking: bool) -> void:
+	var catching := _catch_wanted and looking and _pass_in_air()
+	if catching:
+		var ball := look_node.global_position
+		var chest := global_position + Vector3.UP * CATCH_HEIGHT
+		pose.catch_target = _skel.global_transform.affine_inverse() * ball
+		pose.catch_reach = clampf((REACH_FAR - ball.distance_to(chest)) / (REACH_FAR - REACH_NEAR), 0.0, 1.0)
+	elif pose.catch_weight <= 0.0:
+		return
+	pose.catch_weight = lerpf(pose.catch_weight, 1.0 if catching else 0.0, 1.0 - exp(-CARRY_K * delta))
+	if pose.catch_weight < 0.01 and not catching:
+		pose.catch_weight = 0.0
+
+func _pin_ball() -> void:
+	if ball_node == null or not is_instance_valid(ball_node):
+		return   # only the carrier pays for this (per-frame work is change-driven)
+	var xf := _skel.global_transform * ball_local(_skel)
+	_ball_xf = Transform3D(xf.basis.orthonormalized(), xf.origin)
+	_ball_xf_ok = true
+	ball_node.global_transform = _ball_xf
 
 func _role_name() -> String:
 	var r := int(athlete.role)
@@ -345,6 +502,12 @@ func _process(delta: float) -> void:
 		_show_fair_catch(fc)
 	_choose_anim(spd, down)
 	_was_down = down
+	if pose:
+		var target := 1.0 if ball_node != null else 0.0
+		pose.weight = lerpf(pose.weight, target, 1.0 - exp(-CARRY_K * delta))
+		if absf(pose.weight - target) < 0.01:
+			pose.weight = target
+		_update_look(delta, down)
 	# Celebration flourishes on top of the dance.
 	body.rotation = Vector3.ZERO
 	body.position = Vector3.ZERO

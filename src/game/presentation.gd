@@ -10,6 +10,7 @@ const Stadium := preload("res://src/game/art/stadium.gd")
 const Overlay := preload("res://src/game/overlay.gd")
 const LosBarrier := preload("res://src/game/art/los_barrier.gd")
 const FieldArt := preload("res://src/game/art/field_art.gd")
+const Athlete := preload("res://src/sim/athlete.gd")
 const TRAIL_LEN := 22
 
 var main: Node3D
@@ -28,6 +29,7 @@ var stick_b: Node3D
 var excite := 0.0
 var shake := 0.0
 var spin := 0.0
+var _carrier = null   # view carrying the ball (player.gd), for the carry pose
 var _last_score := [0, 0]
 var barrier: LosBarrier
 var _ends_behind := 0    # #89: end painted behind the offense (FieldArt.orient_ends)
@@ -314,6 +316,8 @@ func _process(delta: float) -> void:
 	var w = main.world
 	if not main.replay_active:
 		_update_ball(delta, w)
+	else:
+		_set_carrier(null, false)   # replays don't record the holder: the ball flies free
 	_update_rings(w)
 	_update_chains()
 	if barrier:
@@ -350,6 +354,14 @@ func _update_ends(s, w) -> void:
 			overlay.show_banner("SWITCH ENDS", s.clock.label().get_slice(" ", 0), overlay.ACCENT, 2.4)
 		_period = period
 
+## Hand the ball view to the athlete carrying it (null: nobody), so its arm tucks it.
+func _set_carrier(view, two_hand: bool) -> void:
+	if _carrier != view and _carrier != null and is_instance_valid(_carrier):
+		_carrier.set_carry(null)
+	_carrier = view
+	if view != null:
+		view.set_carry(main.ball_view, two_hand)
+
 func _update_ball(delta: float, w) -> void:
 	var bv: Node3D = main.ball_view
 	if bv == null:
@@ -357,10 +369,14 @@ func _update_ball(delta: float, w) -> void:
 	var b = w.ball
 	var st := int(b.state)
 	var held_view = main.views[b.holder_id] if st in [0, 3] and b.holder_id >= 0 and b.holder_id < main.views.size() else null
-	if held_view != null and not held_view.is_celebrating():
+	if held_view != null and held_view.is_celebrating():
+		held_view = null
+	var holder = w.get_athlete(b.holder_id) if held_view != null else null
+	_set_carrier(held_view, holder != null and holder.role == Athlete.Role.QB and w.can_throw(b.holder_id))
+	if held_view != null:
+		# Seated in the carrier's palm; the view re-pins it after its skeleton updates (#244).
 		bv.scale = Vector3.ONE
-		bv.global_position = held_view.hand_position() + held_view.global_transform.basis.z * 0.08
-		bv.global_rotation = Vector3(-0.5, held_view.global_rotation.y, 0)
+		bv.global_transform = held_view.ball_transform()
 		spin = 0.0
 	elif st == 1:   # in flight: point along velocity, spiral
 		var v := Vector3(b.velocity.x, b.velocity.z, -b.velocity.y)
