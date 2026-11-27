@@ -752,6 +752,18 @@ func _initialize() -> void:
 			_key(KEY_ENTER)
 			var d = main.series.downs
 			check(d.offense_team == 0 and is_equal_approx(d.los, 40.0) and d.down == 2, "tip spends the down at the old spot without changing possession")],
+		# #323: window 17900–17904. A fumbled keeper still appears in the QB's match stats.
+		[17900, func():
+			main.configure(3)
+			main.auto_next = false
+			main.ai.defense_enabled = false
+			main.ai.offense_enabled = false
+			main.series.start(0, 25.0)
+			main.set_controlled(main.my_id)],
+		[17902, _fumble_keeper],
+		[17904, func():
+			check(main.world.phase == main.World.Phase.DEAD, "defender took the fumble out of bounds")
+			check(main.match_overview()["my_lines"] == ["QB: 1 car 12yd 0TD"], "Your game credits the fumbled keeper once")],
 		# #360: a receiver uses F to dive and catches a live pass without leaving the dive.
 		[18200, func():
 			main.configure(3)
@@ -765,6 +777,22 @@ func _initialize() -> void:
 	]
 	for f in range(13431, 13470):   # the LB keeps walking into the QB (bodies collide, QB gives ground)
 		steps.append([f, _fp_push])
+
+func _fumble_keeper() -> void:
+	_key(KEY_SPACE)
+	var w = main.world
+	var qb = w.carrier()
+	check(qb != null and qb.id == main.my_id, "Space snaps to the local quarterback")
+	if qb == null:
+		return
+	var defender = w.find_role(1, main.Athlete.Role.CB)
+	qb.position = Vector2(5.0, w.los_y + 12.0)
+	defender.position = qb.position
+	w._fumble(qb, defender)
+	w.ball.position.z = 0.0
+	w._step_loose(0.0)
+	check(w.carrier() == defender, "defense recovers the QB fumble")
+	defender.position.x = -0.5
 
 func _fp_push() -> void:
 	var c = main.world.carrier()
