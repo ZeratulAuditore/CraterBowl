@@ -11,6 +11,7 @@ const Football := preload("res://src/game/art/football.gd")
 const Overlay := preload("res://src/game/overlay.gd")
 const LosBarrier := preload("res://src/game/art/los_barrier.gd")
 const FieldArt := preload("res://src/game/art/field_art.gd")
+const KickArt := preload("res://src/game/kick_art.gd")
 const Athlete := preload("res://src/sim/athlete.gd")
 const TRAIL_LEN := 22
 
@@ -33,6 +34,7 @@ var spin := 0.0
 var _carrier = null   # view carrying the ball (player.gd), for the carry pose
 var _last_score := [0, 0]
 var barrier: LosBarrier
+var kick_art: KickArt    # #68: kick power meter + kickoff tee
 var _ends_behind := 0    # #89: end painted behind the offense (FieldArt.orient_ends)
 var _period := 0         # #89: SWITCH ENDS banner on period change
 
@@ -56,6 +58,8 @@ func _ready() -> void:
 	trail.material_override = tm
 	trail.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(trail)
+	kick_art = KickArt.new()
+	add_child(kick_art)
 	overlay = Overlay.new()
 	add_child(overlay)
 
@@ -285,6 +289,7 @@ func _process(delta: float) -> void:
 	if main == null or main.world == null or main.views.is_empty():
 		return
 	var w = main.world
+	kick_art.update(main, w)   # before the ball: a kickoff ball stands on the tee
 	if not main.replay_active:
 		_update_ball(delta, w)
 	else:
@@ -342,6 +347,11 @@ func _update_ball(delta: float, w) -> void:
 	var held_view = main.views[b.holder_id] if st in [0, 3] and b.holder_id >= 0 and b.holder_id < main.views.size() else null
 	if held_view != null and held_view.is_celebrating():
 		held_view = null
+	if held_view != null and KickArt.ball_on_tee(w):   # #68: on the tee, not in his hand
+		held_view = null   # so the kicker's arm lets go of it below
+		bv.global_transform = kick_art.ball_transform()
+		spin = 0.0
+		st = -1   # placed; only the trail bookkeeping below still runs
 	var holder = w.get_athlete(b.holder_id) if held_view != null else null
 	_set_carrier(held_view, holder != null and holder.role == Athlete.Role.QB and w.can_throw(b.holder_id))
 	if held_view != null:

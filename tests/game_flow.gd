@@ -30,6 +30,7 @@ var zoom_path0 := ""
 var catch_pose := []   # #246: [catch_weight, catch_reach, hand-to-ball, chest-to-ball] at the A04 catch
 var toss_close_clock := -1.0   # #129: kickoff play clock when the toss cutscene closed
 var bot_snap_clock := INF   # #136: play clock when the bot offense snapped (frames 4171-4481)
+var kick_meter_far := [0, 0]   # #68: [lit steps, shader pushes] with the kickoff aimed deep (frame 9504)
 
 func check(cond: bool, msg: String) -> void:
 	print(("  FLOW OK   " if cond else "  FLOW FAIL ") + msg)
@@ -507,15 +508,32 @@ func _initialize() -> void:
 		[9500, func(): main.opening_kickoff = true; main.toss_seed = 0; main.configure(7); kick_events.clear(); main.world.event.connect(func(n, _d): kick_events.append(n))],
 		[9502, func(): check(main.series.state == main.Match.State.TOSS and main.series.toss_winner == 0, "home won the toss"); check(main.hud.text.find("COIN TOSS: HOME wins") >= 0, "HUD offers the choice"); check(main.pres.overlay.status_l.text == "YOU WON THE TOSS" and main.pres.overlay.down_l.text == "", "toss pill names the winner, no key hints or COIN TOSS chip (#131) (%s)" % main.pres.overlay.status_l.text); _key(KEY_2)],
 		[9503, func(): check(main.series.state == main.Match.State.KICKOFF and main.world.offense_team == 0, "2 key: home kicks"); check(main.world.ball.is_held_by(main.controlled_id), "you are the kicker"); main.aim_point = Vector2(main.field.width / 2.0, 92.0)],
-		[9505, func(): check(main.can_kick() and main.arc_dots[0].visible, "kick arc preview on the tee"); check(main.hud.text.find("KICKOFF") >= 0, "HUD: kickoff"); check(not main.pres.overlay.picker.visible, "no play picker on a kickoff")],
+		# #68 (frame 9504, plus checks in 9505, 11100, 11141): the stepped meter beside your kicker
+		# follows the aim distance and is change-driven; the kickoff ball stands on a tee.
+		[9504, func():
+			var ka = main.pres.kick_art
+			check(ka.meter.visible and ka.lit == ka.steps_for(main.kick_power()), "kick meter beside your kicker: %d/%d steps for power %.2f" % [ka.lit, ka.STEPS, main.kick_power()])
+			var side: Vector3 = ka.meter.global_position - main.views[main.controlled_id].global_position
+			check(Vector2(side.x, side.z).length() < 2.0, "meter stands next to the kicker (%.2f m)" % Vector2(side.x, side.z).length())
+			check(ka.tee.visible and main.ball_view.global_position.distance_to(ka.tee.global_position) < 0.5, "kickoff ball stands on the tee")
+			check(main.views[main.controlled_id].ball_node == null, "not in the kicker's hand")
+			check(main.ball_view.global_basis.z.normalized().y > 0.9, "ball stands upright")
+			kick_meter_far = [ka.lit, ka.pushes]
+			main.aim_point = Vector2(main.field.width / 2.0, 55.0)],
+		[9505, func():
+			check(main.can_kick() and main.arc_dots[0].visible, "kick arc preview on the tee"); check(main.hud.text.find("KICKOFF") >= 0, "HUD: kickoff"); check(not main.pres.overlay.picker.visible, "no play picker on a kickoff")
+			var ka = main.pres.kick_art
+			check(ka.lit < kick_meter_far[0] and ka.lit == ka.steps_for(main.kick_power()), "shorter aim lights fewer steps (%d < %d)" % [ka.lit, kick_meter_far[0]])
+			check(ka.pushes == kick_meter_far[1] + 1, "meter pushed once for one change, not per frame (%d pushes)" % (ka.pushes - kick_meter_far[1]))
+			main.aim_point = Vector2(main.field.width / 2.0, 92.0)],
 		[9506, func(): _key(KEY_J); check(main.world.kicked and kick_events.has("kick"), "J kicks off at the aim point")],
-		[11100, func(): check(main.world.phase == main.World.Phase.DEAD, "kickoff play over (%s; events %s; ball %d holder %d)" % [main.last_whistle, str(kick_events), main.world.ball.state, main.world.ball.holder_id]); _force_dead_if_live(); main.next_play(); check(main.series.state != main.Match.State.KICKOFF and (main.world.offense_team == 1 or main.series.state == main.Match.State.TRY), "kickoff resolved: return team's ball or a score (%s)" % main.series.last_outcome.get("outcome", "?"))],
+		[11100, func(): check(not main.pres.kick_art.meter.visible and main.pres.kick_art.tee.visible and not main.pres.kick_art.ball_on_tee(main.world), "after the kickoff: meter gone, empty tee left on the turf"); check(main.world.phase == main.World.Phase.DEAD, "kickoff play over (%s; events %s; ball %d holder %d)" % [main.last_whistle, str(kick_events), main.world.ball.state, main.world.ball.holder_id]); _force_dead_if_live(); main.next_play(); check(main.series.state != main.Match.State.KICKOFF and (main.world.offense_team == 1 or main.series.state == main.Match.State.TRY), "kickoff resolved: return team's ball or a score (%s)" % main.series.last_outcome.get("outcome", "?"))],
 		# 4th down: K calls a punt, Space snaps, J punts toward the aim point
 		[11101, func(): main.series.start(0, 30.0); main.series.downs.down = 4; main.set_controlled(main.my_id); kick_events.clear()],
 		[11102, func(): _key(KEY_K); check(main.world.kick_play == "punt", "K key calls a punt")],
 		[11103, func(): check(main.hud.text.find("KICK: PUNT") >= 0, "HUD shows the punt call"); _key(KEY_SPACE)],
 		[11140, func(): check(main.world.ball.is_held_by(main.controlled_id), "punter has the snap"); main.aim_point = Vector2(main.field.width / 2.0, 70.0)],
-		[11141, func(): _key(KEY_J); check(kick_events.has("kick") and not kick_events.has("throw"), "punted, not thrown")],
+		[11141, func(): check(main.pres.kick_art.meter.visible and not main.pres.kick_art.tee.visible, "punt: meter beside the punter, no tee"); _key(KEY_J); check(kick_events.has("kick") and not kick_events.has("throw"), "punted, not thrown")],
 		[11900, func(): _force_dead_if_live(); main.next_play(); check(main.world.offense_team == 1, "punt: possession changes (%s)" % main.series.last_outcome.get("outcome", "?"))],
 		# K twice = field goal; aiming at the posts clears the bar
 		[11901, func(): main.series.start(0, 85.0); main.series.downs.down = 4; main.set_controlled(main.my_id); main.ai.defense_enabled = false],
