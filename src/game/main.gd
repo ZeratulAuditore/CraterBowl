@@ -954,7 +954,11 @@ func _join_game(target: String, port: int, opts: Dictionary) -> void:
 			if auto_ready:
 				net.send_lobby_action({"a": "ready"}))
 	net.snapshot_received.connect(_on_snapshot)
-	net.event_received.connect(_on_world_event)
+	net.event_received.connect(func(n, data):
+		if n == "snap":
+			replay.context = "%s, %s" % [series.clock.label(), series.downs.label()]
+		replay.record_event(n, data)
+		_on_world_event(n, data))
 	net.host_lost.connect(_on_host_lost)
 	add_child(preload("res://src/game/link_banner.gd").new(net))   # #86: "Connection to host lost…"
 
@@ -1599,6 +1603,9 @@ func _physics_process(delta: float) -> void:
 		elif net != null and not is_client():
 			_step_authoritative(delta, my_input)   # host keeps the match running
 		_render_replay()
+		if replay_active and is_client() and not replay_viewer:
+			_apply_interpolation()
+			replay.capture(world)
 		return
 	if is_client():
 		# Predict own athlete now; server stays authoritative and reconciles via acks.

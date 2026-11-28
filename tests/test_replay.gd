@@ -16,6 +16,27 @@ func _rec() -> Array:
 	r.attach(w)
 	return [w, m, r]
 
+func test_relayed_snap_and_ruling_bracket_client_samples() -> void:
+	var s := _rec()
+	var w: World = s[0]
+	var r: Replay = s[2]
+	var at := Vector2(10.0, w.los_y + 12.0)
+	_play(w, r, 4)
+	r.record_event("snap", {"qb": 1})
+	w.phase = World.Phase.LIVE
+	w.ball.position = Vector3(at.x, at.y, 1.0)
+	for i in 14:
+		r.capture(w)
+	r.record_event("out_of_bounds", {"spot": at, "team": w.offense_team})
+
+	assert_eq(r.plays.size(), 1, "host snap created a local play bracket")
+	assert_eq(r.last_play()["start"], 2, "play starts after the presnap samples")
+	assert_eq(r.last_play()["end"], 9, "host ruling closed the bracket")
+	assert_true(r.last_play()["summary"].ends_with("out of bounds"), "host ruling is shown in the replay")
+	assert_true(r.clip_play(0), "relayed play opens")
+	assert_eq(r.sample()["phase"], World.Phase.LIVE)
+	assert_eq(r.sample()["ball"], Vector3(at.x, at.y, 1.0))
+
 func test_capture_rate_and_contents() -> void:
 	var s := _rec()
 	var w: World = s[0]

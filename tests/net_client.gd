@@ -17,6 +17,9 @@ var echoed_input_seq := 0
 var input_acks_valid := true
 var start_x := INF
 var max_dx := 0.0
+var replay_start_frame := -1
+var replay_frame_count := 0
+var replay_input_seq := 0
 var got_snap_event := false
 var got_opening_tip := false
 var got_opening_interception := false
@@ -179,6 +182,21 @@ func _physics_process(_dt: float) -> bool:
 	if aid >= 0 and main.input_override == Vector2(1, 0) and last_server_x != INF and main.world.phase == 0:
 		if main.world.get_athlete(aid).position.x - last_server_x > 0.02:
 			lead_samples += 1
+	if got_opening_tip and replay_start_frame < 0 and main.world.phase == main.World.Phase.DEAD:
+		_key(KEY_V)
+		check(main.replay_active and not main.replay.last_play().is_empty(), "V opens the host's first finished down")
+		if main.replay_active:
+			_key(KEY_SPACE)
+		replay_start_frame = f
+		replay_frame_count = main.replay.frames.size()
+		replay_input_seq = main.predictor.seq
+	if replay_start_frame >= 0 and f == replay_start_frame + 12:
+		check(main.replay_active and main.replay.paused and main.predictor.seq == replay_input_seq,
+			"joiner paused the clip and stopped sending movement")
+		check(main.replay.frames.size() == replay_frame_count + 12 / main.Replay.FRAME_EVERY,
+			"joiner continued recording during twelve ticks of replay")
+		if main.replay_active:
+			_key(KEY_V)
 	# After the first play ends and the next presnap begins, try an illegal defense snap.
 	if saw_live and bad_snap_sent_at < 0 and main.world.phase == 0:
 		main.input_override = Vector2.ZERO
@@ -212,6 +230,7 @@ func _physics_process(_dt: float) -> bool:
 		check(broke_stance, "defense Space broke stance via the host (snapshot lock cleared)")
 		check(not crossed_line, "predicted defender never past the neutral zone")
 		check(lead_samples > 10, "own athlete predicted ahead of server state (%d frames)" % lead_samples)
+		check(replay_start_frame >= 0 and f > replay_start_frame + 12, "instant replay exercised on the connected joiner")
 		check(saw_live and got_snap_event, "host auto-snap reached client (snapshot LIVE + reliable event)")
 		check(got_opening_tip and not got_opening_interception, "host's opening short pass reaches the client as a breakup")
 		check(opening_play_clock > 0.0 and opening_play_clock <= 4.0,
