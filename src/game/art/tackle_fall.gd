@@ -262,14 +262,16 @@ func _start_ragdoll() -> void:
 			var y: Vector3 = ((sk.get_bone_global_rest(child).origin - rest.origin) if child >= 0 else Vector3.UP).normalized()
 			var x := (Vector3.RIGHT - y * y.dot(Vector3.RIGHT)).normalized()
 			var anat := Basis(x, y, x.cross(y))
-			pb.joint_type = PhysicalBone3D.JOINT_TYPE_6DOF
 			pb.joint_offset = Transform3D((rest.basis * body_xf.basis).inverse() * anat, pb.joint_offset.origin)
+		_sim.add_child(pb)
+		if b[0] != "pelvis":
+			# Joint creation reads the bodies' world transforms. Wait until the bone has entered the tree.
+			pb.joint_type = PhysicalBone3D.JOINT_TYPE_6DOF
 			# Godot measures the bend the other way round from the table: negate it.
 			for a in [["x", -b[5], -b[4]], ["y", -b[7], b[7]], ["z", -b[6], b[6]]]:
 				pb.set("joint_constraints/%s/angular_limit_enabled" % a[0], true)
 				pb.set("joint_constraints/%s/angular_limit_lower" % a[0], a[1])
 				pb.set("joint_constraints/%s/angular_limit_upper" % a[0], a[2])
-		_sim.add_child(pb)
 		names.append(StringName(b[0]))
 	_turf = StaticBody3D.new()
 	_turf.top_level = true
