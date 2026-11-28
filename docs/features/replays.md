@@ -32,6 +32,7 @@ post-game overview or the command line. Online skip votes, a free camera and cli
 | [ / ] | halve / double speed (0.25× to 2×) |
 | C | camera: Broadcast → End zone → Sky → Player |
 
+- Held movement, sprint and block controls on the host apply again when the host closes the replay.
 - Cameras: **Broadcast** is a zoomed shot from high on the near sideline, panning with the ball. **End zone** is
   behind the offense. **Sky** looks down from above. **Player** is the normal follow camera. The view cuts into a
   replay and on every camera change, then tracks smoothly.
