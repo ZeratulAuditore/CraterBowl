@@ -26,8 +26,11 @@ On failure `_drop_pending` erases the pending match and calls `Matchmaker.requeu
   `CASUAL_WAIT` matches on the same tick (the timeout check runs before `tick` for that reason). We
   chose this over "back of the queue" because none of them did anything wrong. Nothing is sent to
   them: their clients never left "searching", so a re-queue is invisible except that a match now forms.
-- **The failed host is not re-queued.** It is either gone or broken. If it is still connected and its
-  player still wants a match, its client queues again.
+- **A connected host whose order expires receives `match/cancel` (#308).** This applies whether the
+  frame tick observes the deadline first or the late invite code arrives first. Later replies are
+  ignored. The cancelling server keeps the other players' wait times. The host closes its game
+  connection, uses its existing matchmaker connection to enqueue solo, and starts a fresh wait.
+  Reliable ordering on channel 0 keeps the reply from the old order ahead of the new enqueue.
 - **Parties shrink to who came back.** If the failed host was in a party, its friends return with
   `party_size` set to the members re-queued, and a lone survivor queues solo. Otherwise the party
   could never be complete again and would wait forever.
@@ -43,15 +46,14 @@ over a lossy link. It is shorter than ENet's own disconnect timeout (5–30 s), 
 disconnect path would otherwise have for a host that died silently. The joiners have already waited
 8–15 s for the match to form, so a longer deadline would double their wait for nothing.
 
-## Known gap
-
-There is no message telling a host its order was cancelled. A host that answers *after* the deadline
-is ignored and sits in an empty lobby (#308). Adding that message changes the wire format, so it
-needs a `Protocol.VERSION` bump. `netcode.md` still describes the old disconnect behavior until #310.
-
 ## Tests
 
 `tests/test_mm_pending_host.gd` drives the real `mm_server.gd` with the clock and socket stubbed:
 host disconnect, timeout and empty code each re-queue the others and form a new match with a
 different host; a host that answers in time is relayed unchanged; a joiner that left is not
-re-queued; a failed host's party friend re-queues as a solo.
+re-queued; a failed host's party friend re-queues as a solo. The test also covers cancellation
+at the deadline and verifies that a late code never reaches joiners.
+
+`tests/visual/matchmaker_host_timeout_test.gd` uses loopback ENet and advances the server clock
+when the real host replies. It checks the host re-enqueues without its old party, releases its
+game port and shows the training-ground search again.
