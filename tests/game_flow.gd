@@ -778,6 +778,36 @@ func _initialize() -> void:
 		[17904, func():
 			check(main.world.phase == main.World.Phase.DEAD, "defender took the fumble out of bounds")
 			check(main.match_overview()["my_lines"] == ["QB: 1 car 12yd 0TD"], "Your game credits the fumbled keeper once")],
+		# #375: window 18100–18142. The center and rusher release as the QB steps out.
+		[18100, func():
+			main.configure(5)
+			main.auto_replay = false
+			main.auto_next = false
+			main.ai.offense_enabled = false
+			main.ai.defense_enabled = false
+			main.series.start(0, 40.0)
+			main.set_controlled(main.my_id)],
+		[18102, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE, "Space starts the blocking play")],
+		[18138, func():
+			var w = main.world
+			var x: float = w.field.width * 0.5
+			var blocker = w.find_role(0, main.Athlete.Role.C)
+			blocker.position = Vector2(x, 39.6)
+			blocker.facing = Vector2.DOWN
+			w.find_role(1, main.Athlete.Role.DL).position = Vector2(x, 40.5)],
+		[18140, func():
+			var w = main.world
+			var blocker = w.find_role(0, main.Athlete.Role.C)
+			var defender = w.find_role(1, main.Athlete.Role.DL)
+			check(blocker.engaged_with == defender.id and defender.engaged_with == blocker.id, "center and rusher are engaged")
+			var qb = w.carrier()
+			check(qb != null, "QB holds the snap")
+			if qb != null:
+				qb.position.x = -0.5],
+		[18142, func():
+			var w = main.world
+			check(w.phase == main.World.Phase.DEAD and main.last_whistle == "OUT OF BOUNDS", "QB stepping out ends the play")
+			check(w.athletes.all(func(a): return a.engaged_with == -1), "all blocks end at the whistle")],
 	]
 	for f in range(13431, 13470):   # the LB keeps walking into the QB (bodies collide, QB gives ground)
 		steps.append([f, _fp_push])
