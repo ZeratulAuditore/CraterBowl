@@ -176,11 +176,12 @@ Whether CI should enforce the bump is #223; today it's a review rule.
 |---|---|
 | `t` | server tick (`main.gd:net_tick`) |
 | `a` | `PackedFloat32Array`, 7 per athlete: pos x/y, vel x/y, facing x/y, stamina |
-| `r` | `PackedInt32Array`, 3 per athlete: role, flags (DIVE 1, GROUND 2, LOCK 4, BLOCK 8, SPIN 16), team |
+| `r` | `PackedInt32Array`, 3 per athlete: role, flags (DIVE 1, GROUND 2, LOCK 4, BLOCK 8, SPIN 16, SPIN_LEFT 32; bits 8+: jump time left in ms, #379), team |
 | `moves` | 2 per athlete: `move_charge`, `move_t` |
 | `b` | ball: state, holder, pos xyz, vel xyz |
 | `d`, `s`, `c`, `to` | downs (offense, down, los, first-down y), score, clock (half, remaining, play clock, final, quarter, quarter length in seconds), timeouts |
-| `ph`, `off`, `los`, `fpt`, `pt`, `ms`, `tp` | world phase, offense team, LOS, forward pass thrown, last possession, match state, try points |
+| `ph`, `off`, `los`, `pt`, `ms`, `tp` | world phase, offense team, LOS, last possession, match state, try points |
+| `pf` | Pass flags. Bit 0 tracks whether a forward pass has been thrown. Bit 1 tracks whether a runner has carried the ball across the LOS this down (#312). |
 | `pl`, `rt`, `dc`, `rf`, `hc`, `cs` | play name, route index per athlete (-1 none), defensive call, run flipped, handoff cooldown, Chaosball streak/hold |
 | `ack` | athlete id → last input `seq` the server consumed (`NetSession.acks()`) |
 
@@ -246,8 +247,8 @@ messages are reliable on channel 0.
 | `enq` | C→MM | `mode` (casual/competitive), `size`, `rating`, `name`, `party`, `party_size`, `game`, `seat`, `v` (protocol version, #165) → `mm.enqueue`, or `refused` on a version mismatch |
 | `refused` | MM→C | `why`, `v`: the client's version doesn't match (#165); the client hangs up and shows `why` on the menu |
 | `queued` | MM→C | `ok`, `n` (queue length) |
-| `match` | MM→C | `role:"host"` + `mode`, `size`, `expected`, `seats` (seat token → team), `teams` (name → team, legacy), `game`; or `role:"join"` + `code` |
-| `hosting` | C→MM | `code` from the elected host → MM sends `match/join` to the others |
+| `match` | MM→C | `role:"host"` + `mode`, `size`, `expected`, `seats` (seat token → team), `teams` (name → team, legacy), `game`; `role:"join"` + `code`; or `role:"cancel"` to an elected host whose order expired (#308) |
+| `hosting` | C→MM | `code` from the elected host → MM sends `match/join` to the others when the code arrives before the order deadline |
 | `list` / `lobbies` | C↔MM | server browser: `registry.listing()` + `queued` count |
 | `register` / `registered`, `unregister` | C↔MM | public lobby advertising |
 
