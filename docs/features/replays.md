@@ -48,6 +48,7 @@ post-game overview or the command line. Online skip votes, a free camera and cli
 
 ### Saved replays and the viewer
 - At FINAL the match host (or offline player) saves `user://replays/<timestamp>.replay` and prints `REPLAY saved: <path>`.
+  The host records the ongoing match even while watching or pausing an instant replay.
   `--replay-dir=DIR` overrides the folder.
 - Open one from **Main menu → Replays** (newest first; test files skipped), the **Watch replay** button in the
   post-game overview, or `-- --replay=FILE`.
@@ -75,6 +76,7 @@ post-game overview or the command line. Online skip votes, a free camera and cli
 
 ## Design decisions
 - Playback is view-only: views read interpolated replay frames, and the sim is never rewound, so replay can't desync a match.
+  Capturing on the authoritative tick keeps the saved match continuous as the host's view shows an earlier play.
 - Plays are classified by the recorder from sim events, so the sim needs no replay-specific code and saved files carry their highlights.
 - The push and catch bits are view rules evaluated on the sim (`player.gd` `replay_bits`). Push: engaged and slower than
   `PUSH_MAX_SPEED`, by the athlete's sim speed, so the replay's playback rate (half speed, slow-mo) can't turn it on or off.

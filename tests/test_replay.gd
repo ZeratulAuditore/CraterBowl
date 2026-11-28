@@ -260,3 +260,27 @@ func test_frame_step_progress_and_old_files() -> void:
 	r.plays = [{"start": 0, "end": 10, "label": "Play 1 - tackle"}]
 	assert_eq(r.highlights(), [])
 	assert_eq(r.next_highlight(), -1)
+
+func test_recording_a_later_play_preserves_the_paused_clip() -> void:
+	var s := _rec()
+	var w: World = s[0]
+	var r: Replay = s[2]
+	w.snap()
+	_play(w, r, 24)
+	w.event.emit("incomplete", {})
+	assert_true(r.clip_play(0, 0.5), "first play is available for instant replay")
+	r.paused = true
+	var clip_frame := r.time
+	var clip_end := r.stop_at
+	var next_start := r.frames.size()
+
+	w.setup_formation(25.0)
+	w.snap()
+	_play(w, r, 26)
+	w.event.emit("incomplete", {})
+	assert_eq(r.frames.size(), next_start + 13, "next play records at 30 Hz")
+	assert_eq(r.plays[1]["start"], next_start, "second play starts at its own first frame")
+	assert_eq(r.plays[1]["end"], next_start + 13, "second play closes after its own frames")
+	r.advance(DT)
+	assert_eq(r.time, clip_frame, "earlier instant replay stays paused")
+	assert_eq(r.stop_at, clip_end, "the earlier clip keeps its original end")
