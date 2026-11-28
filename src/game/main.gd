@@ -1613,7 +1613,7 @@ func _physics_process(delta: float) -> void:
 		_render_replay()
 		if replay_active and is_client() and not replay_viewer:
 			_apply_interpolation()
-			replay.capture(world)
+			_record_replay()
 		return
 	if is_client():
 		# Predict own athlete now; server stays authoritative and reconciles via acks.
@@ -1625,10 +1625,14 @@ func _physics_process(delta: float) -> void:
 			if world.ball.is_held_by(my_id):
 				world.ball.position = Vector3(me.position.x, me.position.y, T.BALL_CARRY_HEIGHT)
 		_apply_interpolation()
-		replay.capture(world)
+		_record_replay()
 	else:
 		_step_authoritative(delta, my_input)
 	_render()
+
+## One replay tick, with the view's push / catch bits on frame ticks (#374).
+func _record_replay() -> void:
+	replay.capture(world, PlayerNode.replay_bits(world) if replay.frame_due() else PackedByteArray())
 
 func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 	whistle_t = whistle_t + delta if world.phase == World.Phase.DEAD else 0.0
@@ -1680,7 +1684,7 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 				inp[World.HUMAN] = true   # the host decides who is human, never the wire
 				inputs[aid] = inp
 	world.step(inputs, delta)
-	replay.capture(world)
+	_record_replay()
 	if is_server():
 		net_tick += 1
 		if net_tick % SNAPSHOT_EVERY == 0:

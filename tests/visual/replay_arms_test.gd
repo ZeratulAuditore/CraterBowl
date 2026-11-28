@@ -66,7 +66,14 @@ func _replay_part(world, follow: int) -> void:
 	var view = game.views[follow]
 	var moving := 0    # view-frames checked: a replay view running with no recorded dive or fall
 	var bad := []      # "id:clip" of moving views in a clip that isn't running
-	var max_catch := 0.0
+	var max_catch := 0.0   # catch pose on a view whose recording never reaches for the ball in this play (#374)
+	var reached := {}
+	var clip: Dictionary = game.replay.plays[game.replay.current_play()]
+	for fi in range(clip["start"], clip["end"]):
+		var fr: PackedFloat32Array = game.replay.frames[fi]
+		for id in game.replay.athlete_count():
+			if int(fr[game.Replay.HEADER + id * game.Replay.PER_ATHLETE + 2]) & game.Replay.F_CATCH:
+				reached[id] = true
 	var flourish := 0.0
 	var shot := false
 	while game.replay_active:
@@ -74,16 +81,17 @@ func _replay_part(world, follow: int) -> void:
 		cam.look_at(view.global_position + Vector3.UP)
 		cam.make_current()
 		await process_frame
-		var rec: Array = game.replay.sample().get("flags", [])   # recorded dive / fall flags
+		var rec: Array = game.replay.sample().get("flags", [])   # recorded flags (replay.gd F_*)
 		for v in game.views:
-			max_catch = maxf(max_catch, v.pose.catch_weight)
-			if rec.size() <= v.athlete.id or rec[v.athlete.id] != 0 or Vector2(v._vel.x, v._vel.z).length() < 3.0:
+			if not reached.has(v.athlete.id):
+				max_catch = maxf(max_catch, v.pose.catch_weight)
+			if rec.size() <= v.athlete.id or rec[v.athlete.id] & 3 != 0 or Vector2(v._vel.x, v._vel.z).length() < 3.0:
 				continue
 			moving += 1
 			if v._cur not in LOCOMOTION and bad.size() < 8:
 				bad.append("%d:%s" % [v.athlete.id, v._cur])
 		flourish = maxf(flourish, view.body.rotation.length() + view.body.position.length())
-		if not shot and rec.size() > follow and rec[follow] == 0 and Vector2(view._vel.x, view._vel.z).length() > 3.5:   # half-speed replay
+		if not shot and rec.size() > follow and rec[follow] & 3 == 0 and Vector2(view._vel.x, view._vel.z).length() > 3.5:   # half-speed replay
 			shot = true
 			await capture("replay-arms-running")
 	check(moving > 200, "replay views run with no recorded dive or fall (%d view-frames)" % moving)
