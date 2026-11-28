@@ -32,7 +32,8 @@ func _run() -> void:
 	game.aim_point = receiver.position
 	_key(game, KEY_J)
 	check(world.forward_pass_thrown, "J releases a live pass")
-	world.ball.velocity = Vector3.ZERO
+	# Freeze the scene at a real descending pass, within the catch-stance lead window.
+	world.ball.velocity = Vector3(0.0, 12.0, -3.0)
 	world.ball.position = Vector3(10.0, 36.65, 1.0)
 	game.set_controlled(receiver.id)
 	game._render()
