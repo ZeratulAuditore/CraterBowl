@@ -404,6 +404,30 @@ func test_ball_wide_to_one_side_is_caught_one_handed() -> void:
 # --- helpers ------------------------------------------------------------------
 
 ## Head facing (Head bone +Z) as (yaw, pitch) degrees in the chest's frame.
+## Block push: the Push clip's arms and spine lean over the leg clip; legs and hips keep running.
+func test_block_push_layers_the_push_upper_body_over_the_run() -> void:
+	var v = _view(Athlete.Role.OL)
+	var sk := _skel(v)
+	var push: Animation = v.anim.get_animation("Push")
+	assert_true(v.pose.push_clip == push, "the view hands the pose its Push clip")
+	_pose(sk, v.anim.get_animation("Jog_Fwd"), 0.3)
+	var legs := []
+	for b in ["pelvis", "thigh_l", "calf_l", "thigh_r", "calf_r"]:
+		legs.append(sk.get_bone_pose_rotation(sk.find_bone(b)))
+	v.pose.push_weight = 1.0
+	v.pose.push_time = 0.8
+	v.pose.apply(sk)
+	for b in ["spine_03", "upperarm_r", "lowerarm_r", "upperarm_l", "lowerarm_l"]:
+		var tr := push.find_track(NodePath("Armature/Skeleton3D:" + b), Animation.TYPE_ROTATION_3D)
+		var want: Quaternion = push.rotation_track_interpolate(tr, 0.8)
+		var got := sk.get_bone_pose_rotation(sk.find_bone(b)).angle_to(want)
+		assert_true(got < 0.01, "%s takes the Push clip: %.4f rad off" % [b, got])   # acos noise is ~0.002
+	var after := []
+	for b in ["pelvis", "thigh_l", "calf_l", "thigh_r", "calf_r"]:
+		after.append(sk.get_bone_pose_rotation(sk.find_bone(b)))
+	assert_eq(after, legs, "hips and legs stay on the run clip")
+	v.free()
+
 func _head_angles(sk: Skeleton3D) -> Vector2:
 	var chest := sk.get_bone_global_pose(sk.find_bone("spine_03")).basis
 	var f := chest.inverse() * sk.get_bone_global_pose(sk.find_bone("Head")).basis.z

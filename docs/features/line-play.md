@@ -17,10 +17,20 @@ holding right mouse (a "shield"). Rushers beat blocks by waiting out the hold or
 - Only the team in possession blocks, only during live play, and never the ball carrier.
 - A block forms when the blocker faces the defender (`ENGAGE_FACING_DOT` 0.3) within `ENGAGE_DIST` (1.0 yd), and the
   defender isn't grounded, spinning, already engaged or immune.
+- **Face to face (no blocks from behind).** A defender moving faster than 1 yd/s (`ENGAGE_FOE_MOVING`) is blocked
+  only if the blocker is ahead of his path: his velocity . the direction to the blocker >= `ENGAGE_FOE_HEADING_DOT`
+  (0.2, about 78 deg either side). A standing defender can be blocked from any side. It used his velocity, not his
+  `facing`: facing defaults to (0, 1) and a defender who hasn't moved yet faced away from the line. Before this,
+  a blocker chasing a defender or running beside him the same way locked on, and the pair slid downfield together
+  with the block clip's arms out. In a 108 000-tick all-AI match (63 vs 57 plays): blocks 154 to 135, same-direction
+  pairs 12 to 1, from behind 5 to 0; sacks 25 to 29, yards/play -0.69 to -2.01 (single sample, noisy). At 0.0 (beside
+  allowed): same-direction pairs 14, yards/play -0.08. The owner play-tested 0.2 and kept it (2026-11-27). `tests/test_blocking.gd`
+  `test_no_block_from_behind_or_running_alongside`.
 - While engaged the defender's movement each step is 70% the blocker's and 30% his own (`BLOCK_DRIVE`).
 - The block ends after `BLOCK_HOLD` (1.5 s), when the blocker can't act or gets the ball, or when either player
   dashes or spins. The defender is then immune for `BLOCK_IMMUNITY` (0.75 s) and the blocker can't re-engage for
   `BLOCKER_BEATEN` (1.5 s).
+- All active blocks end when the ball goes dead. Both players leave the push animation during the dead-ball interval.
 - Who may block: C and OL any time; skill players only downfield (after a catch or once the carrier is past the LOS);
   after a takeaway anyone on the returning team. A human holding the shield can block from any position.
 
@@ -59,6 +69,8 @@ holding right mouse (a "shield"). Rushers beat blocks by waiting out the hold or
 - Sim circles plus engagement pairs over Godot physics (non-deterministic) or a rock-paper-scissors minigame
   (that is #15).
 - A timed shed plus immunity makes a block buy a fixed, readable amount of time.
+- The world clears engagement pairs as it enters DEAD, so every play-ending path releases them before
+  the ruling reaches the view. This cleanup does not award a shed.
 - The beaten-blocker cooldown is longer than the defender's immunity because a lone C could re-block one LB forever.
 - Receivers don't auto-block during a pass play, so they run routes instead of locking onto the nearest defender.
 - Bot linemen hold the zone edge in `AI.think` after every other decision (`_respect_blocking_zone`) rather than inside

@@ -4,7 +4,7 @@
 |---|---|---|
 | WASD | Move | Move (relative to the camera; for the passer, relative to the aim) |
 | Shift | Sprint | Sprint |
-| Space | Snap (offense). Defense: **double-tap** to break stance (LB, CB, S). The offense can't move before the snap. | |
+| Space | Snap (offense). Defense: **double-tap** to break stance (LB, CB, S). The offense can't move before the snap. | **Jump** (stamina; more when chained). Returner while a kick is in the air: fair catch |
 | **Q** | Open / close the play picker | **Spin left** |
 | **E** | | **Spin right** |
 | **F** | Cycle your route | **Dive**: tackle attempt on D; with the ball, dive for yards, down where you land (score if you cross the goal line) |
@@ -84,7 +84,7 @@ that moment. Keyboard rebinds don't move pad buttons, and the pad itself isn't r
 |---|---|---|
 | Left stick | WASD | Move (digital, past a 0.4 deadzone) |
 | Right stick | mouse look | QB POV aim while you're the passer (first connected pad). Nothing otherwise (#33) |
-| A | Space | Snap (offense). Defense: double-tap to break stance. Fair catch while a kick is in the air. Coin toss: skip once the result shows. Replay: pause |
+| A | Space | Snap (offense). Defense: double-tap to break stance. Live: jump. Fair catch while a kick is in the air. Coin toss: skip once the result shows. Replay: pause |
 | B | F | Live: dive / tackle. Before the snap: cycle your route |
 | X | Q | Live: spin left. Before the snap: open / close the play picker |
 | Y | E | Spin right |
