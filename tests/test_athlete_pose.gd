@@ -257,6 +257,29 @@ func test_reach_closes_both_hands_on_the_ball() -> void:
 	assert_true(rs.dot(ls) < 0.0, "hands on opposite sides of the ball")
 	v.free()
 
+func test_diving_reach_keeps_the_slide_torso_and_legs() -> void:
+	var v = _view(Athlete.Role.WR)
+	var sk := _skel(v)
+	_pose(sk, v.anim.get_animation("u2/Slide_Start"), 0.26)
+	var clip_rotations := {}
+	for bone in ["spine_02", "spine_03", "thigh_r", "thigh_l"]:
+		clip_rotations[bone] = sk.get_bone_pose_rotation(sk.find_bone(bone))
+	var chest := Pose._upright(sk.get_bone_global_pose(sk.find_bone("spine_03")))
+	var ball := chest * Vector3(-0.28, 0.15, 0.45)
+	var original_distance := _bone_pos(sk, "hand_r").distance_to(ball)
+	v.pose.catch_twist = false
+	v.pose.catch_target = ball
+	v.pose.catch_reach = 1.0
+	v.pose.catch_weight = 1.0
+	v.pose.apply(sk)
+	sk.force_update_all_bone_transforms()
+
+	assert_true(_bone_pos(sk, "hand_r").distance_to(ball) < original_distance - 0.1, "the near hand reaches for the pass")
+	for bone in clip_rotations:
+		var rotation := sk.get_bone_pose_rotation(sk.find_bone(bone))
+		assert_true(rotation.is_equal_approx(clip_rotations[bone]), bone + " follows the slide")
+	v.free()
+
 func test_reach_never_stretches_the_arm() -> void:
 	var v = _view(Athlete.Role.WR)
 	var sk := _skel(v)
@@ -381,6 +404,30 @@ func test_ball_wide_to_one_side_is_caught_one_handed() -> void:
 # --- helpers ------------------------------------------------------------------
 
 ## Head facing (Head bone +Z) as (yaw, pitch) degrees in the chest's frame.
+## Block push: the Push clip's arms and spine lean over the leg clip; legs and hips keep running.
+func test_block_push_layers_the_push_upper_body_over_the_run() -> void:
+	var v = _view(Athlete.Role.OL)
+	var sk := _skel(v)
+	var push: Animation = v.anim.get_animation("Push")
+	assert_true(v.pose.push_clip == push, "the view hands the pose its Push clip")
+	_pose(sk, v.anim.get_animation("Jog_Fwd"), 0.3)
+	var legs := []
+	for b in ["pelvis", "thigh_l", "calf_l", "thigh_r", "calf_r"]:
+		legs.append(sk.get_bone_pose_rotation(sk.find_bone(b)))
+	v.pose.push_weight = 1.0
+	v.pose.push_time = 0.8
+	v.pose.apply(sk)
+	for b in ["spine_03", "upperarm_r", "lowerarm_r", "upperarm_l", "lowerarm_l"]:
+		var tr := push.find_track(NodePath("Armature/Skeleton3D:" + b), Animation.TYPE_ROTATION_3D)
+		var want: Quaternion = push.rotation_track_interpolate(tr, 0.8)
+		var got := sk.get_bone_pose_rotation(sk.find_bone(b)).angle_to(want)
+		assert_true(got < 0.01, "%s takes the Push clip: %.4f rad off" % [b, got])   # acos noise is ~0.002
+	var after := []
+	for b in ["pelvis", "thigh_l", "calf_l", "thigh_r", "calf_r"]:
+		after.append(sk.get_bone_pose_rotation(sk.find_bone(b)))
+	assert_eq(after, legs, "hips and legs stay on the run clip")
+	v.free()
+
 func _head_angles(sk: Skeleton3D) -> Vector2:
 	var chest := sk.get_bone_global_pose(sk.find_bone("spine_03")).basis
 	var f := chest.inverse() * sk.get_bone_global_pose(sk.find_bone("Head")).basis.z
