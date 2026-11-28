@@ -286,7 +286,8 @@ func _physics_process(_dt: float) -> bool:
 		var mine: Array = main.match_overview()["my_lines"]
 		check(got_summary and shared_td_line and not mine.any(func(l): return str(l).contains("1TD")),
 			"same-named client's Your game leaves out the host Ann's touchdown line (%s)" % str(mine))
-		check(mine.filter(func(l): return str(l).contains(" car ")) == ["QB: 1 car 7yd 0TD"],
+		# The earlier grounding fixture also records the local QB’s incomplete pass.
+		check(mine.filter(func(l): return str(l).contains(" car ")) == ["QB: 0/1 0yd 0TD 0INT | 1 car 7yd 0TD"],
 			"QB's Your game shows only the local player's fumbled keeper (%s)" % str(mine))
 		print("NET FLOW " + ("PASS" if ok else "FAIL"))
 		quit(0 if ok else 1)
