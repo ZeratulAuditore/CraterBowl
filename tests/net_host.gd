@@ -9,6 +9,8 @@ var presnap_time := 0.0
 var prepared_handoff := false
 var set_quarters := false
 var reported_ids := false
+var replay_start_tick := -1
+var replay_start_frame := 0
 
 func _initialize() -> void:
 	main = load("res://scenes/main.tscn").instantiate()
@@ -31,6 +33,16 @@ func _physics_process(dt: float) -> bool:
 		saw_live = true
 		if not threw_opening_pass and main.world.ball.is_held_by(main.my_id):
 			_throw_opening_pass()
+	if saw_live and main.world.phase == main.World.Phase.DEAD and replay_start_tick < 0:
+		_key(KEY_V)
+		_key(KEY_SPACE)
+		assert(main.replay_active and main.replay.paused, "host paused the instant replay")
+		replay_start_tick = main.net_tick
+		replay_start_frame = main.replay.frames.size()
+	if replay_start_tick >= 0 and main.net_tick == replay_start_tick + 12:
+		assert(main.replay.frames.size() - replay_start_frame == 12 / main.Replay.FRAME_EVERY,
+			"host recorded all six frames while the real client was connected")
+		_key(KEY_V)
 	if saw_live and main.world.phase == main.World.Phase.PRESNAP:
 		presnap_time += dt
 		if presnap_time >= 2.0:
