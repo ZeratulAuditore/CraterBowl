@@ -15,6 +15,12 @@ defenders. Line play is in [line-play.md](line-play.md); scoring, tries and turn
 - Offense buttons: Verticals, Slants, Mesh, Curls, Flood, Deep Shot, plus Inside Zone and Outside Sweep when the
   formation has an RB and the mode is classic (5v5 and 7v7). Also **Repeat last** (recall your team's previous call)
   and **Flip play** (swap the two WRs' routes; on a run, mirror the lane).
+- The offense's QB can choose **Balanced** or **Twins Right** before a Classic scrimmage snap in 3v3, 5v5 and
+  7v7. Twins Right puts both wideouts on the right and updates team route art while the called routes stay with
+  their players. Each down begins Balanced. The formation picker is hidden on kick plays and in Chaosball.
+- To audible, select another play before the snap. The highlighted card and the offense's route art
+  follow the new call. Teammates see the same assignments, and the call locks when the ball is
+  snapped (#346).
 - An eligible receiver (WR or RB, not QB) gets a route dropdown to override their own route on a pass play.
 - Each new formation pre-selects a default: Slants on 3 or fewer yards to go, Deep Shot on 15+ to go with 25+ yards to
   the goal, otherwise Mesh (`match.gd _setup_formation`).
@@ -50,12 +56,15 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
   so the longest throws zoom in furthest. It eases (`1 - exp(-8·dt)`) and returns to 65° on release
   (`main.gd aim_zoom_fov`, `AIM_ZOOM_FOV`).
 - A ground reticle and a 24-dot arc preview show where the ball will come down while you can throw.
+- Once a pass is in flight, eligible receivers and defenders see a ground marker at the predicted landing point
+  (#108). The thrower sees the pre-throw preview. A private-lobby host can toggle the in-flight pass marker.
 - **Other carriers** (an RB behind the line after a handoff) use the orbit camera: mouse X orbits, mouse Y sets the aim
   distance (2 to 65 yd). Left click / **J** throws on press at a fixed `PLAYER_PASS_POWER` (0.68, about 24 yd/s); the
   solver picks the flattest angle that crosses the aim point at `CATCH_HEIGHT` (1.1 yd). Hold **Ctrl** (gamepad RB) for
   a lob: a fixed `LOB_ANGLE` (65°) arc with the speed solved to land on the target.
-- Legal throw: you hold the ball, play is live, you aren't diving, grounded or mid dash/spin, you are at or behind the
-  LOS, and no forward pass has been thrown. Any carrier qualifies, so an RB behind the line after a handoff can throw.
+- In Classic, you can throw while you hold the ball in live play, at or behind the line of scrimmage, before the ball
+  has been carried across the line or a forward pass has been thrown. Diving, being grounded, jumping, or a dash or
+  spin in progress also prevents the throw. An RB can throw after a handoff while those conditions hold.
 - A ball that hits the ground is incomplete.
 
 ### Catching
@@ -70,7 +79,9 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
   the pass is batted incomplete. The offense spends the down at the original line of scrimmage.
 - Beyond that window, a lone defender intercepts only within `INT_RADIUS` (0.6 yd) at the ball's closest approach;
   otherwise it is a breakup.
-- A receiver (or defender) standing out of bounds can't complete the catch: incomplete.
+- Sideline catches use the receiver's ground position at contact (#338). The ball can be beyond the line
+  while an in-bounds receiver completes the catch. A receiver standing outside the boundary is incomplete.
+  A defender standing outside cannot complete an interception.
 - Control stays on your own athlete after a catch or handoff. Bots run with the ball when they have it.
 
 ### Run game
@@ -82,9 +93,16 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
 - Inside Zone hits an interior gap; Outside Sweep goes wide. Bots flip the sweep automatically.
 
 ## Design decisions
+- The formation picker changes receiver alignment independently of the play call (#345). Balanced reuses the
+  original home spots. Twins Right scales both receiver marks to field width and keeps their depth and role.
+  Online players see the host's alignment through the existing athlete positions.
+
+- **Crossing the line commits to the run (#312).** The same down-level flag lifts the blocking zone and closes the
+  first-person passing view and aim preview. Retreating behind the line keeps the play live as a run. Disabling the
+  throw at the input and sim gates gives the runner immediate feedback and avoids a separate penalty ruling.
 - The snap is a short visible flight, not a teleport, so its timing is readable.
-- Aim point plus solved arc over homing passes (no skill) or golf-style angle/power (too fiddly). The arc preview
-  makes it learnable.
+- Aim point plus solved arc over homing passes or golf-style angle/power. The aim arc previews the throw. The
+  in-flight marker calls the same ballistic time-to-height helper with the live ball's position and velocity.
 - Charged power was removed in the live-controls rework, then came back for the QB with Gridiron-style POV aiming:
   look sets direction and height, the hold sets distance. Non-QB carriers still throw on press at fixed power.
   POV throws add `THROW_INHERIT` (30%) of the QB's velocity (`world.gd throw_dir`); target-aimed player and bot

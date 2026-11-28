@@ -26,6 +26,8 @@ Bots fill every empty slot, so a 1v1 friend game or a two-player casual queue st
 - **Enter** toggles ready. The host can press **3/5/7** for team size, **M** for classic/Chaosball, and **H** for the quarter length. Every match plays four quarters (#130); defaults are 7v7 and 2.5-minute quarters. See [clock rules](rules.md#clock-srcsimclockgd) for the duration choices.
 - Any settings change un-readies everyone except the host.
 - Hosting from the menu with Chaosball selected opens the lobby in Chaosball 3v3, whatever size was picked (`--host --mode=chaosball` does the same). The host can still press **M** to switch back to classic (#74).
+- The host can press **I** to toggle the in-flight pass landing marker for the match. The lobby shows its
+  current value. The option defaults to on and follows the same ready rules as the other host settings (#108).
 - Starts automatically when **every player is ready and at least 2 are present**. A host alone can't start a private match.
 - **Seats are capped at the match size** (both teams' slots: 3v3 = 6, 5v5 = 10, 7v7 = 14 players, host included; #54). A joiner beyond that is turned away and their screen shows `COULDN'T JOIN THE MATCH` with the reason (`Lobby full: 3v3 seats 6 players`). Nobody waits in a lobby they can never play from. There are no spectators yet (#20).
 - **The host can't shrink the match below the players already present.** Pressing 3/5 or M (Chaosball is 3v3) with too many players is refused, and the host lobby shows why (`Can't switch to 3v3: 7 players here, 6 seats. Someone has to leave first.`). Nobody is kicked. Growing the match is always allowed.
@@ -49,6 +51,7 @@ Bots fill every empty slot, so a 1v1 friend game or a two-player casual queue st
 - Team split for every queue match: biggest units first, each onto the team with fewer players (tie: lower rating total).
 - Your queue rating is the one in your own `user://ranked.json` (see [progression.md](progression.md)).
 - While you wait you free-roam the training ground, with the title `SEARCHING FOR A CASUAL MATCH m:ss` ([training.md](training.md)).
+- If the elected host misses the invite-code deadline, the other players return to the queue with their wait time preserved. The timed-out host closes the empty lobby and resumes searching solo with the same queue, size and rules (#308).
 
 ### Parties
 - Online tab → Party: Solo or 2–7, plus a 5-char code (**New code** generates one). Every member picks the same size, rules and code, then queues.
@@ -79,6 +82,7 @@ Bots fill every empty slot, so a 1v1 friend game or a two-player casual queue st
 - **Refuse mismatched builds up front (#165)** instead of letting them connect and desync. One integer (`Protocol.VERSION`) decides compatibility, not the release number: two releases can be wire-compatible, and an exact integer check is cheap and obvious. The matchmaker refuses rather than queueing each version separately; serving two versions during a rollout matters only once there's a hosted server (#222, part of #166).
 - **Invite code = address.** No server is needed to resolve codes. The downside is that a code changes whenever the host's IP or port does.
 - **Queue matches start only with the full matched group** (`Lobby.expected`), so no one is seated by a bot because they joined late.
+- **The deadline ends the host order (#308).** The matchmaker re-queues the waiting players immediately. A recovered host searches again with its existing connection. Accepting a late invite code would keep the waiting players reserved longer or risk interrupting a new match. See [pending hosts](../design/matchmaking.md).
 - **No team or position changes online.** The old team/slot requests are rejected rather than kept as an online position-selection API ahead of #18.
 - Teams come from the party-aware `unit_teams`.
 - **Host loss is a client-side silence watchdog, not a shorter ENet timeout (#86).** The host streams 30 snapshots/s in a match, so 2 s of silence already means trouble. `NetSession.watch_host` warns at `STALL_AFTER` (2 s) and gives up at `DROP_AFTER` (4 s); any packet from the host resets it, so a lag spike shorter than 4 s shows the banner and then carries on. Rejected: lowering `ENetPacketPeer.set_timeout` on the server peer. ENet's drop is final (no warning, no recovery) and depends on retransmit backoff (it measured anywhere from 5.8 s to 9.7 s for the same kill), and the watchdog leaves a clean seam for #17: a "reconnecting…" grace window replaces the `DROP_AFTER` branch. The clock is wall time, but one frame counts at most `SILENCE_STEP_MAX` (0.25 s), so a hitch on the client's side (loading, a debugger) isn't blamed on the host. The cost: a client running below ~4 FPS detects more slowly (seen in the llvmpipe visual test). 4 s rather than 3 s because Wi-Fi roams and brief route flaps run 1-3 s; ENet keeps the link through those, so dropping a live match for one would be worse than waiting 1 s longer for a dead host.
