@@ -50,6 +50,7 @@ var defense_recall_seen := false
 var sent_timeout := false
 var got_timeout_event := false
 var timeout_confirmed := false
+var requested_slants := false
 var called_run := false
 var snapped_run := false
 var sent_handoff := false
@@ -248,6 +249,7 @@ func _physics_process(_dt: float) -> bool:
 		check(equipped_number == "88", "my equipped #88 round-tripped through the host (%s)" % equipped_number)
 		check(pick_rejected, "legacy slot request preserves the host assignment")
 		check(timeout_confirmed and got_timeout_event, "remote T decrements only its team's timeouts and broadcasts the event")
+		check(requested_slants and called_run, "remote QB audibles from Slants to Inside Zone in the play picker")
 		check(remote_handoff_confirmed, "client QB hands off through G and sees the host's RB possession")
 		check(remote_handoff_confirmed and main.controlled_id == aid, "online QB keeps the same athlete after the handoff")
 		check(got_awards and main.profile.xp == xp_before + 100 and main.profile.games == games_before + 1,
@@ -276,9 +278,11 @@ func _test_remote_handoff() -> void:
 		sent_timeout = true
 	if sent_timeout and main.series.clock.timeouts == [3, 2]:
 		timeout_confirmed = true
-	if timeout_confirmed and not called_run and w.phase == w.Phase.PRESNAP:
-		main.do_action({"a": "play", "p": "Inside Zone"})
-		called_run = true
+	if timeout_confirmed and w.phase == w.Phase.PRESNAP:
+		if not requested_slants:
+			requested_slants = _press_play_card("Slants")
+		elif not called_run and w.play_name == "Slants" and w.route_of.values().has("SLANT"):
+			called_run = _press_play_card("Inside Zone")
 	if not snapped_run and w.phase == w.Phase.PRESNAP and w.play_name == "Inside Zone":
 		_key(KEY_SPACE)
 		snapped_run = true
@@ -288,6 +292,15 @@ func _test_remote_handoff() -> void:
 	var back = w.find_role(1, main.Athlete.Role.RB)
 	remote_handoff_confirmed = remote_handoff_confirmed or (
 		sent_handoff and back != null and back.id == handoff_to and w.ball.is_held_by(back.id))
+
+func _press_play_card(name: String) -> bool:
+	var overlay = main.pres.overlay
+	if overlay.picker.visible:
+		for button in overlay.picker_grid.get_children():
+			if button.visible and button.text == name:
+				button.pressed.emit()
+				return true
+	return false
 
 ## #56: in the match, then the host dies -> back on the menu saying why.
 func _host_loss_step() -> bool:

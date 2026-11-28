@@ -476,51 +476,9 @@ func _initialize() -> void:
 			check(qb.move_t == 0.0 and qb.move_charge == c0, "R without a charge does not dash")],
 		[12680, func(): main.world.get_athlete(main.controlled_id).facing = Vector2(0, 1); _key(KEY_F); check(main.world.get_athlete(main.controlled_id).is_diving(), "F dives with the ball")],
 		[12720, func(): check(main.world.phase == main.World.Phase.DEAD and main.last_whistle == "TACKLE", "carrier dive: down where he lands (%s)" % main.last_whistle)],
-		# #139 radial taunt wheel through the real C key + mouse handlers, on a pre-snap QB in
-		# POV aim (the mode where mouse motion matters most). Window 12730-12800.
-		[12730, func(): main.configure(7); main.ai.defense_enabled = false; main.mouse_captured_override = true],
-		[12732, func():
-			var qb = main.world.get_athlete(main.controlled_id)
-			var w = main.taunt_wheel
-			check(main.pov_active() and qb.emote_cd == 0.0, "taunt wheel step: QB in POV aim, no taunt yet")
-			var ev := InputEventMouseButton.new()
-			ev.button_index = MOUSE_BUTTON_WHEEL_DOWN
-			ev.pressed = true
-			main._unhandled_input(ev)
-			check(not w.open and qb.emote_cd == 0.0, "mouse wheel no longer picks or performs taunts")
-			_mouse(Vector2(40, 0))
-			check(main.aim_yaw > 0.0, "mouse motion turns the aim while the wheel is closed")
-			main.reset_aim()
-			var before := [main.aim_yaw, main.aim_pitch, main.camera_orbit, main.aim_distance]
-			_key(KEY_C)
-			check(w.open and w.visible and w.ids.size() == 8, "holding C opens the wheel: a slice per taunt")
-			_mouse(Vector2(0, -80))
-			check(w.highlighted() == w.ids[0], "drag up highlights the top slice (%s)" % w.highlighted())
-			_mouse(Vector2(160, 80))
-			check(w.highlighted() == w.ids[2], "drag right highlights the right slice (%s)" % w.highlighted())
-			check([main.aim_yaw, main.aim_pitch, main.camera_orbit, main.aim_distance] == before, "camera and aim hold still while the wheel is open")
-			_key(KEY_C, false)
-			var v = main.views[main.controlled_id]
-			check(not w.open and qb.emote_cd > 0.0 and v.emote_id == w.ids[2] and v.emote_t > 0.0 and v.bubble.visible, "releasing C performs the highlighted taunt (%s)" % v.emote_id)
-			_mouse(Vector2(40, 0))
-			check(main.aim_yaw > 0.0, "the aim turns again once the wheel closes")
-			main.reset_aim()],
-		[12800, func():
-			var qb = main.world.get_athlete(main.controlled_id)
-			var w = main.taunt_wheel
-			var v = main.views[main.controlled_id]
-			check(qb.emote_cd == 0.0, "taunt cooldown over")
-			_key(KEY_C)
-			_mouse(Vector2(0, -60))
-			_mouse(Vector2(0, 60))
-			_key(KEY_C, false)
-			check(not w.open and qb.emote_cd == 0.0, "releasing C in the dead zone cancels")
-			_key(KEY_C)
-			_key(KEY_C, false)
-			check(qb.emote_cd > 0.0 and v.emote_id == w.ids[2] and v.emote_t > Emotes.DURATION - 0.05, "tapping C repeats the last taunt (%s)" % v.emote_id)
-			main.mouse_captured_override = null
-			main.ai.defense_enabled = true
-			main.pov_enabled = false],   # later steps aim at a field point
+		# #139 taunt wheel: moved to tests/flow/segments/taunt_wheel.gd. Restore the knobs it left
+		# for the steps after it (they aim at a field point, with the defense on).
+		[12800, func(): main.mouse_captured_override = null; main.ai.defense_enabled = true; main.pov_enabled = false],
 		# C04c (#89): Q1 runs out on a live play snapped with Space -> after the whistle the
 		# next play lines up in Q2 at the same spot with the end zones switched. Window 13000-13170.
 		[13000, func(): main.configure(7); main.auto_next = false; main.series.clock.quarter_length = 60.0; main.series.start(0, 40.0); main.set_controlled(main.my_id)],
@@ -773,6 +731,15 @@ func _initialize() -> void:
 			_key(KEY_ENTER)
 			var d = main.series.downs
 			check(d.offense_team == 0 and is_equal_approx(d.los, 40.0) and d.down == 2, "tip spends the down at the old spot without changing possession")],
+		# #346: window 17500–17502. The picker replaces the pre-snap call and locks on Space.
+		[17500, func():
+			main.configure(3)
+			main.auto_next = false
+			main.ai.defense_enabled = false
+			main.ai.offense_enabled = false
+			main.series.start(0, 25.0)
+			main.set_controlled(main.my_id)],
+		[17502, _check_audible],
 		# #323: window 17900–17904. A fumbled keeper still appears in the QB's match stats.
 		[17900, func():
 			main.configure(3)
@@ -818,6 +785,29 @@ func _initialize() -> void:
 	]
 	for f in range(13431, 13470):   # the LB keeps walking into the QB (bodies collide, QB gives ground)
 		steps.append([f, _fp_push])
+
+func _check_audible() -> void:
+	var overlay = main.pres.overlay
+	_key(KEY_Q)
+	overlay._refresh_picker(main, false)
+	check(not overlay.picker.visible, "Q closes the pre-snap play picker")
+	_key(KEY_Q)
+	overlay._refresh_picker(main, false)
+	check(overlay.picker.visible, "Q reopens the pre-snap play picker")
+	var slants: Button = overlay.picker_grid.get_children().filter(func(b): return b.text == "Slants")[0]
+	var flood: Button = overlay.picker_grid.get_children().filter(func(b): return b.text == "Flood")[0]
+	slants.pressed.emit()
+	flood.pressed.emit()
+	overlay._refresh_picker(main, false)
+	main._draw_routes()
+	check(main.world.play_name == "Flood" and flood.button_pressed and not slants.button_pressed, "the second picker call selects Flood")
+	check(main.route_mesh.get_surface_count() > 0, "the offense sees the audible's routes")
+	_key(KEY_SPACE)
+	slants.pressed.emit()
+	overlay._refresh_picker(main, false)
+	main._draw_routes()
+	check(main.world.phase == main.World.Phase.LIVE and main.world.play_name == "Flood", "a stale picker action cannot change a live call")
+	check(not overlay.picker.visible and main.route_mesh.get_surface_count() == 0, "Space hides the picker and route art")
 
 func _fumble_keeper() -> void:
 	_key(KEY_SPACE)
@@ -1153,6 +1143,7 @@ var _sorted := false
 func _physics_process(_dt: float) -> bool:
 	if not _sorted and not steps.is_empty():
 		steps.sort_custom(func(a, b): return a[0] < b[0])   # out-of-order steps once silently never ran
+		load("res://tests/flow/segments.gd").append(self, steps)   # tests/flow/segments/*.gd run after these
 		_sorted = true
 	if steps.is_empty():  # _initialize failed: never hang
 		print("GAME FLOW FAIL (setup error)")
