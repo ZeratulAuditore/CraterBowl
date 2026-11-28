@@ -1596,8 +1596,8 @@ func _physics_process(delta: float) -> void:
 		replay.advance(delta)
 		if replay.ended() and not replay_viewer and not replay.paused and not replay.next_in_reel():
 			stop_replay()
-		elif net != null and not is_client():
-			_step_authoritative(delta, my_input)   # host keeps the match running
+		elif is_server() and not replay_viewer:
+			_step_authoritative(delta, my_input)   # host keeps simulating and recording
 		_render_replay()
 		return
 	if is_client():
@@ -1610,9 +1610,9 @@ func _physics_process(delta: float) -> void:
 			if world.ball.is_held_by(my_id):
 				world.ball.position = Vector3(me.position.x, me.position.y, T.BALL_CARRY_HEIGHT)
 		_apply_interpolation()
+		replay.capture(world)
 	else:
 		_step_authoritative(delta, my_input)
-	replay.capture(world)
 	_render()
 
 func _step_authoritative(delta: float, my_input: Dictionary) -> void:
@@ -1665,6 +1665,7 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 				inp[World.HUMAN] = true   # the host decides who is human, never the wire
 				inputs[aid] = inp
 	world.step(inputs, delta)
+	replay.capture(world)
 	if is_server():
 		net_tick += 1
 		if net_tick % SNAPSHOT_EVERY == 0:

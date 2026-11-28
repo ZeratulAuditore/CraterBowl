@@ -18,6 +18,7 @@ var slant_x := 0.0
 var picked := false
 var xp0 := 0
 var frozen_y := 0.0
+var offline_replay_frames := 0
 var auto_replay_default := false
 var wr_id := -1
 var kick_events: Array = []
@@ -277,8 +278,14 @@ func _initialize() -> void:
 		[7100, func(): main.replay_dir = "user://test_flow_replays"; main.configure(7); main.ai.defense_enabled = false],
 		[7101, func(): _key(KEY_SPACE)],
 		[7200, func(): main.world.carrier().position = Vector2(26, 101.0)],
-		[7203, func(): check(main.world.phase == main.World.Phase.DEAD, "play over"); frozen_y = main.world.athletes[0].position.y; _key(KEY_V); check(main.replay_active, "V starts instant replay")],
+		[7203, func():
+			check(main.world.phase == main.World.Phase.DEAD, "play over")
+			frozen_y = main.world.athletes[0].position.y
+			offline_replay_frames = main.replay.frames.size()
+			_key(KEY_V)
+			check(main.replay_active, "V starts instant replay")],
 		[7210, func(): var p = main.replay.last_play(); var smp = main.replay.sample(); var rp = Vector3(smp["pos"][3].x, 0, -smp["pos"][3].y); check(main.views[3].target_position().distance_to(rp) < 0.01, "views show replay frames"); check(main.views[3].position.distance_to(rp) < 0.5, "drawn view within one interpolation step of the replay frame"); check(main.hud.text.find("REPLAY 0.5x") >= 0, "HUD shows replay"); check(absf(main.world.athletes[0].position.y - frozen_y) < 0.001 and main.world.phase == main.World.Phase.DEAD, "offline sim frozen during replay")],
+		[7211, func(): check(main.replay.frames.size() == offline_replay_frames, "offline instant replay pauses recording")],
 		[7500, func(): check(not main.replay_active, "replay ends -> back to live"); main.ai.defense_enabled = true],
 		[7501, func(): main.series.clock.quarter = 4; main.series.clock.remaining = 0.0; main.series.last_result = {"type": "incomplete"}; main.next_play()],
 		[7502, func(): check(main.saved_replay != "" and FileAccess.file_exists(main.saved_replay), "replay saved at final (%s)" % main.saved_replay)],
