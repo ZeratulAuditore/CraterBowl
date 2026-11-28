@@ -1612,7 +1612,7 @@ func _physics_process(delta: float) -> void:
 		_apply_interpolation()
 	else:
 		_step_authoritative(delta, my_input)
-	replay.capture(world)
+	replay.capture(world, PlayerNode.replay_bits(world) if replay.frame_due() else PackedByteArray())
 	_render()
 
 func _step_authoritative(delta: float, my_input: Dictionary) -> void:
