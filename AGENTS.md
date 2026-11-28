@@ -162,9 +162,12 @@ one step array and its var block), the "Code and tests" and "Open issues" tails 
 green can also break `main` together (#205 + #129). CI now runs on `main` after every merge, so
 that kind of break shows up right away.
 
-- **New behavior goes in a new file** that the switchboard calls, not as more lines in it. The
-  good precedents are `src/game/camera_zoom.gd` (pure math), `taunt_wheel.gd` and
-  `link_banner.gd`. Each takes the narrow state it needs and doesn't reach back into `main`.
+- **New behavior goes in a new file** that the switchboard calls, not as more lines in it. In the
+  main scene that means a component: extend `src/game/component.gd`, read state through `ctx`
+  (`src/game/game_context.gd`; add a getter there if you need more), override the hooks you
+  need (`on_render`, `on_frame`, `on_configure`, `on_world_event`, `on_match_event`) and register
+  it with one `add_component()` line in `main._ready`. Worked example:
+  `src/game/components/route_art.gd`. Pure math goes in a RefCounted like `camera_zoom.gd`.
   Don't copy `coin_toss.gd`'s `setup(main)` back-reference.
 - **File-size ratchet** (`scripts/size_check.sh`, run by `lint.sh`). A new `src/**/*.gd` over
   500 lines fails lint. Files already over that limit have a budget in `scripts/size_budget.txt`,

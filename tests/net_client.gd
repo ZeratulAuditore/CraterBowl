@@ -22,6 +22,7 @@ var replay_frame_count := 0
 var replay_input_seq := 0
 var got_snap_event := false
 var got_opening_tip := false
+var opening_dead_snapshots := 0
 var got_opening_interception := false
 var saw_live := false
 var opening_play_clock := -1.0
@@ -90,6 +91,8 @@ func _on_snap(s: Dictionary) -> void:
 		defense_call_seen = true
 	if main.series.clock.label() == "Q1 3:00" and main.series.clock.quarter_length == 180.0:
 		quarter_clock_seen = true
+	if got_opening_tip and bad_snap_sent_at < 0 and s["ph"] == main.World.Phase.DEAD:
+		opening_dead_snapshots += 1
 	if s["ph"] == 1:
 		saw_live = true
 	elif s["ph"] == 0:
@@ -233,6 +236,7 @@ func _physics_process(_dt: float) -> bool:
 		check(replay_start_frame >= 0 and f > replay_start_frame + 12, "instant replay exercised on the connected joiner")
 		check(saw_live and got_snap_event, "host auto-snap reached client (snapshot LIVE + reliable event)")
 		check(got_opening_tip and not got_opening_interception, "host's opening short pass reaches the client as a breakup")
+		check(opening_dead_snapshots >= 4, "snapshots continue through the host's instant replay (%d)" % opening_dead_snapshots)
 		check(opening_play_clock > 0.0 and opening_play_clock <= 4.0,
 			"lobby match opens with the host's short play clock (%.2f s)" % opening_play_clock)
 		check(next_play_clock >= 3.0 and next_play_clock <= 4.0,
