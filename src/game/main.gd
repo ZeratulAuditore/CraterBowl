@@ -1588,11 +1588,11 @@ func _physics_process(delta: float) -> void:
 		if not pov_active():
 			charging = false   # sacked / crossed the line: the wind-up is lost
 	var launch := get_node_or_null("/root/Launch")
-	var menu_open: bool = launch != null and launch.menu_open()
+	var local_input_blocked: bool = replay_active or (launch != null and launch.menu_open())
 	var my_input := {
-		"dir": Vector2.ZERO if menu_open else read_input(),
-		"sprint": not menu_open and (sprint_override if sprint_override != null else Input.is_key_pressed(KEY_SHIFT)),
-		"block": not menu_open and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT),
+		"dir": Vector2.ZERO if local_input_blocked else read_input(),
+		"sprint": not local_input_blocked and (sprint_override if sprint_override != null else Input.is_key_pressed(KEY_SHIFT)),
+		"block": not local_input_blocked and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT),
 		World.HUMAN: true,
 	}
 	if in_lobby():
