@@ -30,9 +30,10 @@ var _world = null
 # --- recording ---
 func attach(world) -> void:
 	_world = world
-	world.event.connect(_on_event)
+	world.event.connect(record_event)
 
-func _on_event(n: String, d: Dictionary) -> void:
+## Consume a local world event or a ruling relayed by the match host.
+func record_event(n: String, d: Dictionary) -> void:
 	if n == "snap":
 		plays.append({"start": frames.size(), "end": frames.size(), "label": "Play %d" % (plays.size() + 1),
 			"summary": "", "highlight": false, "yards": 0.0, "kind": "run", "tags": [], "context": context,

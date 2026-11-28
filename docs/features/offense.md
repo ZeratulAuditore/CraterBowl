@@ -15,6 +15,9 @@ defenders. Line play is in [line-play.md](line-play.md); scoring, tries and turn
 - Offense buttons: Verticals, Slants, Mesh, Curls, Flood, Deep Shot, plus Inside Zone and Outside Sweep when the
   formation has an RB and the mode is classic (5v5 and 7v7). Also **Repeat last** (recall your team's previous call)
   and **Flip play** (swap the two WRs' routes; on a run, mirror the lane).
+- To audible, select another play before the snap. The highlighted card and the offense's route art
+  follow the new call. Teammates see the same assignments, and the call locks when the ball is
+  snapped (#346).
 - An eligible receiver (WR or RB, not QB) gets a route dropdown to override their own route on a pass play.
 - Each new formation pre-selects a default: Slants on 3 or fewer yards to go, Deep Shot on 15+ to go with 25+ yards to
   the goal, otherwise Mesh (`match.gd _setup_formation`).
