@@ -72,6 +72,7 @@ func test_host_disconnect_requeues_the_others() -> void:
 	s.clock += 1.0
 	s._on_peer_left(1)
 	_assert_requeued_and_rematched(s, "host left")
+	assert_eq(s.orders("cancel"), [], "no cancellation sent to a disconnected peer")
 	s.free()
 
 func test_host_silent_past_deadline_requeues_the_others() -> void:
@@ -82,6 +83,18 @@ func test_host_silent_past_deadline_requeues_the_others() -> void:
 	assert_eq(s.orders("host").size(), 1, "no new match yet")
 	s.at(t0 + s.HOST_REPLY_TIMEOUT + 0.1)
 	_assert_requeued_and_rematched(s, "timeout")
+	assert_eq(s.orders("cancel"), [[1, {"k": "match", "role": "cancel"}]], "only the expired host is notified")
+	s._on_packet(1, var_to_bytes({"k": "hosting", "code": "ABCDE-12345"}))
+	assert_eq(s.orders("join"), [], "a late code is ignored")
+	assert_eq(s.orders("cancel").size(), 1, "the host is cancelled once")
+	s.free()
+
+func test_host_reply_at_deadline_before_timeout_tick_is_cancelled() -> void:
+	var s := _formed()
+	s.clock += s.HOST_REPLY_TIMEOUT
+	s._on_packet(1, var_to_bytes({"k": "hosting", "code": "ABCDE-12345"}))
+	assert_eq(s.orders("cancel"), [[1, {"k": "match", "role": "cancel"}]], "packet dispatch enforces the same deadline")
+	_assert_requeued_and_rematched(s, "late packet")
 	s.free()
 
 func test_empty_invite_code_requeues_the_others() -> void:
@@ -99,6 +112,7 @@ func test_host_replies_in_time_relays_code() -> void:
 	assert_eq(joins.map(func(j): return j[0]), [2, 3], "both joiners told")
 	assert_true(joins.all(func(j): return j[1]["code"] == "ABCDE-12345"), "with the host's code")
 	assert_true(s.pending.is_empty(), "relay done")
+	assert_eq(s.orders("cancel"), [], "an accepted host never gets cancelled")
 	s.at(s.clock + s.HOST_REPLY_TIMEOUT * 3)
 	s._on_peer_left(1)   # host leaving later (match over) re-queues nobody
 	s.at(s.clock + 0.1)

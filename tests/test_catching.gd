@@ -105,6 +105,48 @@ func test_same_sideline_pass_is_incomplete_with_feet_out_of_bounds() -> void:
 	assert_true(not events.has("catch") and w.ball.holder_id == -1, "no possession")
 	assert_eq(w.phase, World.Phase.DEAD)
 
+## Sample at a fixed horizontal distance after a real release, so a tick crossing
+## the five-yard boundary cannot move a case from one side to the other.
+func _short_pass_contact(distance: float, side: int, receiver_offset := 0.0, ruleset := "classic") -> World:
+	var w := _setup([[side, Athlete.Role.WR if side == 0 else Athlete.Role.CB, Vector2(12, 20)]])
+	w.set_ruleset(ruleset)
+	var qb := _qb(w)
+	var at := qb.position + Vector2(distance, 0.0)
+	w.athletes[2].position = at + Vector2(0.0, receiver_offset)
+	assert_true(w.throw(qb.id, at, 0.8), "pass released")
+	w.ball.position = Vector3(at.x, at.y - DT, T.CATCH_HEIGHT)
+	w.ball.velocity = Vector3(0.0, 1.0, 0.0)
+	w.step({}, DT)
+	return w
+
+func test_defender_bats_pass_at_five_yards() -> void:
+	var w := _short_pass_contact(5.0, 1)
+	assert_true(events.has("breakup") and events.has("incomplete"), "short defensive touch breaks up the pass")
+	assert_true(not events.has("interception"), "no takeaway")
+	assert_eq(w.phase, World.Phase.DEAD)
+	assert_eq(w.possession_team(), 0)
+
+func test_defender_can_tip_at_normal_reach() -> void:
+	var w := _short_pass_contact(4.0, 1, 1.0)
+	assert_true(events.has("breakup") and w.phase == World.Phase.DEAD, "short tip uses normal defender reach")
+
+func test_defender_can_intercept_just_beyond_five_yards() -> void:
+	var w := _short_pass_contact(5.01, 1)
+	assert_true(events.has("interception") and w.ball.is_held_by(w.athletes[2].id), "clean pick beyond the tip window")
+	assert_eq(w.possession_team(), 1)
+
+func test_short_pass_keeps_release_clearance_and_offensive_catches() -> void:
+	var close := _short_pass_contact(2.49, 1)
+	assert_eq(close.ball.state, Ball.State.IN_FLIGHT, "defender cannot tip the pass within release clearance")
+	var short_pass := _short_pass_contact(4.0, 0)
+	assert_true(events.has("catch") and short_pass.ball.is_held_by(short_pass.athletes[2].id), "receiver can catch a short pass")
+
+func test_chaos_short_defensive_catch_still_swings_possession() -> void:
+	var w := _short_pass_contact(4.0, 1, 0.0, "chaosball")
+	assert_true(events.has("interception") and w.ball.is_held_by(w.athletes[2].id), "Chaosball has no short-pass tip rule")
+	assert_eq(w.phase, World.Phase.LIVE)
+	assert_eq(w.possession_team(), 1)
+
 func test_out_of_bounds_catch_incomplete() -> void:
 	var w := _setup([[0, Athlete.Role.WR, Vector2(-1.0, 40)]])
 	w.throw(_qb(w).id, Vector2(-1.0, 40), 0.9)

@@ -49,6 +49,10 @@ func _drop_pending(host: int, why: String) -> void:
 	mm.requeue(others)
 	print("MM host %d failed (%s): %d players back in the queue" % [host, why, others.size()])
 
+func _expire_host(host: int) -> void:
+	_drop_pending(host, "no invite code in %.0f s" % HOST_REPLY_TIMEOUT)
+	_send(host, {"k": "match", "role": "cancel"})
+
 func _now() -> float:
 	return Time.get_ticks_msec() / 1000.0
 
@@ -82,15 +86,20 @@ func _on_packet(from: int, bytes: PackedByteArray) -> void:
 			_send(from, {"k": "queued", "ok": ok, "n": mm.queue.size()})
 			print("MM enqueue %d -> %s (queue %d)" % [from, ok, mm.queue.size()])
 		"hosting":
-			if pending.has(from):
-				var code := str(msg.get("code", ""))
-				if code == "":   # nothing to join (#303)
-					_drop_pending(from, "empty invite code")
-					return
-				for o in pending[from]["others"]:
-					_send(o["id"], {"k": "match", "role": "join", "code": code})
-				print("MM host %d ready with %s -> %d joiners" % [from, code, pending[from]["others"].size()])
-				pending.erase(from)
+			if not pending.has(from):
+				return
+			# ENet can deliver a packet before this frame's deadline check in _process.
+			if _now() >= pending[from]["deadline"]:
+				_expire_host(from)
+				return
+			var code := str(msg.get("code", ""))
+			if code == "":   # nothing to join (#303)
+				_drop_pending(from, "empty invite code")
+				return
+			for o in pending[from]["others"]:
+				_send(o["id"], {"k": "match", "role": "join", "code": code})
+			print("MM host %d ready with %s -> %d joiners" % [from, code, pending[from]["others"].size()])
+			pending.erase(from)
 
 func _process(_dt: float) -> void:
 	if api == null:
@@ -98,7 +107,7 @@ func _process(_dt: float) -> void:
 	var now := _now()
 	for host in pending.keys():   # before tick, so the re-queued players can match this frame
 		if now >= pending[host]["deadline"]:
-			_drop_pending(host, "no invite code in %.0f s" % HOST_REPLY_TIMEOUT)
+			_expire_host(host)
 	for m in mm.tick(now):
 		var others: Array = m["entries"].filter(func(e): return e["id"] != m["host"])
 		pending[m["host"]] = {"others": others, "match": m, "deadline": now + HOST_REPLY_TIMEOUT}
