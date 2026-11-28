@@ -15,6 +15,9 @@ defenders. Line play is in [line-play.md](line-play.md); scoring, tries and turn
 - Offense buttons: Verticals, Slants, Mesh, Curls, Flood, Deep Shot, plus Inside Zone and Outside Sweep when the
   formation has an RB and the mode is classic (5v5 and 7v7). Also **Repeat last** (recall your team's previous call)
   and **Flip play** (swap the two WRs' routes; on a run, mirror the lane).
+- To audible, select another play before the snap. The highlighted card and the offense's route art
+  follow the new call. Teammates see the same assignments, and the call locks when the ball is
+  snapped (#346).
 - An eligible receiver (WR or RB, not QB) gets a route dropdown to override their own route on a pass play.
 - Each new formation pre-selects a default: Slants on 3 or fewer yards to go, Deep Shot on 15+ to go with 25+ yards to
   the goal, otherwise Mesh (`match.gd _setup_formation`).
@@ -55,8 +58,8 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
   solver picks the flattest angle that crosses the aim point at `CATCH_HEIGHT` (1.1 yd). Hold **Ctrl** (gamepad RB) for
   a lob: a fixed `LOB_ANGLE` (65°) arc with the speed solved to land on the target.
 - In Classic, you can throw while you hold the ball in live play, at or behind the line of scrimmage, before the ball
-  has been carried across the line or a forward pass has been thrown. Diving, being grounded, or a dash or spin in
-  progress also prevents the throw. An RB can throw after a handoff while those conditions hold.
+  has been carried across the line or a forward pass has been thrown. Diving, being grounded, jumping, or a dash or
+  spin in progress also prevents the throw. An RB can throw after a handoff while those conditions hold.
 - A ball that hits the ground is incomplete.
 
 ### Catching
@@ -65,7 +68,10 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
 - The ball can't be caught or touched for its first `MIN_PASS_TRAVEL` (2.5 yd).
 - Defenders reach `CONTEST_MARGIN` (0.35 yd) further. If the nearest defender is within that margin of the nearest
   receiver's distance, it is a breakup.
-- A lone defender intercepts only within `INT_RADIUS` (0.6 yd) at the ball's closest approach; otherwise it is a breakup.
+- In Classic, when a defender wins the contact within `BATTED_PASS_MAX_TRAVEL` (5 yd horizontally from release),
+  the pass is batted incomplete. The offense spends the down at the original line of scrimmage.
+- Beyond that window, a lone defender intercepts only within `INT_RADIUS` (0.6 yd) at the ball's closest approach;
+  otherwise it is a breakup.
 - A receiver (or defender) standing out of bounds can't complete the catch: incomplete.
 - Control stays on your own athlete after a catch or handoff. Bots run with the ball when they have it.
 
@@ -94,8 +100,8 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
   hold would have hidden the near field on short, quick throws.
 - Reach-volume catching over physics collision: deterministic and server friendly. A catch button is #9.
 - The contest margin makes body position matter: a defender doesn't need to be closer, only close enough.
-- Pass not catchable for 2.5 yd and the 0.6 yd interception radius both came from bot sims where rushers batted
-  every throw at release.
+- The first 2.5 yd give the passer room to release in traffic. From there through 5 yd a reachable defensive
+  touch can end the down as a breakup (#337). A clean defensive catch farther downfield can still be picked off.
 - Linear receiver lead threw curls and outs to empty grass; bots lead along the route path.
 - Route art is shown to your own team only, so the QB can read a human receiver's route override without voice chat.
 - Proximity handoff key over an automatic exchange (takes the timing choice away from a human QB) or a timing meter
@@ -114,6 +120,6 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
   `tests/test_turnovers.gd` (interceptions), `tests/test_bots.gd`, `tests/game_flow.gd` (real J/Q/G/Space keys).
 
 ## Open issues
-- #9 C07 Catch rules: toe-taps, batted balls, catch button, dive/jump catches
+- #9 C07 Catch rules: sideline catches (#338), reach input (#247), contested catches (#339) and dive/jump catches (#340)
 - #10 C09 Offense depth: formations, audibles, hot routes, pre-snap motion
 - #11 C10 Throw readability: landing marker, aim-zoom (aim-zoom shipped as #109)

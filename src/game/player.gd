@@ -17,6 +17,7 @@ const Uniforms := preload("res://src/game/art/football_uniforms.gd")
 const RC := preload("res://src/game/render_cache.gd")
 const Pose := preload("res://src/game/art/athlete_pose.gd")
 const Ball := preload("res://src/sim/ball.gd")
+const Replay := preload("res://src/sim/replay.gd")
 ## A view that moves more than this (yards) in one tick teleported (new play, replay
 ## seek, swap): snap instead of gliding across the field.
 const TELEPORT_DIST := 2.0
@@ -47,6 +48,16 @@ const LOOK_DECIDE_HZ := 10.0
 ## down through chest height get ready to catch it.
 const CATCH_RANGE := 6.0
 const CATCH_HEIGHT := 1.4   # yd: about chest height
+## They raise their hands only for the last CATCH_LEAD s of the flight (ball distance / ball
+## speed). Without it, everyone near the landing spot ran with hands up for the whole flight,
+## a second or more on a deep pass. The weight blend (CARRY_K) is ~99% in by the catch.
+const CATCH_LEAD := 0.45
+## An engaged block pushes (athlete_pose.gd: the Push clip's upper body over the leg clip)
+## only below this speed (yd/s, the jog/sprint split): a blocker and defender moving faster
+## than this together run with their arms pumping instead of sprinting with both hands out.
+const PUSH_MAX_SPEED := 5.0
+## Push clip playback rate (the block's shove cycle).
+const PUSH_RATE := 1.3
 ## Hands go from the ready stance to the ball as it closes from REACH_FAR to REACH_NEAR (yd).
 ## The sim catches inside a 1.2 yd ground radius, which puts the ball about 2 yd from the
 ## chest at the catch (game_flow A04): REACH_NEAR is that, so the arms are fully out as it snaps in.
@@ -74,6 +85,7 @@ var emote_id := ""
 var emote_t := 0.0
 var spin_vis_t := 0.0      # view-side spin animation (works for net + local)
 var spin_vis_side := 0
+var jump_pose := preload("res://src/game/jump_pose.gd").new()   # view-side jump (#379)
 var bubble: Label3D
 var fair_catch_label: Label3D   # "FAIR CATCH" over a signaling returner (#189), built on first use
 var fair_catch_shown := false
@@ -89,6 +101,11 @@ var _look_point := Vector3.ZERO   # smoothed world-space look target
 var _look_decide_t := 0.0         # time to the next look decision
 var _look_wanted := false         # last decision: near the camera and watches the ball
 var _catch_wanted := false        # last decision: a pass is coming down near this athlete
+## Replay flags (replay.gd F_* bits: dive, lying, block, catch, fair catch) while a replay drives this view
+## (main._render_replay), else -1 (sync() resets it). A replay moves the view along recorded
+## positions; the live athlete's state (a block still engaged at the whistle, lying on the
+## turf, a celebration) is not what's on screen, so it must not pick clips or arm poses.
+var replay_flags := -1
 var _skel: Skeleton3D
 var _ball_xf := Transform3D()   # palm socket (world), cached at each skeleton update
 var _ball_xf_ok := false
@@ -107,6 +124,7 @@ var _hit_t := 0.0
 var _release_t := 0.0
 var _cur := ""
 var _was_down := false
+var _push := false   # this frame: an engaged block at a pushing pace (see _choose_anim)
 # Render interpolation (docs/optimization/README.md): sync()/place() record the last two
 # sim poses once per physics tick; interpolate(f) draws between them every frame.
 var _prev_pos := Vector3.ZERO
@@ -149,6 +167,7 @@ func _ready() -> void:
 	_look_decide_t = float(athlete.id % 6) / Tick.HZ   # stagger: the 14 views don't all decide on the same frame
 	if skel:
 		pose = Pose.new()
+		pose.push_clip = anim.get_animation("Push") if anim and anim.has_animation("Push") else null
 		skel.add_child(pose)
 		# Pin the ball after the clip and pose modifier have run, so it never trails the hand.
 		skel.skeleton_updated.connect(_pin_ball)
@@ -422,12 +441,14 @@ func _near_catch_point() -> bool:
 	var cp := catch_point(b.position, b.velocity, world.gravity(), CATCH_HEIGHT)
 	return athlete.position.distance_to(cp) < CATCH_RANGE
 
-## Catch pose (#246): ready stance while the pass is far, hands to the ball as it closes.
+## Catch pose (#246): ready stance as the pass comes in (CATCH_LEAD), hands to the ball as it closes.
 func _update_catch(delta: float, looking: bool) -> void:
-	var catching := _catch_wanted and looking and _pass_in_air()
+	var chest := global_position + Vector3.UP * CATCH_HEIGHT
+	var catching: bool = (replay_flags & Replay.F_CATCH) != 0 and look_node != null if replay_flags >= 0 \
+		else _catch_wanted and looking and _pass_in_air() \
+		and look_node.global_position.distance_to(chest) < CATCH_LEAD * world.ball.velocity.length()
 	if catching:
 		var ball := look_node.global_position
-		var chest := global_position + Vector3.UP * CATCH_HEIGHT
 		pose.catch_target = _skel.global_transform.affine_inverse() * ball
 		pose.catch_reach = clampf((REACH_FAR - ball.distance_to(chest)) / (REACH_FAR - REACH_NEAR), 0.0, 1.0)
 	elif pose.catch_weight <= 0.0:
@@ -450,10 +471,14 @@ func _role_name() -> String:
 
 ## Mirror the sim position/facing. Animation runs in _process.
 func sync() -> void:
+	replay_flags = -1
 	block_shield.visible = athlete.blocking
 	var yaw := rotation.y
+	var to_foe := _to_foe()
 	if athlete.blocking:
 		yaw = atan2(-athlete.facing.x, athlete.facing.y)
+	elif _push and to_foe != Vector2.ZERO:
+		yaw = atan2(-to_foe.x, to_foe.y)   # a block faces its opponent, even while driven back
 	elif athlete.speed() > 0.1:
 		yaw = atan2(-athlete.velocity.x, athlete.velocity.y)
 	elif athlete.facing.length() > 0.1 and world != null and int(world.phase) == 0:
@@ -484,8 +509,9 @@ func _process(delta: float) -> void:
 		v = Vector3.ZERO
 	_vel = _vel.lerp(v, clampf(delta * 12.0, 0.0, 1.0))
 	var spd := Vector2(_vel.x, _vel.z).length()
-	var down: bool = athlete.is_diving() or athlete.is_grounded()
-	if spd > 0.4 and not down and not athlete.blocking:
+	var live := replay_flags < 0
+	var down: bool = (athlete.is_diving() or athlete.is_grounded()) if live else (replay_flags & 3) != 0
+	if spd > 0.4 and not down and not ((live and athlete.blocking) or _push):   # _push: last frame's
 		rotation.y = lerp_angle(rotation.y, atan2(-_vel.x, -_vel.z), clampf(delta * 14.0, 0.0, 1.0))
 	_hit_t = maxf(0.0, _hit_t - delta)
 	emote_t = maxf(0.0, emote_t - delta)
@@ -493,28 +519,39 @@ func _process(delta: float) -> void:
 		bubble.visible = emote_t > 0.0
 		bubble.modulate.a = clampf(emote_t / 0.3, 0.0, 1.0)
 	# Menu/POTG stub athletes have no spin state.
-	if athlete.has_method("is_spinning") and athlete.is_spinning() and spin_vis_t <= 0.0:
+	if live and athlete.has_method("is_spinning") and athlete.is_spinning() and spin_vis_t <= 0.0:
 		spin_vis_t = T.SPIN_TIME
 		spin_vis_side = athlete.spin_dir
 	spin_vis_t = maxf(0.0, spin_vis_t - delta)
+	jump_pose.update(athlete if live else null, delta)   # replays: no jump in the recording yet (#380)
 	_release_t = maxf(0.0, _release_t - delta)
-	var fc: bool = world != null and world.get("fair_catch_id") == athlete.id and int(world.phase) == 1
+	var fc: bool = (live and world != null and world.get("fair_catch_id") == athlete.id and int(world.phase) == 1) \
+		or (not live and (replay_flags & Replay.F_FAIR_CATCH) != 0)
 	if fc != fair_catch_shown:
 		_show_fair_catch(fc)
-	_choose_anim(spd, down)
+	_push = false
+	if live:
+		_choose_anim(spd, down)
+	else:
+		_choose_replay_anim(spd)
 	_was_down = down
 	if pose:
 		var target := 1.0 if ball_node != null else 0.0
 		pose.weight = lerpf(pose.weight, target, 1.0 - exp(-CARRY_K * delta))
 		if absf(pose.weight - target) < 0.01:
 			pose.weight = target
+		pose.push_weight = lerpf(pose.push_weight, 1.0 if _push else 0.0, 1.0 - exp(-CARRY_K * delta))
+		if pose.push_weight < 0.01 and not _push:
+			pose.push_weight = 0.0
+		if pose.push_clip and pose.push_weight > 0.0:
+			pose.push_time = fmod(pose.push_time + delta * PUSH_RATE, pose.push_clip.length)
 		_update_look(delta, down)
 	# Celebration flourishes on top of the dance.
 	body.rotation = Vector3.ZERO
-	body.position = Vector3.ZERO
-	if athlete.is_spinning():
+	body.position = Vector3(0.0, jump_pose.lift(), 0.0)
+	if live and athlete.is_spinning():
 		body.rotation.y = TAU * (1.0 - athlete.move_t / T.SPIN_TIME)
-	if celebrate_t > 0.0:
+	if live and celebrate_t > 0.0:
 		var t := 1.5 - celebrate_t
 		match celebrate_kind:
 			"spin": body.rotation.y = t * TAU * 2.0
@@ -541,6 +578,8 @@ func _choose_anim(spd: float, down: bool) -> void:
 		if athlete.recover_t < 0.7:
 			_play("u2/LayToIdle", 0.15, 1.6)
 		return
+	if jump_pose.play(self):
+		return
 	if _hit_t > 0.0:
 		_play("u2/Hit_Knockback", 0.08, 1.3)
 		return
@@ -555,10 +594,59 @@ func _choose_anim(spd: float, down: bool) -> void:
 	if athlete.blocking:
 		_play("u2/Idle_Shield")
 		return
-	if athlete.engaged_with >= 0:
-		_play("Push", BLEND, 1.3)
-		return
+	# A little hysteresis on the speed: no flicker at the edge.
+	_push = athlete.engaged_with >= 0 and spd < PUSH_MAX_SPEED + (0.5 if pose and pose.push_weight > 0.5 else 0.0)
 	var presnap: bool = world != null and int(world.phase) == 0
+	# Driven back while facing the blocker: the jog runs in reverse, a backpedal.
+	_locomotion(spd, presnap, _push and athlete.velocity.dot(_to_foe()) < 0.0)
+
+## A replayed view: the recorded dive / lying / fair-catch flags, else running by its recorded
+## motion, pushing while the recording has it engaged in a block (#374, #198).
+func _choose_replay_anim(spd: float) -> void:
+	if replay_flags & Replay.F_DIVING:
+		_play("u2/Slide_Start", 0.08, 1.6)
+	elif replay_flags & Replay.F_GROUNDED:
+		_play("u2/Slide", 0.12)
+	elif fair_catch_shown and spd < 1.5:
+		_play("Pistol_Aim_Up", 0.12)
+	else:
+		_push = (replay_flags & Replay.F_PUSH) != 0   # recorded with the sim speed: replay rate can't change it
+		# Driven back while pushing: backpedal, as live (facing isn't recorded; the view keeps its own).
+		_locomotion(spd, false, _push and _vel.dot(Vector3(-sin(rotation.y), 0.0, -cos(rotation.y))) < 0.0)
+
+## Replay view bits per athlete (#374), from the sim as the live view decides them:
+## F_PUSH, an engaged block below PUSH_MAX_SPEED (_choose_anim, sim speed, no hysteresis);
+## F_CATCH, the catch window of a pass in the air (watches_ball + _near_catch_point +
+## CATCH_LEAD, without the camera gate). Empty when nobody has either.
+static func replay_bits(world) -> PackedByteArray:
+	var out := PackedByteArray()
+	var b = world.ball
+	var flying: bool = int(b.state) == Ball.State.IN_FLIGHT and not world.snap_in_flight()
+	var cp := catch_point(b.position, b.velocity, world.gravity(), CATCH_HEIGHT) if flying else Vector2.ZERO
+	for i in world.athletes.size():
+		var a = world.athletes[i]
+		var bits := 0
+		if a.engaged_with >= 0 and a.velocity.length() < PUSH_MAX_SPEED:
+			bits = Replay.F_PUSH
+		elif flying:
+			var r := int(a.role)
+			var chest := Vector3(a.position.x, a.position.y, CATCH_HEIGHT)
+			if a.position.distance_to(cp) < CATCH_RANGE and chest.distance_to(b.position) < CATCH_LEAD * b.velocity.length() \
+					and watches_ball(a.team == world.offense_team, r >= 0 and r < ROLE_NAMES.size() and ROLE_NAMES[r] in LINEMEN,
+						a.engaged_with >= 0 or a.blocking, false, Ball.State.IN_FLIGHT, chest.distance_to(b.position)):
+				bits = Replay.F_CATCH
+		if bits != 0:
+			if out.is_empty():
+				out.resize(world.athletes.size())   # zero-filled
+			out[i] = bits
+	return out
+
+## The sim direction (unit) to the athlete this one is engaged with, or zero.
+func _to_foe() -> Vector2:
+	var foe = world.get_athlete(athlete.engaged_with) if world != null and athlete.engaged_with >= 0 else null
+	return (foe.position - athlete.position).normalized() if foe != null else Vector2.ZERO
+
+func _locomotion(spd: float, presnap: bool, backward := false) -> void:
 	if spd < 0.5:
 		if presnap and _role in LINEMEN:
 			_play("Crouch_Idle")
@@ -567,7 +655,7 @@ func _choose_anim(spd: float, down: bool) -> void:
 		else:
 			_play("Idle")
 	elif spd < 5.0:
-		_play("Jog_Fwd", BLEND, clampf(spd / 3.6, 0.6, 1.6))
+		_play("Jog_Fwd", BLEND, clampf(spd / 3.6, 0.6, 1.6) * (-1.0 if backward else 1.0))
 	else:
 		_play("Sprint", BLEND, clampf(spd / 6.8, 0.8, 1.7))
 

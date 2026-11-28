@@ -12,6 +12,7 @@ const SPIN_FLAG := 16
 const SPIN_LEFT_FLAG := 32   # spin turned left (visual side)
 const PASS_THROWN_FLAG := 1   # pass flags, separate from athlete flags
 const CROSSED_LOS_FLAG := 2
+const JUMP_SHIFT := 8          # flags bits 8+: jump time left in ms (0 = on the ground, #379)
 const Emotes := preload("res://src/sim/emotes.gd")
 
 static func encode_snapshot(m, tick: int, acks: Dictionary = {}) -> Dictionary:
@@ -25,6 +26,7 @@ static func encode_snapshot(m, tick: int, acks: Dictionary = {}) -> Dictionary:
 		flags |= (BLOCK_FLAG if ath.blocking else 0) | (SPIN_FLAG if ath.is_spinning() else 0)
 		if ath.is_spinning() and ath.spin_dir < 0:
 			flags |= SPIN_LEFT_FLAG
+		flags |= roundi(ath.jump_t * 1000.0) << JUMP_SHIFT
 		r.append_array([ath.role, flags, ath.team])
 		moves.append_array([ath.move_charge, ath.move_t])
 	var b = w.ball
@@ -154,6 +156,7 @@ static func apply_snapshot(m, s: Dictionary) -> void:
 			ath.move_charge = moves[i * 2]
 			ath.move_t = moves[i * 2 + 1]
 		ath.spin_dir = -1 if flags & SPIN_LEFT_FLAG else 1
+		ath.jump_t = minf(float(flags >> JUMP_SHIFT) / 1000.0, T.JUMP_TIME)
 	var b: PackedFloat32Array = s["b"]
 	w.ball.state = int(b[0])
 	w.ball.holder_id = int(b[1])
@@ -296,8 +299,11 @@ static func apply_action(m, athlete_id: int, action) -> bool:
 		"snap":
 			# One key, routed by side: offense hikes, defense breaks stance, and a
 			# returner under a punt/kickoff in the air signals a fair catch (#189).
+			# In live play everyone else jumps (#379).
 			if w.can_signal_fair_catch(athlete_id):
 				return w.signal_fair_catch(athlete_id)
+			if w.phase == w.Phase.LIVE:
+				return w.jump(athlete_id)
 			if ath.team == w.offense_team:
 				return w.snap()
 			return w.break_stance(athlete_id)
@@ -341,7 +347,7 @@ static func apply_action(m, athlete_id: int, action) -> bool:
 ## Wire/sim compatibility version. Bump it in the same PR as any change to the wire format
 ## (message keys or fields, snapshot layout, action shapes) or to sim rules a host and client
 ## must agree on (src/sim). Rule and reasons: docs/design/netcode.md "Version handshake".
-const VERSION := 5   # #312: snapshots carry both down-level pass flags
+const VERSION := 8
 const VERSION_FILE := "res://VERSION"
 const VERSION_FLAG := "--protocol-version="   # debug: pretend to be another version (net_test.sh)
 

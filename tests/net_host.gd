@@ -4,10 +4,14 @@ extends SceneTree
 
 var main
 var saw_live := false
+var threw_opening_pass := false
 var presnap_time := 0.0
 var prepared_handoff := false
 var set_quarters := false
 var reported_ids := false
+var replay_start_tick := -1
+var replay_start_frame := 0
+var replay_start_position := Vector2.ZERO
 
 func _initialize() -> void:
 	main = load("res://scenes/main.tscn").instantiate()
@@ -28,6 +32,25 @@ func _physics_process(dt: float) -> bool:
 			print("NET host got install id %s" % main.peer_installs[peer])
 	if main.world.phase == main.World.Phase.LIVE:
 		saw_live = true
+		if not threw_opening_pass and main.world.ball.is_held_by(main.my_id):
+			_throw_opening_pass()
+	if saw_live and main.world.phase == main.World.Phase.DEAD and replay_start_tick < 0:
+		_key(KEY_V)
+		_key(KEY_SPACE)
+		assert(main.replay_active and main.replay.paused, "host paused the instant replay")
+		replay_start_tick = main.net_tick
+		replay_start_frame = main.replay.frames.size()
+		replay_start_position = main.world.get_athlete(main.controlled_id).position
+		main.input_override = Vector2.RIGHT
+		main.sprint_override = true
+	if replay_start_tick >= 0 and main.net_tick == replay_start_tick + 12:
+		assert(main.replay.frames.size() - replay_start_frame == 12 / main.Replay.FRAME_EVERY,
+			"host recorded all six frames while the real client was connected")
+		var local_athlete = main.world.get_athlete(main.controlled_id)
+		assert(local_athlete.position.is_equal_approx(replay_start_position), "host movement was neutral while recording")
+		main.input_override = null
+		main.sprint_override = null
+		_key(KEY_V)
 	if saw_live and main.world.phase == main.World.Phase.PRESNAP:
 		presnap_time += dt
 		if presnap_time >= 2.0:
@@ -36,6 +59,18 @@ func _physics_process(dt: float) -> bool:
 			prepared_handoff = true
 			main.world.event.connect(_finish_after_handoff)
 	return false
+
+func _throw_opening_pass() -> void:
+	threw_opening_pass = true
+	var world = main.world
+	var qb = world.carrier()
+	var tipper = world.find_role(1, main.Athlete.Role.LB)
+	for a in world.athletes:
+		a.position = Vector2(30.0, 25.0 + 3.0 * a.id)
+		a.velocity = Vector2.ZERO
+	qb.position = Vector2(12.0, world.los_y - 5.0)
+	tipper.position = qb.position + Vector2(0.0, 4.25)
+	world.throw(qb.id, qb.position + Vector2(0.0, 6.0), main.T.PLAYER_PASS_POWER)
 
 func _finish_after_handoff(event: String, _data: Dictionary) -> void:
 	if event != "handoff":
@@ -47,6 +82,8 @@ func _finish_after_handoff(event: String, _data: Dictionary) -> void:
 	await create_timer(0.45).timeout
 	main.stats.award_stats.clear()
 	_record_pass_before_seat_replacement()
+	_record_run_before_seat_replacement()
+	_record_fumbled_keeper()
 	main.series.start(0, 95.0)
 	main.world.event.emit("snap", {"qb": main.my_id})
 	main.world.event.emit("touchdown", {"carrier": main.my_id, "spot": Vector2(26, 100), "team": 0, "points": 6})
@@ -86,7 +123,48 @@ func _record_pass_before_seat_replacement() -> void:
 	main.roster.release(original)
 	main.roster.claim(replacement, slot)
 	world.event.emit("catch", {"by": receiver.id})
-	world.event.emit("out_of_bounds", {"carrier": receiver.id, "spot": Vector2(0, 45), "team": 1})
+	var defender = world.find_role(0, main.Athlete.Role.LB)
+	receiver.position = Vector2(5.0, 45.0)
+	defender.position = receiver.position
+	world._fumble(receiver, defender)
+	world.ball.position.z = 0.0
+	world._step_loose(0.0)
+	world.event.emit("out_of_bounds", {"carrier": defender.id, "spot": Vector2(0, 50), "team": 0})
+
+## Replace the keeper after the snap, then leave the field for a 10-yard gain.
+func _record_run_before_seat_replacement() -> void:
+	main.series.start(1, 25.0)
+	var world = main.world
+	var qb = world.find_role(1, main.Athlete.Role.QB)
+	var slot: int = main.roster.slot_of_athlete(qb.id)
+	var replacement: int = main.roster.slots[slot]["owner"]
+	var original := 99
+	main.roster.release(replacement)
+	main.roster.claim(original, slot)
+	world.snap()
+	while world.snap_in_flight():
+		world.step({}, 1.0 / world.Tick.HZ)
+	main.roster.release(original)
+	main.roster.claim(replacement, slot)
+	qb.position = Vector2(-0.5, 35.0)
+	world.step({}, 1.0 / world.Tick.HZ)
+
+## The current QB earns this carry even though the defense recovers.
+func _record_fumbled_keeper() -> void:
+	main.series.start(1, 25.0)
+	var world = main.world
+	var qb = world.find_role(1, main.Athlete.Role.QB)
+	var defender = world.find_role(0, main.Athlete.Role.LB)
+	world.snap()
+	while world.snap_in_flight():
+		world.step({}, 1.0 / world.Tick.HZ)
+	qb.position = Vector2(5.0, world.los_y + 7.0)
+	defender.position = qb.position
+	world._fumble(qb, defender)
+	world.ball.position.z = 0.0
+	world._step_loose(0.0)
+	defender.position.x = -0.5
+	world.step({}, 1.0 / world.Tick.HZ)
 
 func _key(code: int) -> void:
 	var event := InputEventKey.new()
