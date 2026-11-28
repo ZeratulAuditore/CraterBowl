@@ -65,7 +65,6 @@ var charge := 0.0       # 0..1 throw power (distance)
 # Render interpolation for the ball (views interpolate themselves; see player.gd).
 var _ball_prev := Vector3.ZERO
 var _ball_cur := Vector3.ZERO
-var _route_key := 0          # last drawn route-art state; rebuild only when it changes
 var aim_point := Vector2(26, 45)
 ## POV passing (Gridiron-style): while you're the passer the mouse is captured and
 ## steers your view. Throws go where you look; view pitch = launch angle (height),
@@ -160,8 +159,15 @@ var dead_t := 0.0
 var auto_next := true
 var los_marker: MeshInstance3D
 var fd_marker: MeshInstance3D
-var route_lines: MeshInstance3D
-var route_mesh := ImmediateMesh.new()
+## Components (src/game/component.gd): behavior that lives in its own file. They read game
+## state through `ctx` and get main's per-tick, per-frame, configure and event hooks.
+const GameContext := preload("res://src/game/game_context.gd")
+const RouteArt := preload("res://src/game/components/route_art.gd")
+var ctx = GameContext.new(self)
+var components: Array = []
+var route_art: RouteArt
+var route_mesh: ImmediateMesh:   # tests read the route art's mesh
+	get: return route_art.mesh
 var input_override = null   # tests/bots: Vector2 replaces keyboard movement
 var sprint_override = null  # tests/bots: bool replaces the Shift key
 var net: NetSession
@@ -188,6 +194,13 @@ var pres: Presentation   # visuals-only layer (ball model, rings, FX, overlay)
 
 static func to_world(p: Vector2, h: float = 0.0) -> Vector3:
 	return Vector3(p.x, h, -p.y)
+
+## Register a component: it reads state through ctx and joins main's hook loops.
+func add_component(c: Node) -> Node:
+	c.ctx = ctx
+	add_child(c)
+	components.append(c)
+	return c
 
 func _ready() -> void:
 	pres = Presentation.new()
@@ -232,18 +245,7 @@ func _ready() -> void:
 	_setup_net()
 	if args.has("replay"):
 		open_replay(str(args["replay"]))
-	route_lines = MeshInstance3D.new()
-	route_lines.name = "RouteLines"
-	route_lines.mesh = route_mesh
-	var rlm := StandardMaterial3D.new()
-	rlm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	rlm.vertex_color_use_as_albedo = true
-	rlm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	rlm.cull_mode = BaseMaterial3D.CULL_DISABLED
-	rlm.no_depth_test = false
-	route_lines.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	route_lines.material_override = rlm
-	add_child(route_lines)
+	route_art = add_component(RouteArt.new())
 	for v in views:
 		v.sync()
 	camera = Camera3D.new()
@@ -345,6 +347,8 @@ func configure(size: int, practice: String = "", mode: String = "classic") -> vo
 		_sync_looks()
 	for v in views:
 		v.sync()
+	for c in components:
+		c.on_configure()
 
 ## Host/offline: rebuild athlete looks (yours + peers'), apply to views, broadcast.
 func _sync_looks() -> void:
@@ -714,6 +718,8 @@ func _apply_award(xp: Dictionary, ctx: Dictionary = {}) -> void:
 	achievement_line = ("ACHIEVEMENTS: " + ", ".join(unlocked)) if not unlocked.is_empty() else ""
 
 func _on_match_event(n: String, data: Dictionary) -> void:
+	for c in components:
+		c.on_match_event(n, data)
 	if n in ["timeout", "clock_warning", "penalty"]:   # #253: penalty rulings reach the HUD and clients
 		_on_world_event(n, data)
 	if n in ["quarter", "halftime"]:
@@ -954,7 +960,11 @@ func _join_game(target: String, port: int, opts: Dictionary) -> void:
 			if auto_ready:
 				net.send_lobby_action({"a": "ready"}))
 	net.snapshot_received.connect(_on_snapshot)
-	net.event_received.connect(_on_world_event)
+	net.event_received.connect(func(n, data):
+		if n == "snap":
+			replay.context = "%s, %s" % [series.clock.label(), series.downs.label()]
+		replay.record_event(n, data)
+		_on_world_event(n, data))
 	net.host_lost.connect(_on_host_lost)
 	add_child(preload("res://src/game/link_banner.gd").new(net))   # #86: "Connection to host lost…"
 
@@ -1306,6 +1316,8 @@ func taunt(id: String) -> bool:
 func _on_world_event(n: String, d: Dictionary) -> void:
 	if pres:
 		pres.on_event(n, d)
+	for c in components:
+		c.on_world_event(n, d)
 	if n == "incomplete" and last_whistle == "":
 		last_whistle = "INCOMPLETE"
 	if n in ["tackle", "out_of_bounds", "breakup", "touchdown", "explode", "touchback", "kick_out_of_bounds", "kick_downed", "fair_catch"]:
@@ -1580,11 +1592,11 @@ func _physics_process(delta: float) -> void:
 		if not pov_active():
 			charging = false   # sacked / crossed the line: the wind-up is lost
 	var launch := get_node_or_null("/root/Launch")
-	var menu_open: bool = launch != null and launch.menu_open()
+	var local_input_blocked: bool = replay_active or (launch != null and launch.menu_open())
 	var my_input := {
-		"dir": Vector2.ZERO if menu_open else read_input(),
-		"sprint": not menu_open and (sprint_override if sprint_override != null else Input.is_key_pressed(KEY_SHIFT)),
-		"block": not menu_open and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT),
+		"dir": Vector2.ZERO if local_input_blocked else read_input(),
+		"sprint": not local_input_blocked and (sprint_override if sprint_override != null else Input.is_key_pressed(KEY_SHIFT)),
+		"block": not local_input_blocked and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT),
 		World.HUMAN: true,
 	}
 	if in_lobby():
@@ -1596,9 +1608,12 @@ func _physics_process(delta: float) -> void:
 		replay.advance(delta)
 		if replay.ended() and not replay_viewer and not replay.paused and not replay.next_in_reel():
 			stop_replay()
-		elif net != null and not is_client():
-			_step_authoritative(delta, my_input)   # host keeps the match running
+		elif is_server() and not replay_viewer:
+			_step_authoritative(delta, my_input)   # host keeps simulating and recording
 		_render_replay()
+		if replay_active and is_client() and not replay_viewer:
+			_apply_interpolation()
+			_record_replay()
 		return
 	if is_client():
 		# Predict own athlete now; server stays authoritative and reconciles via acks.
@@ -1610,10 +1625,14 @@ func _physics_process(delta: float) -> void:
 			if world.ball.is_held_by(my_id):
 				world.ball.position = Vector3(me.position.x, me.position.y, T.BALL_CARRY_HEIGHT)
 		_apply_interpolation()
+		_record_replay()
 	else:
 		_step_authoritative(delta, my_input)
-	replay.capture(world)
 	_render()
+
+## One replay tick, with the view's push / catch bits on frame ticks (#374).
+func _record_replay() -> void:
+	replay.capture(world, PlayerNode.replay_bits(world) if replay.frame_due() else PackedByteArray())
 
 func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 	whistle_t = whistle_t + delta if world.phase == World.Phase.DEAD else 0.0
@@ -1665,6 +1684,7 @@ func _step_authoritative(delta: float, my_input: Dictionary) -> void:
 				inp[World.HUMAN] = true   # the host decides who is human, never the wire
 				inputs[aid] = inp
 	world.step(inputs, delta)
+	_record_replay()
 	if is_server():
 		net_tick += 1
 		if net_tick % SNAPSHOT_EVERY == 0:
@@ -1819,8 +1839,10 @@ func _render_replay() -> void:
 	if smp.is_empty():
 		return
 	var pos: Array = smp["pos"]
+	var flags: Array = smp["flags"]
 	for i in mini(pos.size(), views.size()):
 		views[i].place(Vector3(pos[i].x, 0, -pos[i].y), views[i].rotation.y)
+		views[i].replay_flags = flags[i]   # clips from the recording, not the live athlete
 	var b: Vector3 = smp["ball"]
 	_place_ball(Vector3(b.x, b.z, -b.y))
 
@@ -1834,7 +1856,8 @@ func _render() -> void:
 	los_marker.position = Vector3(field.width / 2.0, 0.03, -series.downs.los)
 	fd_marker.position = Vector3(field.width / 2.0, 0.03, -series.downs.first_down_y)
 	fd_marker.visible = not series.downs.is_goal_to_go()
-	_draw_routes()
+	for c in components:
+		c.on_render()
 
 ## True while the throw-arc preview is visible (tests).
 func arc_shown() -> bool:
@@ -1858,129 +1881,10 @@ func _render_frame() -> void:
 	_update_aim()
 	_update_arc()
 
-## Presnap route art for your own offense only (the defense never sees it):
-## flat glowing ribbons, a distinct color per receiver, arrowheads, start dots.
-const ROUTE_COLORS := [Color(1.0, 0.82, 0.25), Color(1.0, 0.45, 0.75), Color(0.55, 0.6, 1.0), Color(1.0, 0.55, 0.2), Color(0.75, 0.5, 1.0)]
-const MY_ROUTE_COLOR := Color(0.35, 1.0, 0.55)
-
-func _draw_routes() -> void:
-	var me = world.get_athlete(my_id)
-	var offense: bool = me != null and me.team == world.offense_team
-	var is_run := world.is_run_play()
-	var show: bool = me != null and world.phase == World.Phase.PRESNAP and (not offense or is_run or not world.route_of.is_empty())
-	if not show:
-		if _route_key != 0:
-			route_mesh.clear_surfaces()
-			_route_key = 0
-		return
-	# Rebuilding an ImmediateMesh re-uploads it to the GPU; only do it when the art's inputs
-	# change. Offense art = routes + protection lines, defense art = assignments; both depend
-	# on every athlete's position, the calls, the LOS and which side you're on.
-	var key_src := [my_id, me.team, world.offense_team, field.width, world.los_y, world.play_name, is_run, world.route_of, world.defensive_call]
-	for a in world.athletes:
-		key_src.append(a.position)
-	var key := hash(key_src)
-	if key == _route_key:
-		return
-	_route_key = key
-	route_mesh.clear_surfaces()
-	if not offense:
-		_draw_defense_routes(me.team)
-		return
-	route_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
-	var blocks := {}
-	if is_run:
-		var back := world.find_role(me.team, Athlete.Role.RB)
-		var qb := world.find_role(me.team, Athlete.Role.QB)
-		if back and qb:
-			var mine := back.id == my_id
-			var color: Color = MY_ROUTE_COLOR if mine else ROUTE_COLORS[0]
-			_route_ribbon([back.position, qb.position] + world.run_path(), color, 0.48 if mine else 0.34)
-		blocks = world.run_block_assignments()
-	var k := 0
-	for id in world.route_of:
-		var a = world.get_athlete(id)
-		var pts: Array = [a.position] + Routes.path_for(world.route_of[id], a.position, field.width)
-		var mine: bool = id == my_id
-		var c: Color = MY_ROUTE_COLOR if mine else ROUTE_COLORS[k % ROUTE_COLORS.size()]
-		k += 1
-		_route_ribbon(pts, c, 0.42 if mine else 0.3)
-	for blocker in world.athletes:
-		if blocker.team != me.team or blocker.role not in [Athlete.Role.C, Athlete.Role.OL]:
-			continue
-		var defender = world.get_athlete(blocks.get(blocker.id, -1)) if is_run else world.protection_target(blocker)
-		if defender != null:
-			var mine: bool = blocker.id == my_id
-			_route_ribbon([blocker.position, defender.position], MY_ROUTE_COLOR if mine else Color(0.76, 0.82, 0.90), 0.42 if mine else 0.22)
-	route_mesh.surface_end()
-
-func _draw_defense_routes(team: int) -> void:
-	if world.defensive_call.is_empty():
-		return
-	route_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
-	var matchups: Dictionary = world.man_assignments()
-	for athlete in world.athletes:
-		if athlete.team != team:
-			continue
-		var assignment: Dictionary = world.defense_assignment(athlete)
-		var mine: bool = athlete.id == my_id
-		if assignment.kind == "man":
-			if matchups.has(athlete.id):
-				var receiver = world.get_athlete(matchups[athlete.id])
-				_route_ribbon([athlete.position, receiver.position], Color(1.0, 0.82, 0.38), 0.50 if mine else 0.26)
-			continue
-		var target: Vector2 = assignment.target
-		var color := Color(1.0, 0.30, 0.26)
-		if assignment.kind == "zone":
-			color = Color(0.50, 0.68, 1.0) if assignment.deep else Color(0.24, 0.94, 0.81)
-			_disc(target, 2.0 if mine else 1.5, Color(color, 0.35), 0.055, 0.65)
-		_route_ribbon([athlete.position, target], color, 0.50 if mine else 0.26)
-	route_mesh.surface_end()
-
-func _route_ribbon(pts: Array, c: Color, wdt: float) -> void:
-	var h := 0.06
-	var total := 0.0
-	for i in range(pts.size() - 1):
-		total += (pts[i + 1] - pts[i]).length()
-	var run := 0.0
-	for i in range(pts.size() - 1):
-		var p0: Vector2 = pts[i]
-		var p1: Vector2 = pts[i + 1]
-		var seg := p1 - p0
-		if seg.length() < 0.01:
-			continue
-		var dir := seg.normalized()
-		var is_last := i == pts.size() - 2
-		if is_last:   # leave room for the arrowhead
-			p1 = p1 - dir * minf(1.1, seg.length() * 0.6)
-		var n := Vector2(-dir.y, dir.x) * wdt * 0.5
-		var a0 := c * Color(1, 1, 1, lerpf(0.75, 1.0, run / maxf(total, 0.01)))
-		run += seg.length()
-		var a1 := c * Color(1, 1, 1, lerpf(0.75, 1.0, run / maxf(total, 0.01)))
-		_tri(p0 + n, p0 - n, p1 + n, a0, a0, a1, h)
-		_tri(p1 + n, p0 - n, p1 - n, a1, a0, a1, h)
-		if i > 0:   # round the joint
-			_disc(p0, wdt * 0.5, a0, h)
-		if is_last:
-			var tip: Vector2 = pts[i + 1]
-			var base := p1
-			var wing := Vector2(-dir.y, dir.x) * wdt * 1.6
-			_tri(base + wing, base - wing, tip, a1, a1, a1, h)
-	_disc(pts[0], wdt * 1.1, c, h)
-
-func _tri(a: Vector2, b: Vector2, c2: Vector2, ca: Color, cb: Color, cc: Color, h: float) -> void:
-	for pc in [[a, ca], [b, cb], [c2, cc]]:
-		route_mesh.surface_set_color(pc[1])
-		route_mesh.surface_add_vertex(Vector3(pc[0].x, h, -pc[0].y))
-
-func _disc(p: Vector2, r: float, c: Color, h: float, depth_scale: float = 1.0) -> void:
-	for s in 10:
-		var t0 := TAU * s / 10.0
-		var t1 := TAU * (s + 1) / 10.0
-		_tri(p, p + Vector2(cos(t0), sin(t0) * depth_scale) * r, p + Vector2(cos(t1), sin(t1) * depth_scale) * r, c, c, c, h)
-
 func _process(delta: float) -> void:
 	_render_frame()
+	for c in components:
+		c.on_frame(delta)
 	_update_coin_toss()
 	if not replay_active:   # the postgame show waits for the highlight reel
 		_tick_postgame(delta)

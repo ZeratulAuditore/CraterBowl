@@ -11,6 +11,12 @@ const SPIN_SPEED := 7.5
 const DASH_TIME := 0.22
 const SPIN_TIME := 0.32
 const MOVE_CHARGE_PER_YARD := 0.05
+# Jump (#379): Space / A in live play. A committed hop: takeoff velocity, no steering.
+const JUMP_TIME := 0.6             # s in the air
+const JUMP_HEIGHT := 0.9           # yd, feet at the peak (mid-air)
+const JUMP_STAMINA := 0.05         # stamina per jump
+const JUMP_CHAIN_STAMINA := 0.25   # instead, for a jump within JUMP_CHAIN_WINDOW of the last landing
+const JUMP_CHAIN_WINDOW := 0.5     # s after landing
 const QB_DROPBACK_SLOW_START := 14.0  # yards behind the line of scrimmage
 const QB_DROPBACK_SLOW_END := 20.0
 const QB_DROPBACK_SPEED_FLOOR := 0.65

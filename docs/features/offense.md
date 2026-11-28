@@ -15,6 +15,9 @@ defenders. Line play is in [line-play.md](line-play.md); scoring, tries and turn
 - Offense buttons: Verticals, Slants, Mesh, Curls, Flood, Deep Shot, plus Inside Zone and Outside Sweep when the
   formation has an RB and the mode is classic (5v5 and 7v7). Also **Repeat last** (recall your team's previous call)
   and **Flip play** (swap the two WRs' routes; on a run, mirror the lane).
+- To audible, select another play before the snap. The highlighted card and the offense's route art
+  follow the new call. Teammates see the same assignments, and the call locks when the ball is
+  snapped (#346).
 - An eligible receiver (WR or RB, not QB) gets a route dropdown to override their own route on a pass play.
 - Each new formation pre-selects a default: Slants on 3 or fewer yards to go, Deep Shot on 15+ to go with 25+ yards to
   the goal, otherwise Mesh (`match.gd _setup_formation`).
@@ -54,7 +57,7 @@ the last segment's direction; comeback routes (CURL) settle instead of backpedal
   distance (2 to 65 yd). Left click / **J** throws on press at a fixed `PLAYER_PASS_POWER` (0.68, about 24 yd/s); the
   solver picks the flattest angle that crosses the aim point at `CATCH_HEIGHT` (1.1 yd). Hold **Ctrl** (gamepad RB) for
   a lob: a fixed `LOB_ANGLE` (65°) arc with the speed solved to land on the target.
-- Legal throw: you hold the ball, play is live, you aren't diving, grounded or mid dash/spin, you are at or behind the
+- Legal throw: you hold the ball, play is live, you aren't diving, grounded, mid dash/spin or in the air from a jump, you are at or behind the
   LOS, and no forward pass has been thrown. Any carrier qualifies, so an RB behind the line after a handoff can throw.
 - A ball that hits the ground is incomplete.
 

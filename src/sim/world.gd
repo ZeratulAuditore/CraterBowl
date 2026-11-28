@@ -605,7 +605,7 @@ func handoff_receiver(id: int) -> Athlete:
 	if phase != Phase.LIVE or is_chaos() or handoff_cooldown > 0.0 or forward_pass_thrown or not ball.is_held_by(id):
 		return null
 	var qb := get_athlete(id)
-	if qb == null or qb.team != offense_team or qb.role != Athlete.Role.QB or not qb.can_act() or qb.position.y > los_y:
+	if qb == null or qb.team != offense_team or qb.role != Athlete.Role.QB or not qb.can_act() or qb.is_jumping() or qb.position.y > los_y:
 		return null
 	var back := find_role(offense_team, Athlete.Role.RB)
 	if back == null or not back.can_act() or back.position.y > los_y or back.position.distance_to(qb.position) > T.HANDOFF_REACH:
@@ -624,7 +624,7 @@ func handoff(id: int) -> bool:
 
 func can_throw(id: int) -> bool:
 	var a := get_athlete(id)
-	if a == null or phase != Phase.LIVE or not ball.is_held_by(id) or not a.can_act() or a.move_t > 0.0:
+	if a == null or phase != Phase.LIVE or not ball.is_held_by(id) or not a.can_act() or a.move_t > 0.0 or a.is_jumping():
 		return false
 	return rules["anyone_throws"] or (not forward_pass_thrown and a.position.y <= los_y)
 
@@ -673,6 +673,14 @@ func tackle(id: int) -> bool:
 	if a == null or phase != Phase.LIVE:
 		return false
 	return a.start_dive()
+
+## Jump (#379): a committed hop in live play; costs stamina, more when chained.
+func jump(id: int) -> bool:
+	var a := get_athlete(id)
+	if a == null or phase != Phase.LIVE or not a.start_jump():
+		return false
+	event.emit("jump", {"by": id})
+	return true
 
 ## Taunt (cosmetic, any phase). Rate-limited per athlete.
 func emote(id: int, e: String) -> bool:
@@ -739,6 +747,7 @@ func step(inputs: Dictionary, dt: float) -> void:
 		prev.append(a.position)
 		var inp: Dictionary = inputs.get(a.id, {})
 		if phase == Phase.DEAD and ball.holder_id == a.id:
+			a.jump_t = 0.0   # the dead ball's holder is frozen at the spot: land him there (#379)
 			continue
 		var human := is_human_input(inp)
 		step_athlete(a, inp.get("dir", Vector2.ZERO), inp.get("sprint", false), dt, inp.get("block", false))
@@ -1023,8 +1032,7 @@ func _step_loose(dt: float) -> void:
 	if field.zone_of(bp) == Field.Zone.OUT_OF_BOUNDS:
 		dead_ball_spot = bp
 		dead_ball_team = last_possession
-		ball.state = Ball.State.DEAD
-		phase = Phase.DEAD
+		_end_play()
 		var data := {"spot": bp, "team": last_possession, "loose": true}
 		event.emit("out_of_bounds", data)
 		event.emit("whistle", data)
@@ -1045,6 +1053,13 @@ func _step_loose(dt: float) -> void:
 		event.emit("recovery", {"by": best.id, "team": best.team, "turnover": best.team != last_possession})
 		last_possession = best.team
 
+func _end_play() -> void:
+	ball.state = Ball.State.DEAD
+	phase = Phase.DEAD
+	for athlete in athletes:
+		athlete.engaged_with = -1
+		athlete.engage_t = 0.0
+
 func _whistle(reason: String, data: Dictionary) -> void:
 	var c := carrier()
 	dead_ball_spot = c.position
@@ -1058,8 +1073,7 @@ func _whistle(reason: String, data: Dictionary) -> void:
 	dead_ball_team = c.team
 	data["spot"] = dead_ball_spot
 	c.velocity = Vector2.ZERO
-	ball.state = Ball.State.DEAD
-	phase = Phase.DEAD
+	_end_play()
 	event.emit(reason, data)
 	event.emit("whistle", data)
 
@@ -1086,8 +1100,7 @@ func _step_flight(dt: float) -> void:
 				ball.velocity.y *= T.BOUNCE_FRICTION
 				return
 		ball.velocity = Vector3.ZERO
-		ball.state = Ball.State.DEAD
-		phase = Phase.DEAD
+		_end_play()
 		var at := Vector2(ball.position.x, ball.position.y)
 		dead_ball_spot = at
 		event.emit("incomplete", {"at": at, "team": last_possession})
@@ -1110,8 +1123,7 @@ func _wall_bounce() -> void:
 		event.emit("bounce", {"n": bounces, "wall": true})
 		if bounces >= rules["max_bounces"]:
 			ball.velocity = Vector3.ZERO
-			ball.state = Ball.State.DEAD
-			phase = Phase.DEAD
+			_end_play()
 			var at := Vector2(ball.position.x, ball.position.y)
 			dead_ball_spot = at
 			event.emit("incomplete", {"at": at, "team": last_possession})
@@ -1122,10 +1134,14 @@ func is_eligible_receiver(a: Athlete) -> bool:
 		return true
 	return a.role != Athlete.Role.C and a.role != Athlete.Role.OL
 
+## Highest ball a player can catch or deflect: a jump raises it (high-pointing, #379).
+func catch_ceiling(a: Athlete) -> float:
+	return T.CATCH_MAX_HEIGHT + a.jump_height()
+
 ## Resolve catches for a ball in flight. Returns true if the play state changed.
 func _try_catch() -> bool:
 	var z := ball.position.z
-	if z < T.CATCH_MIN_HEIGHT or z > T.CATCH_MAX_HEIGHT:
+	if z < T.CATCH_MIN_HEIGHT or z > T.CATCH_MAX_HEIGHT + T.JUMP_HEIGHT:
 		return false
 	var bp := Vector2(ball.position.x, ball.position.y)
 	var travel := bp.distance_to(throw_origin)
@@ -1137,7 +1153,7 @@ func _try_catch() -> bool:
 	var best := [null, null]   # per side: [offense, defense]
 	var best_d := [INF, INF]
 	for a in athletes:
-		if a.id == last_thrower_id or not is_eligible_receiver(a):
+		if a.id == last_thrower_id or not is_eligible_receiver(a) or z > catch_ceiling(a):
 			continue
 		var d: float = a.position.distance_to(bp)
 		var side := 0 if a.team == offense_team else 1
@@ -1191,7 +1207,7 @@ func _try_catch_chaos() -> bool:
 	var best: Athlete = null
 	var best_d := T.CATCH_RADIUS
 	for a in athletes:
-		if not a.can_act() or (a.id == last_thrower_id and not rules["self_catch"]):
+		if not a.can_act() or (a.id == last_thrower_id and not rules["self_catch"]) or ball.position.z > catch_ceiling(a):
 			continue
 		var d: float = a.position.distance_to(bp)
 		if d <= best_d:
@@ -1227,16 +1243,14 @@ func _step_pass_clock(dt: float) -> void:
 		dead_ball_spot = spot
 		dead_ball_team = c.team
 		c.recover_t = T.FUMBLE_KNOCKDOWN
-		ball.state = Ball.State.DEAD
-		phase = Phase.DEAD
+		_end_play()
 		var data := {"carrier": c.id, "spot": spot, "team": c.team}
 		event.emit("explode", data)
 		event.emit("whistle", data)
 
 func _end_incomplete(reason: String, data: Dictionary) -> void:
 	ball.velocity = Vector3.ZERO
-	ball.state = Ball.State.DEAD
-	phase = Phase.DEAD
+	_end_play()
 	event.emit(reason, data)
 	data["reason"] = reason
 	event.emit("incomplete", data)
@@ -1406,8 +1420,7 @@ func _kick_dead(reason: String, at: Vector2, extra: Dictionary) -> void:
 	kick_live = false
 	kick_free = false
 	ball.velocity = Vector3.ZERO
-	ball.state = Ball.State.DEAD
-	phase = Phase.DEAD
+	_end_play()
 	dead_ball_spot = at
 	dead_ball_team = offense_team
 	var data := {"spot": at, "team": offense_team, "kind": kick_play}

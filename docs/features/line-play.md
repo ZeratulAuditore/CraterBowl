@@ -30,6 +30,7 @@ holding right mouse (a "shield"). Rushers beat blocks by waiting out the hold or
 - The block ends after `BLOCK_HOLD` (1.5 s), when the blocker can't act or gets the ball, or when either player
   dashes or spins. The defender is then immune for `BLOCK_IMMUNITY` (0.75 s) and the blocker can't re-engage for
   `BLOCKER_BEATEN` (1.5 s).
+- All active blocks end when the ball goes dead. Both players leave the push animation during the dead-ball interval.
 - Who may block: C and OL any time; skill players only downfield (after a catch or once the carrier is past the LOS);
   after a takeaway anyone on the returning team. A human holding the shield can block from any position.
 
@@ -68,6 +69,8 @@ holding right mouse (a "shield"). Rushers beat blocks by waiting out the hold or
 - Sim circles plus engagement pairs over Godot physics (non-deterministic) or a rock-paper-scissors minigame
   (that is #15).
 - A timed shed plus immunity makes a block buy a fixed, readable amount of time.
+- The world clears engagement pairs as it enters DEAD, so every play-ending path releases them before
+  the ruling reaches the view. This cleanup does not award a shed.
 - The beaten-blocker cooldown is longer than the defender's immunity because a lone C could re-block one LB forever.
 - Receivers don't auto-block during a pass play, so they run routes instead of locking onto the nearest defender.
 - Bot linemen hold the zone edge in `AI.think` after every other decision (`_respect_blocking_zone`) rather than inside
