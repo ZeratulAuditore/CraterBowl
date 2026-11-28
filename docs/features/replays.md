@@ -32,6 +32,7 @@ post-game overview or the command line. Online skip votes, a free camera and cli
 | [ / ] | halve / double speed (0.25× to 2×) |
 | C | camera: Broadcast → End zone → Sky → Player |
 
+- Held movement, sprint and block controls on the host apply again when the host closes the replay.
 - Cameras: **Broadcast** is a zoomed shot from high on the near sideline, panning with the ball. **End zone** is
   behind the offense. **Sky** looks down from above. **Player** is the normal follow camera. The view cuts into a
   replay and on every camera change, then tracks smoothly.
@@ -44,6 +45,8 @@ post-game overview or the command line. Online skip votes, a free camera and cli
   The scorebug stays up. Live-only widgets are hidden during the replay and restored afterwards.
 - Offline, the match is paused while you watch. Online, the host's match keeps running underneath, and your own
   input isn't sent while the replay shows.
+- A joiner can replay the downs their client received. New downs keep recording while a replay is on
+  screen, so a play that finishes during the clip is available the next time they press V.
 - Players of the Game waits while a replay or the reel is on screen.
 
 ### Saved replays and the viewer
@@ -72,6 +75,7 @@ post-game overview or the command line. Online skip votes, a free camera and cli
 - Playback is view-only: views read interpolated replay frames, and the sim is never rewound, so replay can't desync a match.
   Capturing on the authoritative tick keeps the saved match continuous as the host's view shows an earlier play.
 - Plays are classified by the recorder from sim events, so the sim needs no replay-specific code and saved files carry their highlights.
+  Joining clients use the host's snap and ruling events to bracket their locally interpolated frames.
 - Only highlights auto-replay. Replaying every play would train players to skip.
 - No director AI picking cuts per frame: it needs a lot of tuning and belongs with the free-cam theater (#36).
 - The replay overlay is its own CanvasLayer (`process_priority` 100, after the match overlay). It finds match-overlay

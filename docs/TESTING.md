@@ -223,6 +223,9 @@ Notes:
 
 ## Driving gameplay from scripts
 
+When a fixture manually updates the scene after a play call, use `main._render()` to refresh
+the route art and other render components through the normal hooks.
+
 For anything you can assert (positions, phase, HUD text, whistle reason), add a game_flow segment
 (`tests/flow/segments/<name>.gd`, contract in `tests/flow/segment.gd`) rather than eyeballing screenshots.
 Each segment starts from a fresh match with main's test knobs reset and relative frames, so parallel PRs

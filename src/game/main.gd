@@ -960,7 +960,11 @@ func _join_game(target: String, port: int, opts: Dictionary) -> void:
 			if auto_ready:
 				net.send_lobby_action({"a": "ready"}))
 	net.snapshot_received.connect(_on_snapshot)
-	net.event_received.connect(_on_world_event)
+	net.event_received.connect(func(n, data):
+		if n == "snap":
+			replay.context = "%s, %s" % [series.clock.label(), series.downs.label()]
+		replay.record_event(n, data)
+		_on_world_event(n, data))
 	net.host_lost.connect(_on_host_lost)
 	add_child(preload("res://src/game/link_banner.gd").new(net))   # #86: "Connection to host lost…"
 
@@ -1588,11 +1592,11 @@ func _physics_process(delta: float) -> void:
 		if not pov_active():
 			charging = false   # sacked / crossed the line: the wind-up is lost
 	var launch := get_node_or_null("/root/Launch")
-	var menu_open: bool = launch != null and launch.menu_open()
+	var local_input_blocked: bool = replay_active or (launch != null and launch.menu_open())
 	var my_input := {
-		"dir": Vector2.ZERO if menu_open else read_input(),
-		"sprint": not menu_open and (sprint_override if sprint_override != null else Input.is_key_pressed(KEY_SHIFT)),
-		"block": not menu_open and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT),
+		"dir": Vector2.ZERO if local_input_blocked else read_input(),
+		"sprint": not local_input_blocked and (sprint_override if sprint_override != null else Input.is_key_pressed(KEY_SHIFT)),
+		"block": not local_input_blocked and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT),
 		World.HUMAN: true,
 	}
 	if in_lobby():
@@ -1607,6 +1611,9 @@ func _physics_process(delta: float) -> void:
 		elif is_server() and not replay_viewer:
 			_step_authoritative(delta, my_input)   # host keeps simulating and recording
 		_render_replay()
+		if replay_active and is_client() and not replay_viewer:
+			_apply_interpolation()
+			replay.capture(world)
 		return
 	if is_client():
 		# Predict own athlete now; server stays authoritative and reconciles via acks.
