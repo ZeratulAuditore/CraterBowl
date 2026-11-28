@@ -20,13 +20,15 @@ var player_lines := {}     # player id -> {"POS": {field: value}}: your own post
 var _los := 0.0
 var _passer := -1
 var _receiver := -1
-## Who gets a delayed result (#202, #276): the athlete's line key and player when the action
-## that earns it was completed (throw, catch, kick, fielding or takeaway). Seat changes after
-## that don't move the credit. Rule: docs/features/progression.md "Match awards follow the player in the seat".
+## Who gets a delayed result (#202, #276, #293): the athlete's line key and player at the
+## throw, catch, kick, fielding, takeaway, snap or handoff. Later seat changes keep that credit.
+## Rule: docs/features/progression.md "Match awards follow the player in the seat".
 var _passer_credit := {}
 var _receiver_credit := {}
+var _pass_yards_credited := false
 var _thrown := false
-var _handoff_runner := -1
+var _keeper_credit := {}
+var _handoff_credit := {}
 var _rushing_fumble := false
 ## Takeaway return in progress (#100): who has the ball, where he took it, which field.
 var _returner := -1
@@ -57,8 +59,9 @@ func _player_id(aid: int) -> int:
 func _add(aid: int, field: String, v: float = 1.0) -> void:
 	if aid < 0 or world.get_athlete(aid) == null:
 		return
-	_add_player_credit(_key(aid), _player_id(aid), field, v)
-	_add_athlete(aid, field, v)
+	var key := _key(aid)
+	_add_player_credit(key, _player_id(aid), field, v)
+	_add_athlete(aid, field, v, key.get_slice("|", 0))
 
 func _add_player_credit(key: String, player: int, field: String, value: float) -> void:
 	if not lines.has(key):
@@ -82,15 +85,18 @@ func _credit_for(aid: int) -> Dictionary:
 		return {}
 	return {"aid": aid, "key": _key(aid), "player": _player_id(aid)}
 
-## Add a delayed result to the owner in `credit`. The action that started it already created the
-## athlete's line; this updates its totals without changing who is shown as its last human owner.
-func _add_credit(credit: Dictionary, field: String, value: float = 1.0) -> void:
+## Delayed results use the recorded owner. A rush records its carry here, so its first
+## stat also records the original runner as the athlete line's last human contributor.
+func _add_credit(credit: Dictionary, field: String, value: float = 1.0, record_owner := false) -> void:
 	if credit.is_empty():
 		return
-	_add_player_credit(credit["key"], credit["player"], field, value)
-	if not athletes.has(credit["aid"]):
-		_add_athlete(credit["aid"], field, 0.0)
-	_add_field(athletes[credit["aid"]], field, value)
+	var aid: int = credit["aid"]
+	var key: String = credit["key"]
+	_add_player_credit(key, credit["player"], field, value)
+	if record_owner or not athletes.has(aid):
+		_add_athlete(aid, field, value, key.get_slice("|", 0))
+	else:
+		_add_field(athletes[aid], field, value)
 
 static func _blank() -> Dictionary:
 	var line := {}
@@ -104,13 +110,12 @@ static func _add_field(line: Dictionary, field: String, value: float) -> void:
 
 ## Same stat, keyed by the athlete itself. The owner is the last human who
 ## controlled it (a bot that a human took over is credited to the human).
-func _add_athlete(aid: int, field: String, v: float) -> void:
+func _add_athlete(aid: int, field: String, v: float, owner: String) -> void:
 	var a = world.get_athlete(aid)
 	if not athletes.has(aid):
 		athletes[aid] = {"team": a.team, "pos": ROLE.get(a.role, "?"), "owner": "Bot"}
 		for f in FIELDS:
 			athletes[aid][f] = 0.0
-	var owner: String = owner_fn.call(aid) if owner_fn.is_valid() else "Bot"
 	if owner != "Bot":
 		athletes[aid]["owner"] = owner
 	_add_field(athletes[aid], field, v)
@@ -121,8 +126,10 @@ func _on_event(n: String, d: Dictionary) -> void:
 			_los = world.los_y
 			_passer = -1
 			_receiver = -1
+			_pass_yards_credited = false
 			_thrown = false
-			_handoff_runner = -1
+			_keeper_credit = _credit_for(d.get("qb", -1))
+			_handoff_credit = {}
 			_rushing_fumble = false
 			_returner = -1
 			_kick_kind = ""
@@ -149,7 +156,7 @@ func _on_event(n: String, d: Dictionary) -> void:
 		"touchback":
 			_end_punt(world.field.length)   # punt yardage on a touchback runs to the goal line
 		"handoff":
-			_handoff_runner = d["to"]
+			_handoff_credit = _credit_for(d["to"])
 		"throw":
 			if d["by"] == _returner:   # a pass/lateral (chaosball swings) ends the return at the throw
 				_credit_return(world.get_athlete(_returner).position.y)
@@ -175,13 +182,23 @@ func _on_event(n: String, d: Dictionary) -> void:
 		"block":
 			_add(d["blocker"], "blk")
 		"fumble":
+			if d["carrier"] == _receiver and not _pass_yards_credited:
+				_credit_pass_yards(d["at"].y - _los)
 			_add(d["by"], "ff")
-			if d["carrier"] == _returner:   # fumbled mid-return: the return ends where he lost it
+			var carrier: int = d["carrier"]
+			if carrier == _returner:   # fumbled mid-return: the return ends where he lost it
 				_credit_return(d["at"].y)
-			if _handoff_runner == d["carrier"] and not _rushing_fumble and not _thrown:
-				_rushing_fumble = true
-				_add(_handoff_runner, "car")
-				_add(_handoff_runner, "rush_yds", d["at"].y - _los)
+			elif not _rushing_fumble and not _thrown:
+				var gain: float = d["at"].y - _los
+				var credit := {}
+				if carrier == _handoff_credit.get("aid", -1):
+					credit = _handoff_credit
+				elif carrier == _keeper_credit.get("aid", -1) and gain > 0.0 and not world.kicked:
+					credit = _keeper_credit
+				if not credit.is_empty():
+					_rushing_fumble = true
+					_add_credit(credit, "car", 1.0, true)
+					_add_credit(credit, "rush_yds", gain)
 		"recovery":
 			_add(d["by"], "fr")
 			if d.get("turnover", false):
@@ -197,11 +214,12 @@ func _end_play(n: String, d: Dictionary) -> void:
 	var on_offense: bool = c.team == world.offense_team
 	if n == "tackle":
 		_add(d.get("by", -1), "tkl")
-	# A return or a run after the catch is credited to whoever owned the runner when it began.
-	var credit := _credit_for(carrier)
+	var current_credit := _credit_for(carrier)
+	var credit := current_credit
 	if carrier == _receiver:
 		credit = _receiver_credit
-	if carrier == _returner:
+	var returning := carrier == _returner
+	if returning:
 		credit = _returner_credit
 		var end_y: float = d["spot"].y
 		if n == "touchdown":
@@ -221,19 +239,32 @@ func _end_play(n: String, d: Dictionary) -> void:
 			_note_td_points(credit, d.get("points", 6))
 		return   # returns (kick, punt, takeaway) are credited above
 	if _receiver >= 0 and carrier == _receiver:
-		_add_credit(_passer_credit, "pass_yds", gain)
-		_add_credit(_receiver_credit, "rec_yds", gain)
+		if not _pass_yards_credited:
+			_credit_pass_yards(gain)
 		if n == "touchdown":
 			_add_credit(_passer_credit, "pass_td")
 			_add_credit(_receiver_credit, "rec_td")
 	elif not _thrown and not _rushing_fumble:
-		_add(carrier, "car")
-		_add(carrier, "rush_yds", gain)
+		var rush_credit := current_credit
+		if not returning:
+			if carrier == _handoff_credit.get("aid", -1):
+				rush_credit = _handoff_credit
+			elif carrier == _keeper_credit.get("aid", -1):
+				rush_credit = _keeper_credit
+			credit = rush_credit
+		_add_credit(rush_credit, "car", 1.0, true)
+		_add_credit(rush_credit, "rush_yds", gain)
 		if n == "touchdown":
-			_add(carrier, "rush_td")
+			_add_credit(rush_credit, "rush_td")
 	if n == "touchdown":
 		_add_credit(credit, "pts", d.get("points", 6))
 		_note_td_points(credit, d.get("points", 6))
+
+## A completion already credited at the fumble spot keeps those yards at the whistle.
+func _credit_pass_yards(gain: float) -> void:
+	_pass_yards_credited = true
+	_add_credit(_passer_credit, "pass_yds", gain)
+	_add_credit(_receiver_credit, "rec_yds", gain)
 
 ## A takeaway (interception or a fumble recovered by the other team) starts a return at
 ## the catch / recovery spot. The returner may be on either team (a double turnover).
