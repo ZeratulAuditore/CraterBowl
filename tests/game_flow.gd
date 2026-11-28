@@ -357,6 +357,24 @@ func _initialize() -> void:
 		[8251, func(): main.series.clock.quarter = 4; main.series.clock.remaining = 0.0; main.series.last_result = {"type": "incomplete"}; main.next_play()],
 		[8252, func(): check(main.series.is_final(), "final"); _key(KEY_V); check(main.replay_active and main.replay_reel, "V at FINAL plays the highlight reel")],
 		[8254, func(): check(main.hud.text.find("HIGHLIGHT REEL") >= 0, "HUD: HIGHLIGHT REEL"); check(main.postgame == null, "postgame show waits while the reel plays"); _key(KEY_V); check(not main.replay_active, "V exits the reel"); main.auto_replay = false; main.ai.defense_enabled = true; for f in DirAccess.get_files_at(ProjectSettings.globalize_path("user://test_flow_replays")): DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_flow_replays/" + f))],
+		# #379 jump: Space in live play hops (JUMP_STAMINA); again within the chain window costs JUMP_CHAIN_STAMINA.
+		[8260, func(): main.configure(7); main.ai.defense_enabled = false],
+		[8261, func(): _key(KEY_SPACE); check(main.world.phase == main.World.Phase.LIVE, "Space snaps before the jump step")],
+		[8270, func():
+			var a = main.world.get_athlete(main.controlled_id)
+			var s0: float = a.stamina
+			check(a.can_act() and not a.is_jumping() and a.jump_chain_t == 0.0, "jump: controlled athlete can act on the ground")
+			_key(KEY_SPACE)
+			check(a.is_jumping(), "Space jumps in live play (#379)")
+			check(absf(s0 - a.stamina - main.T.JUMP_STAMINA) < 0.001, "jump costs JUMP_STAMINA (%.3f -> %.3f)" % [s0, a.stamina])],
+		[8310, func():
+			var a = main.world.get_athlete(main.controlled_id)
+			var s0: float = a.stamina
+			check(not a.is_jumping() and a.jump_chain_t > 0.0, "jump: landed, inside the chain window (%.2f s left)" % a.jump_chain_t)
+			_key(KEY_SPACE)
+			check(a.is_jumping(), "Space jumps again right after landing")
+			check(absf(s0 - a.stamina - main.T.JUMP_CHAIN_STAMINA) < 0.001, "chained jump costs JUMP_CHAIN_STAMINA (%.3f -> %.3f)" % [s0, a.stamina])],
+		[8350, func(): check(not main.world.get_athlete(main.controlled_id).is_jumping(), "chained jump lands"); _force_dead_if_live(); main.ai.defense_enabled = true],
 		# Training ground: hub portals, blocking station, Backspace home, practice-field targets
 		[8600, func(): main.training_path = "user://test_flow_training.json"; DirAccess.remove_absolute(ProjectSettings.globalize_path(main.training_path)); main.start_practice("hub")],
 		[8602, func(): check(main.drill.kind == "hub" and main.world.phase == main.World.Phase.LIVE, "training ground: free roam with the ball"); check(main.field_root.get_node_or_null("TrainingArt") != null and main.field_root.get_node("TrainingArt").get_children().filter(func(n): return n.name.begins_with("Portal_")).size() == 3, "three portals built"); check(main.pres.overlay.picker_title.text == "PICK A STATION", "overlay coaching card (%s)" % main.pres.overlay.picker_title.text); check(main.pres.overlay.mode_l.text == "TRAINING GROUND", "overlay title")],

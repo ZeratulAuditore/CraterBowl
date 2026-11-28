@@ -74,6 +74,7 @@ var emote_id := ""
 var emote_t := 0.0
 var spin_vis_t := 0.0      # view-side spin animation (works for net + local)
 var spin_vis_side := 0
+var jump_pose := preload("res://src/game/jump_pose.gd").new()   # view-side jump (#379)
 var bubble: Label3D
 var fair_catch_label: Label3D   # "FAIR CATCH" over a signaling returner (#189), built on first use
 var fair_catch_shown := false
@@ -497,6 +498,7 @@ func _process(delta: float) -> void:
 		spin_vis_t = T.SPIN_TIME
 		spin_vis_side = athlete.spin_dir
 	spin_vis_t = maxf(0.0, spin_vis_t - delta)
+	jump_pose.update(athlete, delta)
 	_release_t = maxf(0.0, _release_t - delta)
 	var fc: bool = world != null and world.get("fair_catch_id") == athlete.id and int(world.phase) == 1
 	if fc != fair_catch_shown:
@@ -511,7 +513,7 @@ func _process(delta: float) -> void:
 		_update_look(delta, down)
 	# Celebration flourishes on top of the dance.
 	body.rotation = Vector3.ZERO
-	body.position = Vector3.ZERO
+	body.position = Vector3(0.0, jump_pose.lift(), 0.0)
 	if athlete.is_spinning():
 		body.rotation.y = TAU * (1.0 - athlete.move_t / T.SPIN_TIME)
 	if celebrate_t > 0.0:
@@ -540,6 +542,8 @@ func _choose_anim(spd: float, down: bool) -> void:
 			_play("u2/Slide", 0.12)
 		if athlete.recover_t < 0.7:
 			_play("u2/LayToIdle", 0.15, 1.6)
+		return
+	if jump_pose.play(self):
 		return
 	if _hit_t > 0.0:
 		_play("u2/Hit_Knockback", 0.08, 1.3)
