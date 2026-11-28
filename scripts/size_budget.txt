@@ -3,7 +3,7 @@
 # These files are shared switchboards that every feature edits, which is where merge conflicts
 # come from. Put new behavior in a new file and wire it in, don't grow these.
 # When a refactor shrinks a file, lower its budget here (or drop the line once it's under 500).
-src/game/main.gd 2108
+src/game/main.gd 1998
 src/sim/world.gd 1411
 src/ui/main_menu.gd 1088
 src/game/overlay.gd 798
