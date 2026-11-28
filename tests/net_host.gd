@@ -11,6 +11,7 @@ var set_quarters := false
 var reported_ids := false
 var replay_start_tick := -1
 var replay_start_frame := 0
+var replay_start_position := Vector2.ZERO
 
 func _initialize() -> void:
 	main = load("res://scenes/main.tscn").instantiate()
@@ -39,9 +40,16 @@ func _physics_process(dt: float) -> bool:
 		assert(main.replay_active and main.replay.paused, "host paused the instant replay")
 		replay_start_tick = main.net_tick
 		replay_start_frame = main.replay.frames.size()
+		replay_start_position = main.world.get_athlete(main.controlled_id).position
+		main.input_override = Vector2.RIGHT
+		main.sprint_override = true
 	if replay_start_tick >= 0 and main.net_tick == replay_start_tick + 12:
 		assert(main.replay.frames.size() - replay_start_frame == 12 / main.Replay.FRAME_EVERY,
 			"host recorded all six frames while the real client was connected")
+		var local_athlete = main.world.get_athlete(main.controlled_id)
+		assert(local_athlete.position.is_equal_approx(replay_start_position), "host movement was neutral while recording")
+		main.input_override = null
+		main.sprint_override = null
 		_key(KEY_V)
 	if saw_live and main.world.phase == main.World.Phase.PRESNAP:
 		presnap_time += dt
