@@ -26,3 +26,21 @@ Six backlog issues reached separate PRs against merged main. Each branch passed 
 - Skipped #110 because it was blocked, #135 and #273 because they were claimed, #298 because it overlaps the claimed Controls redesign #134, and #323 because it overlaps the rushing-credit code in #325.
 - PRs #327, #328 and #334 each start from protocol v4. After one merges, the remaining protocol changes need sequential version bumps and verification against updated main.
 - The first full gate on #293 was interrupted during matchmaking. The detached retry passed. The initial checkout was clean and the run added no stashes. The repo records iteration details in PRs since #112 retired `ITERATIONS.md`.
+
+## 2026-11-27 — Fumble stats, diving catches, and audibles
+
+Five backlog items reached separate PRs. Each passed the full local gate. The owner merged the first three during the run.
+
+| Issue | PR | Change commit | Status at the time of writing | Unit tests |
+|---|---|---|---|---:|
+| [#323](https://github.com/bpenwell/CraterBowl/issues/323) Credit the fumbled keeper | [#356](https://github.com/bpenwell/CraterBowl/pull/356) | `9148cee` | Merged as `b4d6f71`. [CI passed](https://github.com/bpenwell/CraterBowl/actions/runs/46062057587). | 559 |
+| [#355](https://github.com/bpenwell/CraterBowl/issues/355) Keep yards on a fumbled completion | [#358](https://github.com/bpenwell/CraterBowl/pull/358) | `96bbf2b` | Merged as `93d617d`. [CI passed](https://github.com/bpenwell/CraterBowl/actions/runs/46062787691). | 558 |
+| [#357](https://github.com/bpenwell/CraterBowl/issues/357) Report small screenshot differences | [#359](https://github.com/bpenwell/CraterBowl/pull/359) | `abd6479` | Merged as `04fa61c`. [CI passed](https://github.com/bpenwell/CraterBowl/actions/runs/46063507960). | 559 |
+| [#360](https://github.com/bpenwell/CraterBowl/issues/360) Reach for the pass during a dive | [#364](https://github.com/bpenwell/CraterBowl/pull/364) | `f819f0d` | Open for owner review. Verified the merged branch at `0e2bb7b`. [CI run](https://github.com/bpenwell/CraterBowl/actions/runs/46064994314). | 565 |
+| [#346](https://github.com/bpenwell/CraterBowl/issues/346) Verify the pre-snap audible | [#365](https://github.com/bpenwell/CraterBowl/pull/365) | `d501b77` | Open for owner review. [CI run](https://github.com/bpenwell/CraterBowl/actions/runs/46065906330). | 565 |
+
+- Opened #355 and #357 from findings during testing, then shipped their fixes through the PRs above. Split #340 into #360 and #361. The jump-catch pose in #361 awaits the jump move in #5. #366 tracks this run record.
+- Skipped #298 because #134 claims the overlapping Controls redesign. #7, #9, #10, and #340 track their existing child issues.
+- The first full gate for #323 was interrupted during matchmaking. A detached retry passed. When the owner merged #356, #358, and #359, the dive branch kept both timeline changes and passed again on current main.
+- Inspected the fumble and dive before/after pairs, the one-pixel comparison fixture, and all three audible states. PR descriptions link to the Actions captures and logs.
+- The checkout started clean. No changes were stashed.

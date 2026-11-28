@@ -6,6 +6,8 @@ extends SkeletonModifier3D
 ## each side of it (palms in), and the ball sits there instead of in the right palm.
 ## Head look (#245): neck and head turn toward `look_target`, clamped to human limits.
 ## Catch (#246): both hands up in a ready stance, reaching to the ball as it closes in.
+## Block push: the Push clip's upper body over the leg clip (Push is a standing shove; its
+## legs never move, so an engaged pair on the move kept sliding with stiff legs).
 ## View-only (no sim state). weight 0 leaves the clip pose untouched; player.gd smooths it.
 
 ## Hand targets and elbow hints in spine_03 space (rig: +Z forward, +Y up, right = -X).
@@ -71,6 +73,12 @@ const PITCH_UP := deg_to_rad(40.0)
 const PITCH_DOWN := deg_to_rad(30.0)
 const NECK_SHARE := 0.4   # the rest of the turn is the head's
 
+## Bones the block push takes from the Push clip (spine lean, both arms); hips, legs, head
+## and fingers stay on the playing clip. Track paths are relative to the AnimationPlayer root.
+const PUSH_BONES := ["spine_02", "spine_03", "clavicle_l", "upperarm_l", "lowerarm_l", "hand_l",
+	"clavicle_r", "upperarm_r", "lowerarm_r", "hand_r"]
+const PUSH_TRACK_PREFIX := "Armature/Skeleton3D:"
+
 var weight := 0.0      # 0 = clip pose, 1 = full carry pose
 var two_hand := false  # passer holding before the throw
 var look_target := Vector3.ZERO   # skeleton space
@@ -78,6 +86,11 @@ var look_weight := 0.0            # 0 = clip's head, 1 = full look
 var catch_weight := 0.0           # 0 = no catch pose, 1 = full stance/reach
 var catch_target := Vector3.ZERO  # the ball, skeleton space
 var catch_reach := 0.0            # 0 = ready stance, 1 = hands on the ball
+var push_clip: Animation          # the Push clip (player.gd sets it); null: no push layer
+var push_weight := 0.0            # 0 = playing clip, 1 = Push clip on the upper body
+var push_time := 0.0              # s into push_clip
+var _push_tracks := []            # [bone id, rotation track id] per PUSH_BONES entry found
+var _push_pelvis := [-1, -1]      # pelvis bone id, Push's pelvis rotation track
 var _bones := {}
 var _fingers := {}     # "_r"/"_l" -> finger bone ids (joints 01-03)
 var _rig_ok := false   # every bone in _bones exists (checked once: no per-frame allocation)
@@ -90,7 +103,7 @@ func _process_modification() -> void:
 	apply(get_skeleton())
 
 func apply(sk: Skeleton3D) -> void:
-	if sk == null or (weight <= 0.0 and look_weight <= 0.0 and catch_weight <= 0.0):
+	if sk == null or (weight <= 0.0 and look_weight <= 0.0 and catch_weight <= 0.0 and push_weight <= 0.0):
 		return
 	if _bones.is_empty():
 		for n in ["spine_02", "spine_03", "neck_01", "Head", "upperarm_r", "lowerarm_r", "hand_r", "upperarm_l", "lowerarm_l", "hand_l"]:
@@ -103,8 +116,16 @@ func apply(sk: Skeleton3D) -> void:
 					if b >= 0:
 						_fingers[side].append(b)
 		_rig_ok = not _bones.values().has(-1)
+		if push_clip:
+			for n in PUSH_BONES:
+				var t := push_clip.find_track(NodePath(PUSH_TRACK_PREFIX + n), Animation.TYPE_ROTATION_3D)
+				if t >= 0 and sk.find_bone(n) >= 0:
+					_push_tracks.append([sk.find_bone(n), t])
+			_push_pelvis = [sk.find_bone("pelvis"), push_clip.find_track(NodePath(PUSH_TRACK_PREFIX + "pelvis"), Animation.TYPE_ROTATION_3D)]
 	if not _rig_ok:
 		return   # rig without these bones: keep the clip
+	if push_weight > 0.0:
+		_push(sk)
 	# The arms do one job: the stronger of catching and carrying (they cross over at the catch).
 	var catching := catch_weight > weight
 	_pre = Transform3D()
@@ -128,6 +149,20 @@ func apply(sk: Skeleton3D) -> void:
 	else:
 		_reach(sk, "_r", chest * TUCK_HAND, chest.basis * TUCK_POLE, weight)
 	_open_hand(sk, "_r", weight)
+
+## Block push: the Push clip's upper-body bone rotations at push_time, blended by push_weight
+## over the playing clip (the legs keep running). Runs first, so look, catch and carry layer on it.
+## Push leans in from the pelvis, which stays on the leg clip: spine_02 (first in PUSH_BONES)
+## also takes the pelvis difference, or the lean is lost and the arms point at the sky.
+func _push(sk: Skeleton3D) -> void:
+	var lean := Quaternion.IDENTITY
+	if _push_pelvis[0] >= 0 and _push_pelvis[1] >= 0:
+		lean = sk.get_bone_pose_rotation(_push_pelvis[0]).inverse() * push_clip.rotation_track_interpolate(_push_pelvis[1], push_time)
+	for bt in _push_tracks:
+		var q: Quaternion = push_clip.rotation_track_interpolate(bt[1], push_time)
+		if bt == _push_tracks[0]:
+			q = (lean * q).normalized()
+		sk.set_bone_pose_rotation(bt[0], sk.get_bone_pose_rotation(bt[0]).slerp(q, push_weight))
 
 ## The catch frame: at the chest, facing the chest's heading, with the rig's +Y (world) up.
 static func _upright(chest: Transform3D) -> Transform3D:

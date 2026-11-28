@@ -1026,8 +1026,7 @@ func _step_loose(dt: float) -> void:
 	if field.zone_of(bp) == Field.Zone.OUT_OF_BOUNDS:
 		dead_ball_spot = bp
 		dead_ball_team = last_possession
-		ball.state = Ball.State.DEAD
-		phase = Phase.DEAD
+		_end_play()
 		var data := {"spot": bp, "team": last_possession, "loose": true}
 		event.emit("out_of_bounds", data)
 		event.emit("whistle", data)
@@ -1048,6 +1047,13 @@ func _step_loose(dt: float) -> void:
 		event.emit("recovery", {"by": best.id, "team": best.team, "turnover": best.team != last_possession})
 		last_possession = best.team
 
+func _end_play() -> void:
+	ball.state = Ball.State.DEAD
+	phase = Phase.DEAD
+	for athlete in athletes:
+		athlete.engaged_with = -1
+		athlete.engage_t = 0.0
+
 func _whistle(reason: String, data: Dictionary) -> void:
 	var c := carrier()
 	dead_ball_spot = c.position
@@ -1061,8 +1067,7 @@ func _whistle(reason: String, data: Dictionary) -> void:
 	dead_ball_team = c.team
 	data["spot"] = dead_ball_spot
 	c.velocity = Vector2.ZERO
-	ball.state = Ball.State.DEAD
-	phase = Phase.DEAD
+	_end_play()
 	event.emit(reason, data)
 	event.emit("whistle", data)
 
@@ -1089,8 +1094,7 @@ func _step_flight(dt: float) -> void:
 				ball.velocity.y *= T.BOUNCE_FRICTION
 				return
 		ball.velocity = Vector3.ZERO
-		ball.state = Ball.State.DEAD
-		phase = Phase.DEAD
+		_end_play()
 		var at := Vector2(ball.position.x, ball.position.y)
 		dead_ball_spot = at
 		event.emit("incomplete", {"at": at, "team": last_possession})
@@ -1113,8 +1117,7 @@ func _wall_bounce() -> void:
 		event.emit("bounce", {"n": bounces, "wall": true})
 		if bounces >= rules["max_bounces"]:
 			ball.velocity = Vector3.ZERO
-			ball.state = Ball.State.DEAD
-			phase = Phase.DEAD
+			_end_play()
 			var at := Vector2(ball.position.x, ball.position.y)
 			dead_ball_spot = at
 			event.emit("incomplete", {"at": at, "team": last_possession})
@@ -1234,16 +1237,14 @@ func _step_pass_clock(dt: float) -> void:
 		dead_ball_spot = spot
 		dead_ball_team = c.team
 		c.recover_t = T.FUMBLE_KNOCKDOWN
-		ball.state = Ball.State.DEAD
-		phase = Phase.DEAD
+		_end_play()
 		var data := {"carrier": c.id, "spot": spot, "team": c.team}
 		event.emit("explode", data)
 		event.emit("whistle", data)
 
 func _end_incomplete(reason: String, data: Dictionary) -> void:
 	ball.velocity = Vector3.ZERO
-	ball.state = Ball.State.DEAD
-	phase = Phase.DEAD
+	_end_play()
 	event.emit(reason, data)
 	data["reason"] = reason
 	event.emit("incomplete", data)
@@ -1413,8 +1414,7 @@ func _kick_dead(reason: String, at: Vector2, extra: Dictionary) -> void:
 	kick_live = false
 	kick_free = false
 	ball.velocity = Vector3.ZERO
-	ball.state = Ball.State.DEAD
-	phase = Phase.DEAD
+	_end_play()
 	dead_ball_spot = at
 	dead_ball_team = offense_team
 	var data := {"spot": at, "team": offense_team, "kind": kick_play}

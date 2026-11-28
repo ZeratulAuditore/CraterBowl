@@ -10,9 +10,9 @@ var land_t := 0.0   # s left of the landing pose
 
 ## Run our own clock so the arc is smooth between 60 Hz sim steps: snap to the sim on takeoff
 ## (or drift past 0.1 s) and drop it the moment the sim says we're down (landed or knocked over).
-## Menu/POTG stub athletes have no jump state.
+## Menu/POTG stub athletes have no jump state; null (a replay view) shows no jump.
 func update(athlete, delta: float) -> void:
-	var sim: float = athlete.jump_t if athlete.has_method("is_jumping") else 0.0
+	var sim: float = athlete.jump_t if athlete != null and athlete.has_method("is_jumping") else 0.0
 	if sim <= 0.0:
 		if vis_t > 0.0:
 			land_t = LAND_POSE_TIME
